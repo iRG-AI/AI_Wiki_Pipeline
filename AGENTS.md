@@ -155,6 +155,22 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 
 ### 중요한 제약사항
 
+**Notion 캐시 — 전부 읽었거나, 던지거나 (v3.2.1) — 건드리지 말 것**
+
+`scheduler.js:loadNotionCache()` 는 중복 판정의 유일한 근거다. 빈 캐시·부분 캐시가 한 번이라도 반환되면 전 영상이 신규로 보여 `MAX_NEW_PER_RUN`(15)편을 다시 요약·저장한다. 2026-08-12 ~ 10-01 사이 13회 발생해 Notion 중복 195건이 쌓였고, 결과가 "저장 15 · Skip 0 · 오류 0" 이라 성공으로 보였다.
+
+- 루프를 `do { … } while (cursor)` 로 되돌리지 말 것. 첫 페이지 실패 시 `continue` 가 조건 검사로 넘어가 재시도 없이 끝난다.
+- 재시도 초과·0건은 **던진다**. `break` 나 빈 `Map` 반환으로 바꾸지 말 것. `main` 이 받아 영상 처리와 큐 재시도를 건너뛴다(fail-closed).
+- Notion 401/403 은 재시도 없이 `fatalAuth` 로 던지고 `main` 이 즉시 종료한다(보안 원칙 1).
+- 새로 만든 빈 DB 로 처음 돌릴 때만 `.env` 에 `NOTION_CACHE_ALLOW_EMPTY=true`. 평소에는 넣지 않는다.
+- **스케줄러 결과가 "저장 15 · Skip 0" 이면 성공이 아니라 캐시 이상을 의심한다.**
+
+**YouTube 조회 재시도·배치 (v3.2.1)**
+
+- `ytFetch()` 는 네트워크 오류·429·5xx 만 지수 백오프(2→16초, 최대 5회)로 재시도한다. 401/403 은 즉시 던진다 — 재시도 대상을 넓힐 때 이 구분을 지우지 말 것.
+- 채널 구독자 수는 `getBatchSubs()` 로 50개씩 순차 조회한다. 채널마다 `Promise.all` 로 부르던 방식(실행당 새 연결·유닛 약 450)으로 되돌리지 말 것.
+- `scheduler.js` 는 `require.main === module` 일 때만 `main` 을 돈다. 이 가드를 지우면 테스트가 실제 실행을 일으킨다.
+
 **한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. Notion 태그, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `addTopicToPage()`의 NFC 체크가 중복 태그 방지의 핵심.
 
 **Notion API 한계**:
@@ -167,7 +183,7 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 - **실패 요청도 quota를 동일하게 소비한다.** v2.5에서 `addToPlaylist`의 실패 경로에도 `consumeQuota(50)`을 넣었다(`lib/youtube_oauth.js:217`). 이전에는 실패가 계상되지 않아 `.quota_state.json`이 0에 머무른 채 실제 한도를 넘겼다.
 - 따라서 **하루 재생목록 추가 상한은 약 190건**이다(9,500 ÷ 50). 코드로 늘릴 수 없다.
 - 무료 할당량이자 상한선이라 **초과해도 과금되지 않는다.** 403으로 거부될 뿐이다.
-- **일 경계는 태평양시(PT) 기준이다** (v2.6). `todayKey()`가 `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })`를 쓴다(`lib/youtube_oauth.js:45`). UTC를 쓰면 카운터만 KST 09:00에 리셋돼 **09:00~16:00 동안 스로틀이 무력화**된다. 실패도 50유닛을 먹으므로 소진된 quota에 계속 요청을 밀어넣게 된다. **날짜 키를 만드는 코드를 새로 쓸 때는 반드시 `todayKey()`를 재사용할 것** — `scheduler.js:1360`의 텔레그램 경고도 같은 키를 써야 오경보가 안 난다.
+- **일 경계는 태평양시(PT) 기준이다** (v2.6). `todayKey()`가 `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })`를 쓴다(`lib/youtube_oauth.js:45`). UTC를 쓰면 카운터만 KST 09:00에 리셋돼 **09:00~16:00 동안 스로틀이 무력화**된다. 실패도 50유닛을 먹으므로 소진된 quota에 계속 요청을 밀어넣게 된다. **날짜 키를 만드는 코드를 새로 쓸 때는 반드시 `todayKey()`를 재사용할 것** — `scheduler.js:1475`의 텔레그램 경고도 같은 키를 써야 오경보가 안 난다.
 - `.quota_state.json` 스키마는 **`{date, used, ok, fail}`** 이다 (v2.7). `ok`/`fail`은 `playlistItems.insert`의 성공·실패 건수이고, 읽기(`list`)는 `used`에만 반영된다. `consumeQuota(units, outcome)`의 `outcome`은 `'ok' | 'fail' | undefined`. 기존 파일에 `ok`/`fail`이 없으면 `loadQuotaState()`가 0으로 채운다(하위호환).
 - `.quota_state.json`의 `date`가 **PT 기준 오늘**이 아니면 그날 YouTube 쓰기가 한 건도 시도되지 않았다는 뜻이다. 최우선 이상 신호.
 - **`date`가 오늘이라고 정상인 것은 아니다.** 실패도 `date`를 찍는다. `fail > 0 && ok === 0`이면 **인증은 되는데 쓰기만 전부 실패** — 계정 불일치를 의심할 자리다(v2.7이 이 분기를 텔레그램으로 경고한다).
@@ -177,8 +193,8 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 
 `scheduler.js:flushPendingQueue()`와 `processMasterIngest()` 내부 `appendPending`에 들어간 장치입니다. 큐 로직을 바꾸면 **`migrate_classify.js`도 같은 큐 파일에 쓰므로 양쪽을 함께 고쳐야 합니다.**
 
-- `appendPending`은 `(videoId, playlistId)` 중복을 적재하지 않는다(`scheduler.js:1020`). 없으면 큐가 며칠 만에 2배로 부푼다. 실제 46.7%까지 중복된 이력이 있다.
-- `flushPendingQueue`는 **연속 실패 10회에서 큐 처리를 중단**한다(`scheduler.js:807`). 403을 수백 번 난사하면 구글이 어뷰징으로 판단해 계정을 정지시킨다. 보안 원칙 1의 구현체다.
+- `appendPending`은 `(videoId, playlistId)` 중복을 적재하지 않는다(`scheduler.js:1124`). 없으면 큐가 며칠 만에 2배로 부푼다. 실제 46.7%까지 중복된 이력이 있다.
+- `flushPendingQueue`는 **연속 실패 10회에서 큐 처리를 중단**한다(`scheduler.js:894`). 403을 수백 번 난사하면 구글이 어뷰징으로 판단해 계정을 정지시킨다. 보안 원칙 1의 구현체다.
 - `invalid_grant` / `Token refresh failed` 감지 시 큐를 보존한 채 즉시 중단한다.
 - 영구 실패 사유(`playlistItemsNotAccessible`, `playlistNotFound`, `videoNotFound`, `forbidden`)는 dead-letter로 격리한다.
 - 그 외 실패는 `retryCount` 5회 초과 시 dead-letter로 보낸다. 무한 순환 금지.
@@ -248,9 +264,10 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
 
 ## 변경 이력
 
+- **2026-10-05 (v3.2.1)** — 스케줄러 네트워크 안전장치. 배경: 로그 집계(08-12 ~ 10-05, 실행 219회)에서 실행 통째 실패 62회(28%, ENOTFOUND 41·ETIMEDOUT 17·기타 4)와, Notion 캐시 첫 조회 실패 → 빈 캐시 진행 23회(그중 13회가 영상 15편 재저장, 중복 195건). `loadNotionCache()` 를 "전부 읽었거나, 던지거나" 로 교체(재시도 초과·0건은 throw, 401/403 은 fatalAuth 즉시 종료, `NOTION_CACHE_ALLOW_EMPTY` 로만 빈 DB 허용)하고 `main` 은 캐시 실패 시 영상 처리·큐 재시도를 건너뜀(fail-closed). `ytFetch()` 에 일시 오류 지수 백오프(2→16초, 5회) 추가, 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450)에서 `getBatchSubs()` 50개 배치 순차(9회)로 교체, `scheduler.js` 를 `require.main === module` 가드로 `require` 가능하게 함. 검증: `scripts/test_scheduler_guards.js` 12/12, 모의 실행 2종(네트워크 전면 실패·Notion 401) 기대대로, 읽기 전용 실측(캐시 3,042 · 영상 1,412 · 고유 채널 450 → 구독자 응답 450 · 신규 판정 22). 야간 ENOTFOUND 의 직접 원인은 밝히지 못했다. 지시서 `docs/tasks/2026-10-05-scheduler-network-guards.md`.
 - **2026-08-28 (v2.7.1)** — 토픽 분류의 일시적 서버 오류(5xx) 재시도 추가. `scheduler.js` 분류 catch 블록의 재시도 대상을 429/quota → +`5xx`·`UNAVAILABLE`·`overloaded`·`high demand`로 확장하고 지수 백오프(2→15초 상한)를 적용, 401/403은 즉시 중단으로 명시, `keysCount > 1` 조건을 키 교체에만 적용해 키 1개 환경에서도 재시도되게 했다. 재시도 소진 시 `cls`가 `undefined`인 채 `cls.topics`로 진입하던 잠복 TypeError 경로를 가드 2개로 차단. 지시서 `docs/tasks/2026-08-28-classify-transient-retry.md`.
 - **2026-08-19 (v2.7)** — 재생목록 쓰기 성공/실패 계측 도입. `.quota_state.json`에 `ok`/`fail` 추가(하위호환 기본값 0), `consumeQuota(units, outcome)`로 확장해 `addToPlaylist` 양쪽 경로에서 계상. 텔레그램 큐 블록을 쓰기 결과 3분기(성공/전부실패/시도없음) + 순감 기준 소진 예상일로 교체 — v2.5 이후 "시도했으나 전부 실패한 날"을 구조적으로 감지하지 못하던 구멍을 막았다. 지시서 `docs/tasks/2026-08-18-write-outcome-metrics.md`.
-- **2026-08-17 (v2.6)** — quota 일 경계를 UTC → 태평양시(PT)로 교정. `todayKey()`를 `Intl` 기반으로 바꾸고 export해 `scheduler.js:1360`이 같은 키를 쓰게 했다(텔레그램 오경보 제거). KST 09:00~16:00 동안 스로틀이 무력화되던 구간을 없앴다. 지시서 `docs/tasks/2026-08-17-quota-day-boundary.md`. 커밋 `7eb112c`.
+- **2026-08-17 (v2.6)** — quota 일 경계를 UTC → 태평양시(PT)로 교정. `todayKey()`를 `Intl` 기반으로 바꾸고 export해 `scheduler.js:1475`이 같은 키를 쓰게 했다(텔레그램 오경보 제거). KST 09:00~16:00 동안 스로틀이 무력화되던 구간을 없앴다. 지시서 `docs/tasks/2026-08-17-quota-day-boundary.md`. 커밋 `7eb112c`.
 - **2026-08-17 (v2.5)** — 레포를 `Projects/` 하위로 이관. 대기 큐 안전장치 도입(중복 방지·연속 실패 10회 차단기·dead-letter 격리·실패 요청 quota 계상), `scripts/clean_pending_queue.js` 신규, `.gitignore` 패턴 수정. OAuth 토큰을 「타이쿤안」 채널로 재발급하고 GCP 게시 상태를 프로덕션으로 전환. 큐 5,392 → 2,365 정리. 커밋 `66ab4a2`.
 - **2026-05-21** — 최초 작성.
 

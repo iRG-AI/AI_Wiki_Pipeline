@@ -237,14 +237,43 @@ function httpsRequest(options, body) {
 }
 
 // ── YouTube API 호출 ──
+// 일시 오류(네트워크·429·5xx)만 지수 백오프로 재시도한다.
+// 401/403 을 포함한 그 밖의 응답은 재시도 없이 즉시 던진다(보안 원칙 1) — 재시도 대상을 넓힐 때 이 구분을 지우지 말 것.
+const YT_MAX_ATTEMPTS    = 5;      // 최초 1회 + 재시도 4회
+const YT_BACKOFF_BASE_MS = 2000;   // 2 → 4 → 8 → 16초
+const YT_BACKOFF_MAX_MS  = 30000;
+const YT_RETRY_NET_CODES = new Set([
+  'ENOTFOUND', 'EAI_AGAIN', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED',
+  'EPIPE', 'ENETUNREACH', 'EHOSTUNREACH', 'ENETDOWN',
+]);
+
 async function ytFetch(path) {
-  const res = await httpsRequest({
-    hostname: 'www.googleapis.com',
-    path: `/youtube/v3/${path}&key=${CONFIG.youtubeApiKey}`,
-    method: 'GET',
-  });
-  if (res.status !== 200) throw new Error(`YouTube API 오류 ${res.status}: ${JSON.stringify(res.data)}`);
-  return res.data;
+  for (let attempt = 1; ; attempt++) {
+    let res, netErr;
+    try {
+      res = await httpsRequest({
+        hostname: 'www.googleapis.com',
+        path: `/youtube/v3/${path}&key=${CONFIG.youtubeApiKey}`,
+        method: 'GET',
+      });
+    } catch (e) {
+      netErr = e;
+    }
+
+    if (res && res.status === 200) return res.data;
+
+    const failure = netErr || new Error(`YouTube API 오류 ${res.status}: ${JSON.stringify(res.data)}`);
+    const label = netErr ? (netErr.code || netErr.message) : `HTTP ${res.status}`;
+    const retryable = netErr
+      ? YT_RETRY_NET_CODES.has(netErr.code)
+      : (res.status === 429 || res.status >= 500);
+
+    if (!retryable || attempt >= YT_MAX_ATTEMPTS) throw failure;
+
+    const waitMs = Math.min(YT_BACKOFF_BASE_MS * 2 ** (attempt - 1), YT_BACKOFF_MAX_MS);
+    log(`  ⚠️ YouTube 일시 오류 (${label}), ${waitMs / 1000}초 후 재시도 ${attempt}/${YT_MAX_ATTEMPTS - 1}...`);
+    await new Promise(r => setTimeout(r, waitMs));
+  }
 }
 
 // ── 재생목록 이름 가져오기 ──
@@ -299,11 +328,19 @@ async function getBatchDetails(videoIds) {
   return map;
 }
 
-// ── 채널 구독자수 ──
-async function getSubs(channelId) {
-  const d = await ytFetch(`channels?part=statistics&id=${channelId}`);
-  return parseInt(d.items?.[0]?.statistics?.subscriberCount || 0);
-
+// ── 채널 구독자수 (최대 50개 배치 조회) ──
+// 채널마다 따로·동시에 부르지 말 것. 새 연결이 채널 수만큼 한꺼번에 열리고 유닛도 채널 수만큼 든다.
+// 응답에 없는 채널(삭제·비공개)은 맵에 넣지 않는다 — 호출부가 `|| 0` 으로 받는다.
+async function getBatchSubs(channelIds) {
+  const map = {};
+  for (let i = 0; i < channelIds.length; i += 50) {
+    const batch = channelIds.slice(i, i + 50);
+    const d = await ytFetch(`channels?part=statistics&maxResults=50&id=${batch.join(',')}`);
+    for (const it of (d.items || [])) {
+      map[it.id] = parseInt(it?.statistics?.subscriberCount || 0);
+    }
+  }
+  return map;
 }
 // ── 요약 무결성 검증 함수 ──
 function validateSummary(summary) {
@@ -538,10 +575,14 @@ async function loadNotionCache() {
   let cursor = undefined;
   let total = 0;
   let retryCount = 0;
+  let done = false;
   const MAX_RETRY = 10;          // 네트워크 복구 대기 포함해 여유 있게
   const NETWORK_WAIT_MS = 30000; // 네트워크 오류 시 30초 대기
   log('  📦 Notion DB 캐시 로딩 중...');
-  do {
+  // ★ `do { … } while (cursor)` 로 되돌리지 말 것. 첫 페이지에서 실패하면 `continue` 가 조건 검사로 넘어가는데
+  //   cursor 가 아직 undefined 라 재시도 없이 빈 캐시로 끝난다. 빈 캐시는 전 영상을 신규로 보이게 해 중복 저장을 만든다.
+  // ★ 이 함수는 "전부 읽었거나, 던지거나" 둘 중 하나다. 부분 캐시·빈 캐시를 반환하는 경로를 만들지 말 것.
+  while (!done) {
     const body = { page_size: 100 };
     if (cursor) body.start_cursor = cursor;
     let res;
@@ -557,12 +598,17 @@ async function loadNotionCache() {
       await new Promise(r => setTimeout(r, waitMs));
       continue;
     }
-    if (res.status !== 200) {
+    if (res.status === 401 || res.status === 403) {
+      // 인증 만료·권한 거부는 재시도하지 않는다(보안 원칙 1). main 이 fatalAuth 를 보고 즉시 종료한다.
+      const authErr = new Error(`Notion 인증·권한 오류 (status ${res.status})`);
+      authErr.fatalAuth = true;
+      throw authErr;
+    }
+    if (res.status !== 200 || !Array.isArray(res.data?.results)) {
       retryCount++;
       log(`  ⚠️ Notion API 오류 (status ${res.status}), 재시도 ${retryCount}/${MAX_RETRY}...`);
       if (retryCount >= MAX_RETRY) {
-        log(`  ❌ Notion 캐시 로딩 실패 — 재시도 횟수 초과`);
-        break;
+        throw new Error(`Notion 캐시 로딩 실패 — 재시도 횟수 초과 (status ${res.status}, ${total}개까지 로드)`);
       }
       await new Promise(r => setTimeout(r, 2000 * retryCount));
       continue;
@@ -592,10 +638,14 @@ async function loadNotionCache() {
       const normTitle = normalizeTitle(title);
       if (normTitle) cache.set(normTitle, entry);
     }
-    total += res.data?.results?.length || 0;
-    cursor = res.data?.next_cursor;
+    total += res.data.results.length;
+    cursor = res.data.next_cursor;
+    done = !cursor;
     log(`  📦 캐시 진행: ${total}개 로드됨...`);
-  } while (cursor);
+  }
+  if (total === 0 && process.env.NOTION_CACHE_ALLOW_EMPTY !== 'true') {
+    throw new Error('Notion 캐시가 0건 — 새로 만든 빈 DB가 맞다면 .env 에 NOTION_CACHE_ALLOW_EMPTY=true 를 넣고 다시 실행');
+  }
   log(`  ✓ Notion DB 캐시 완료: ${total}개 페이지 로드`);
   return cache;
 }
@@ -915,9 +965,8 @@ async function processMasterIngest(notionCache) {
   log(`  🔄 YouTube 상세 정보 조회 중...`);
   const detailMap = await getBatchDetails(videos.map(v => v.videoId));
 
-  const chCache = {};
   const uniqueChannels = [...new Set(videos.map(v => detailMap[v.videoId]?.realChannelId || v.channelId).filter(Boolean))];
-  await Promise.all(uniqueChannels.map(async (chId) => { chCache[chId] = await getSubs(chId); }));
+  const chCache = await getBatchSubs(uniqueChannels);
 
   let saved = 0, skip = 0, error = 0;
   const savedList  = [];   // [{title, topics, confidence}] — 저장된 영상 목록
@@ -1131,15 +1180,12 @@ async function processPlaylist(pl, notionCache) {
   log(`  🔄 YouTube 상세 정보 배치 조회 중...`);
   const detailMap = await getBatchDetails(videos.map(v => v.videoId));
 
-  // ── 채널 구독자수 병렬 조회 (채널별 1회만) ──
-  const chCache = {};
+  // ── 채널 구독자수 배치 조회 (50개씩 순차) ──
   const uniqueChannels = [...new Set(
     videos.map(v => detailMap[v.videoId]?.realChannelId || v.channelId).filter(Boolean)
   )];
   log(`  🔄 채널 구독자수 조회 중... (${uniqueChannels.length}개 채널)`);
-  await Promise.all(uniqueChannels.map(async (chId) => {
-    chCache[chId] = await getSubs(chId);
-  }));
+  const chCache = await getBatchSubs(uniqueChannels);
 
   let saved = 0, skip = 0, error = 0;
 
@@ -1311,15 +1357,29 @@ async function main() {
   }
 
   // ── Notion DB 전체 캐시 로드 ──
-  const notionCache = await loadNotionCache();
+  // 캐시가 없으면 중복 판정을 못 한다. 로드에 실패하면 이번 실행은 영상 처리·큐 재시도를 건너뛴다(fail-closed).
+  let notionCache = null;
+  try {
+    notionCache = await loadNotionCache();
+  } catch (e) {
+    if (e && e.fatalAuth) {
+      log(`❌ ${e.message} — 추가 요청 없이 종료합니다.`);
+      await sendTelegram(`🚨 <b>[작업 중단 알림]</b>\n${e.message}\nNotion 토큰·DB 공유 상태를 확인하세요. 프로세스를 중단했습니다.`);
+      process.exit(1);
+    }
+    log(`❌ Notion 캐시 로드 실패 — 중복 저장을 막기 위해 이번 실행은 영상 처리를 건너뜁니다: ${e.message}`);
+  }
 
   // ── pending 큐 소진 (quota 여유분 내에서) ──
-  await flushPendingQueue();
+  if (notionCache) await flushPendingQueue();
 
   let totalSaved = 0, totalSkip = 0, totalError = 0;
   const results = [];
 
-  if (useMasterMode) {
+  if (!notionCache) {
+    totalError += 1;
+    results.push({ name: useMasterMode ? 'AI 영상목록 (마스터)' : 'Notion 캐시', saved: 0, skip: 0, error: 1 });
+  } else if (useMasterMode) {
     // ── 신규 워크플로: AI 영상목록 → 자동 분류 ──
     try {
       const result = await processMasterIngest(notionCache);
@@ -1516,7 +1576,12 @@ async function main() {
   });
 }
 
-main().catch(e => {
-  log(`❌ 치명적 오류: ${e.message}`);
-  process.exit(1);
-});
+// 직접 실행할 때만 main 을 돈다. require 하면 아래 함수만 내보낸다(scripts/test_scheduler_guards.js·읽기 전용 점검용).
+if (require.main === module) {
+  main().catch(e => {
+    log(`❌ 치명적 오류: ${e.message}`);
+    process.exit(1);
+  });
+} else {
+  module.exports = { ytFetch, getVideos, getBatchDetails, getBatchSubs, loadNotionCache, findDuplicate };
+}

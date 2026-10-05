@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**현재 버전: v3.2** (2026-10-03) · 레포 경로: `/Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap`
+**현재 버전: v3.2.1** (2026-10-05) · 레포 경로: `/Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap`
 
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
@@ -44,6 +44,9 @@ node migrate_classify.js --apply
 # 대기 큐 정리 (중복 제거 + dead-letter 격리) — 기본 dry-run
 node scripts/clean_pending_queue.js
 node scripts/clean_pending_queue.js --apply
+
+# 스케줄러 네트워크 안전장치 회귀 테스트 (v3.2.1) — 네트워크 0회, scheduler.log 무변경
+node scripts/test_scheduler_guards.js
 
 # launchd 제어 (6시간 자동 실행)
 launchctl start com.irichgreen.ytsummarizer
@@ -131,6 +134,7 @@ YouTube "AI 영상목록" (마스터 모드)
 | `migrate_classify.js` | 기존 영상 일괄 재분류. `.migrate_state.json`으로 재개 가능. |
 | `playlists.json` | 33개 토픽 재생목록 목록. 분류기의 허용 토픽 소스이기도 함. gitignore 대상. |
 | `scripts/clean_pending_queue.js` | (v2.5) 큐 중복 제거 + dead-letter 격리. 기본 dry-run, `--apply` 필요. |
+| `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. |
 | `kakao_ingest.py` | (v3.0) 카톡 CSV → Notion「AI 꿀팁」DB. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **DB 전량 조회 + URL 정규화 키**. |
 | `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
 | `lib/tips_notion.py` | (v3.0) 「AI 꿀팁」DB 조회/생성 래퍼. 속성 타입 표를 주석에 고정. 401/403 → `NotionAuthError` 즉시 종료. |
@@ -218,6 +222,22 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 
 ### 중요한 제약사항
 
+**Notion 캐시 — 전부 읽었거나, 던지거나 (v3.2.1) — 건드리지 말 것**
+
+`scheduler.js:loadNotionCache()` 는 중복 판정의 유일한 근거다. 빈 캐시·부분 캐시가 한 번이라도 반환되면 전 영상이 신규로 보여 `MAX_NEW_PER_RUN`(15)편을 다시 요약·저장한다. 2026-08-12 ~ 10-01 사이 13회 발생해 Notion 중복 195건이 쌓였고, 결과가 "저장 15 · Skip 0 · 오류 0" 이라 성공으로 보였다.
+
+- 루프를 `do { … } while (cursor)` 로 되돌리지 말 것. 첫 페이지 실패 시 `continue` 가 조건 검사로 넘어가 재시도 없이 끝난다.
+- 재시도 초과·0건은 **던진다**. `break` 나 빈 `Map` 반환으로 바꾸지 말 것. `main` 이 받아 영상 처리와 큐 재시도를 건너뛴다(fail-closed).
+- Notion 401/403 은 재시도 없이 `fatalAuth` 로 던지고 `main` 이 즉시 종료한다(보안 원칙 1).
+- 새로 만든 빈 DB 로 처음 돌릴 때만 `.env` 에 `NOTION_CACHE_ALLOW_EMPTY=true`. 평소에는 넣지 않는다.
+- **스케줄러 결과가 "저장 15 · Skip 0" 이면 성공이 아니라 캐시 이상을 의심한다.**
+
+**YouTube 조회 재시도·배치 (v3.2.1)**
+
+- `ytFetch()` 는 네트워크 오류·429·5xx 만 지수 백오프(2→16초, 최대 5회)로 재시도한다. 401/403 은 즉시 던진다 — 재시도 대상을 넓힐 때 이 구분을 지우지 말 것.
+- 채널 구독자 수는 `getBatchSubs()` 로 50개씩 순차 조회한다. 채널마다 `Promise.all` 로 부르던 방식(실행당 새 연결·유닛 약 450)으로 되돌리지 말 것.
+- `scheduler.js` 는 `require.main === module` 일 때만 `main` 을 돈다. 이 가드를 지우면 테스트가 실제 실행을 일으킨다.
+
 **한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. Notion 태그, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `addTopicToPage()`의 NFC 체크가 중복 태그 방지의 핵심.
 
 **Notion API 한계**:
@@ -230,7 +250,7 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 - **실패 요청도 quota를 동일하게 소비한다.** v2.5에서 `addToPlaylist`의 실패 경로에도 `consumeQuota(50)`을 넣었다(`lib/youtube_oauth.js:217`). 이전에는 실패가 계상되지 않아 `.quota_state.json`이 0에 머무른 채 실제 한도를 넘겼다.
 - 따라서 **하루 재생목록 추가 상한은 약 190건**이다(9,500 ÷ 50). 코드로 늘릴 수 없다.
 - 무료 할당량이자 상한선이라 **초과해도 과금되지 않는다.** 403으로 거부될 뿐이다.
-- **일 경계는 태평양시(PT) 기준이다** (v2.6). `todayKey()`가 `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })`를 쓴다(`lib/youtube_oauth.js:45`). UTC를 쓰면 카운터만 KST 09:00에 리셋돼 **09:00~16:00 동안 스로틀이 무력화**된다. 실패도 50유닛을 먹으므로 소진된 quota에 계속 요청을 밀어넣게 된다. **날짜 키를 만드는 코드를 새로 쓸 때는 반드시 `todayKey()`를 재사용할 것** — `scheduler.js:1360`의 텔레그램 경고도 같은 키를 써야 오경보가 안 난다.
+- **일 경계는 태평양시(PT) 기준이다** (v2.6). `todayKey()`가 `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })`를 쓴다(`lib/youtube_oauth.js:45`). UTC를 쓰면 카운터만 KST 09:00에 리셋돼 **09:00~16:00 동안 스로틀이 무력화**된다. 실패도 50유닛을 먹으므로 소진된 quota에 계속 요청을 밀어넣게 된다. **날짜 키를 만드는 코드를 새로 쓸 때는 반드시 `todayKey()`를 재사용할 것** — `scheduler.js:1475`의 텔레그램 경고도 같은 키를 써야 오경보가 안 난다.
 - `.quota_state.json` 스키마는 **`{date, used, ok, fail}`** 이다 (v2.7). `ok`/`fail`은 `playlistItems.insert`의 성공·실패 건수이고, 읽기(`list`)는 `used`에만 반영된다. `consumeQuota(units, outcome)`의 `outcome`은 `'ok' | 'fail' | undefined`. 기존 파일에 `ok`/`fail`이 없으면 `loadQuotaState()`가 0으로 채운다(하위호환).
 - `.quota_state.json`의 `date`가 **PT 기준 오늘**이 아니면 그날 YouTube 쓰기가 한 건도 시도되지 않았다는 뜻이다. 최우선 이상 신호.
 - **`date`가 오늘이라고 정상인 것은 아니다.** 실패도 `date`를 찍는다. `fail > 0 && ok === 0`이면 **인증은 되는데 쓰기만 전부 실패** — 계정 불일치를 의심할 자리다(v2.7이 이 분기를 텔레그램으로 경고한다).
@@ -240,8 +260,8 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 
 `scheduler.js:flushPendingQueue()`와 `processMasterIngest()` 내부 `appendPending`에 들어간 장치입니다. 큐 로직을 바꾸면 **`migrate_classify.js`도 같은 큐 파일에 쓰므로 양쪽을 함께 고쳐야 합니다.**
 
-- `appendPending`은 `(videoId, playlistId)` 중복을 적재하지 않는다(`scheduler.js:1020`). 없으면 큐가 며칠 만에 2배로 부푼다. 실제 46.7%까지 중복된 이력이 있다.
-- `flushPendingQueue`는 **연속 실패 10회에서 큐 처리를 중단**한다(`scheduler.js:807`). 403을 수백 번 난사하면 구글이 어뷰징으로 판단해 계정을 정지시킨다. 보안 원칙 1의 구현체다.
+- `appendPending`은 `(videoId, playlistId)` 중복을 적재하지 않는다(`scheduler.js:1124`). 없으면 큐가 며칠 만에 2배로 부푼다. 실제 46.7%까지 중복된 이력이 있다.
+- `flushPendingQueue`는 **연속 실패 10회에서 큐 처리를 중단**한다(`scheduler.js:894`). 403을 수백 번 난사하면 구글이 어뷰징으로 판단해 계정을 정지시킨다. 보안 원칙 1의 구현체다.
 - `invalid_grant` / `Token refresh failed` 감지 시 큐를 보존한 채 즉시 중단한다.
 - 영구 실패 사유(`playlistItemsNotAccessible`, `playlistNotFound`, `videoNotFound`, `forbidden`)는 dead-letter로 격리한다.
 - 그 외 실패는 `retryCount` 5회 초과 시 dead-letter로 보낸다. 무한 순환 금지.
@@ -282,7 +302,7 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
 
 ```
 ① launchd  com.irichgreen.wiki-ingest         매일 17:30 (= PT 01:30, RPD 리셋 직후)
-② scheduler.js:1464  totalSaved === 0  →  sync_obsidian.py --rebuild
+② scheduler.js:1525  totalSaved === 0  →  sync_obsidian.py --rebuild
      └ sync_obsidian.py:516  --rebuild → force=True
        └ sync_obsidian.py:538  subprocess.run([sys.executable, 'wiki_ingest.py'], capture_output=True)
 ```
@@ -298,7 +318,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
   `───── via sync_obsidian.py (subprocess) <ISO시각> ─────` 헤더가 붙고 **`WIKI_RESULT` 줄이 그대로 남는다.**
   `WIKI_RESULT` 가 유일한 판정 지표이므로 이 tee 를 지우면 ②는 다시 안 보이게 된다.
 - **두 경로의 인터프리터는 같다: `/opt/homebrew/bin/python3`.**
-  plist 의 `ProgramArguments`, `scheduler.js:1454`, `server.js:232` 가 모두 이 경로를 하드코딩하고,
+  plist 의 `ProgramArguments`, `scheduler.js:1514`, `server.js:232` 가 모두 이 경로를 하드코딩하고,
   `sync_obsidian.py` 는 `sys.executable` 을 물려주므로 ②도 같은 파이썬을 탄다.
   **셋 중 하나만 바꾸면 라이브러리가 갈린다 — 바꿀 때는 3곳을 함께 고칠 것.**
 
@@ -368,14 +388,15 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-05 (v3.2.1)** — 스케줄러 네트워크 안전장치. 배경: 로그 집계(08-12 ~ 10-05, 실행 219회)에서 실행 통째 실패 62회(28%, ENOTFOUND 41·ETIMEDOUT 17·기타 4)와, Notion 캐시 첫 조회 실패 → 빈 캐시 진행 23회(그중 13회가 영상 15편 재저장, 중복 195건). `loadNotionCache()` 를 "전부 읽었거나, 던지거나" 로 교체(재시도 초과·0건은 throw, 401/403 은 fatalAuth 즉시 종료, `NOTION_CACHE_ALLOW_EMPTY` 로만 빈 DB 허용)하고 `main` 은 캐시 실패 시 영상 처리·큐 재시도를 건너뜀(fail-closed). `ytFetch()` 에 일시 오류 지수 백오프(2→16초, 5회) 추가, 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450)에서 `getBatchSubs()` 50개 배치 순차(9회)로 교체, `scheduler.js` 를 `require.main === module` 가드로 `require` 가능하게 함. 검증: `scripts/test_scheduler_guards.js` 12/12, 모의 실행 2종(네트워크 전면 실패·Notion 401) 기대대로, 읽기 전용 실측(캐시 3,042 · 영상 1,412 · 고유 채널 450 → 구독자 응답 450 · 신규 판정 22). 야간 ENOTFOUND 의 직접 원인은 밝히지 못했다. 지시서 `docs/tasks/2026-10-05-scheduler-network-guards.md`.
 - **2026-10-03 (v3.2)** — 집 안 전용 읽기 전용 Wiki 검색 서버 `wiki_lan_server.js`(포트 3100) 신설 + `com.irichgreen.wiki-lan` 데몬. `server.js` 는 Notion 쓰기 프록시·인제스트 실행 엔드포인트가 함께 있어 `127.0.0.1` 전용을 유지하고, 검색 라우트 6개만 별도 서버로 노출한다. 안전장치: `.env` 의 `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용(미설정·오류 시 127.0.0.1 전용, fail-closed), 소켓 주소만 신뢰(XFF 무시), Host 검사, AI 답변 IP당 분당 5회 + 24시간 총량 제한. `wiki.html` 에 `IS_LOCAL` 추가(가족 PC 에서 Obsidian 링크 숨김). 검증: 바인딩 `*:3100`/`127.0.0.1:3000` 분리 유지, server.js 전용 경로 6종 전부 404, 위조 Host·타 출처 403, 검색 vector 2건, AI 답변 정상 1회. `CLAUDE.md` 머리 버전을 v3.0→v3.2 로 교정(README 는 09-10 에 이미 v3.1)하고, 표에 없던 검색 계열 파일(`wiki.html`·`lib/wiki_search.js`·`wiki_mcp.js`·`build_search_index.py`)을 추가. 방화벽 수신 허용(sudo)과 가족 PC 실접속 확인은 사용자 몫. 지시서 `docs/tasks/2026-10-03-wiki-lan-server.md`. 같은 날 보완: 기동 로그의 접속 주소를 `os.hostname()` → `scutil --get LocalHostName` 기준으로 교정(전자는 `.local`로 풀리지 않는 이름을 줬다), `.gitignore`에 `Claude outputs/` 추가, `AGENTS.md`의 낡은 인터프리터 문구 정정. 지시서 `docs/tasks/2026-10-03-wiki-lan-hostname-fix.md`.
-- **2026-09-10** — wiki-ingest 429 처리를 RPD/RPM 분기로 교정(`wiki_config.py`). 로그 실측 근거: 오류 165건 = 429 125(RPD 108/RPM 17) + 503 39 + 타임아웃 1, 파싱 실패 0. `quotaId` 로 구분해 RPM 은 `retryDelay` 대기 후 같은 키 재시도, RPD 만 dead 처리(`unknown` 은 본문 전량 로깅 후 보수적 RPD). 5xx·URLError 지수 백오프 추가(24%의 오류가 재시도 없이 버려지던 자리). `_today()` 를 태평양시로 교정. 부수 발견: `scheduler.js:1464` 의 `--rebuild` 경로가 `wiki_ingest.py` 를 `capture_output` 으로 띄워 로그에 안 남는 실행이 하루 최대 4회 있었다. `sync_obsidian.py` 에 `_tee_wiki_log()` 추가 — `--rebuild` 경로로 띄운 wiki_ingest 의 출력(WIKI_RESULT 포함)을 `wiki-ingest.log` 에 append 해 두 실행 경로를 한 로그에서 보게 했다(`--rebuild` 중복 실행 자체는 의도된 동작이라 유지). launchd 표의 wiki-ingest 인터프리터·스케줄 기재를 실제값(`/opt/homebrew/bin/python3`, 17:30, 증분)으로 교정. 검증: `--limit=6` processed 6 / errors 0(429 2건을 키 교체로 흡수), `sync_obsidian.py --rebuild` 후 `wiki-ingest.log` 에 tee 블록·WIKI_RESULT 기록 확인. 백업 `wiki_config.py.bak.20260910`(며칠 관찰 후 삭제).
+- **2026-09-10** — wiki-ingest 429 처리를 RPD/RPM 분기로 교정(`wiki_config.py`). 로그 실측 근거: 오류 165건 = 429 125(RPD 108/RPM 17) + 503 39 + 타임아웃 1, 파싱 실패 0. `quotaId` 로 구분해 RPM 은 `retryDelay` 대기 후 같은 키 재시도, RPD 만 dead 처리(`unknown` 은 본문 전량 로깅 후 보수적 RPD). 5xx·URLError 지수 백오프 추가(24%의 오류가 재시도 없이 버려지던 자리). `_today()` 를 태평양시로 교정. 부수 발견: `scheduler.js:1525` 의 `--rebuild` 경로가 `wiki_ingest.py` 를 `capture_output` 으로 띄워 로그에 안 남는 실행이 하루 최대 4회 있었다. `sync_obsidian.py` 에 `_tee_wiki_log()` 추가 — `--rebuild` 경로로 띄운 wiki_ingest 의 출력(WIKI_RESULT 포함)을 `wiki-ingest.log` 에 append 해 두 실행 경로를 한 로그에서 보게 했다(`--rebuild` 중복 실행 자체는 의도된 동작이라 유지). launchd 표의 wiki-ingest 인터프리터·스케줄 기재를 실제값(`/opt/homebrew/bin/python3`, 17:30, 증분)으로 교정. 검증: `--limit=6` processed 6 / errors 0(429 2건을 키 교체로 흡수), `sync_obsidian.py --rebuild` 후 `wiki-ingest.log` 에 tee 블록·WIKI_RESULT 기록 확인. 백업 `wiki_config.py.bak.20260910`(며칠 관찰 후 삭제).
 - **2026-09-09 (문서)** — 규약 1줄: 문서에 개인 절대경로를 새로 쓰지 않는다(`<REPO_ROOT>`·`~` 표기). 기존 8곳(CLAUDE.md 3 · AGENTS.md 5)은 09-06 push 분이 이미 공개라 소급 정리하지 않는다(사용자 판정).
 - **2026-09-08 (문서)** — `AGENTS.md` git 추적 시작(420줄, 그동안 untracked). 추적 밖이라 diff·리뷰에 안 잡혀 `AGENTS.md:409`가 "README.md + README.html 양쪽 동시 갱신"으로 남아 `CLAUDE.md:284`(v3.0 폐지)와 어긋나 있었다 — 금지 문구로 교체하고 추적 규약을 산출물 규칙에 추가. 코드 무변경.
 - **2026-09-06 (v3.0)** — 메이저 승격: 지식 소스 2원화(YouTube + 카카오톡). `kakao_ingest.py`에 `--if-new`·`.kakao_state.json`·`RESULT_JSON`·`KakaoTalk_Chat_안진훈_` 접두 필터(NFC) 추가. `scheduler.js` 훅 지시서 `docs/tasks/2026-09-06-scheduler-kakao-hook.md`. 생성 경로 검증(테스트 행 생성→아카이브). **`README.html` 삭제·폐지 — 앞으로 만들지 않는다.** README.md v3.0 상세 이력·데이터 흐름도.
 - **2026-09-06 (v2.8, 같은 날 v3.0에 흡수)** — 카카오톡 → Notion「AI 꿀팁」→ Obsidian 연동. 신규 `kakao_ingest.py`(기본 dry-run, `--apply`), `lib/kakao_parse.py`, `lib/tips_notion.py`. `sync_obsidian.py`에 `sync_tips()` 추가(`AI 꿀팁/` 평면 폴더, `link_url` 프론트매터, YouTube 고아 격리·tags 동기화에서 폴더 제외, `--no-tips`, `RESULT_JSON.tips_added`). `.env`에 `NOTION_TIPS_DB_ID`·`KAKAO_EXPORT_DIR`, `.gitignore`에 `KakaoTalk_Chat_*`. 첫 적재 99건, 멱등성(같은 CSV 재실행 0건) 확인. 지시서 `docs/tasks/2026-09-06-kakao-tips-ingest.md`.
 - **2026-08-28 (v2.7.1)** — 토픽 분류의 일시적 서버 오류(5xx) 재시도 추가. `scheduler.js` 분류 catch 블록의 재시도 대상을 429/quota → +`5xx`·`UNAVAILABLE`·`overloaded`·`high demand`로 확장하고 지수 백오프(2→15초 상한)를 적용, 401/403은 즉시 중단으로 명시, `keysCount > 1` 조건을 키 교체에만 적용해 키 1개 환경에서도 재시도되게 했다. 재시도 소진 시 `cls`가 `undefined`인 채 `cls.topics`로 진입하던 잠복 TypeError 경로를 가드 2개로 차단. 지시서 `docs/tasks/2026-08-28-classify-transient-retry.md`.
 - **2026-08-19 (v2.7)** — 재생목록 쓰기 성공/실패 계측 도입. `.quota_state.json`에 `ok`/`fail` 추가(하위호환 기본값 0), `consumeQuota(units, outcome)`로 확장해 `addToPlaylist` 양쪽 경로에서 계상. 텔레그램 큐 블록을 쓰기 결과 3분기(성공/전부실패/시도없음) + 순감 기준 소진 예상일로 교체 — v2.5 이후 "시도했으나 전부 실패한 날"을 구조적으로 감지하지 못하던 구멍을 막았다. 지시서 `docs/tasks/2026-08-18-write-outcome-metrics.md`.
-- **2026-08-17 (v2.6)** — quota 일 경계를 UTC → 태평양시(PT)로 교정. `todayKey()`를 `Intl` 기반으로 바꾸고 export해 `scheduler.js:1360`이 같은 키를 쓰게 했다(텔레그램 오경보 제거). KST 09:00~16:00 동안 스로틀이 무력화되던 구간을 없앴다. 지시서 `docs/tasks/2026-08-17-quota-day-boundary.md`. 커밋 `7eb112c`.
+- **2026-08-17 (v2.6)** — quota 일 경계를 UTC → 태평양시(PT)로 교정. `todayKey()`를 `Intl` 기반으로 바꾸고 export해 `scheduler.js:1475`이 같은 키를 쓰게 했다(텔레그램 오경보 제거). KST 09:00~16:00 동안 스로틀이 무력화되던 구간을 없앴다. 지시서 `docs/tasks/2026-08-17-quota-day-boundary.md`. 커밋 `7eb112c`.
 - **2026-08-17 (v2.5)** — 레포를 `Projects/` 하위로 이관. 대기 큐 안전장치 도입(중복 방지·연속 실패 10회 차단기·dead-letter 격리·실패 요청 quota 계상), `scripts/clean_pending_queue.js` 신규, `.gitignore` 패턴 수정. OAuth 토큰을 「타이쿤안」 채널로 재발급하고 GCP 게시 상태를 프로덕션으로 전환. 큐 5,392 → 2,365 정리. 커밋 `66ab4a2`.
 - **2026-05-21** — 최초 작성.

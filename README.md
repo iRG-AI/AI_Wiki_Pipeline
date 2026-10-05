@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → Notion → Obsidian LLM Wiki
 
-**현재 버전: v3.2** (2026-10-03)
+**현재 버전: v3.2.1** (2026-10-05)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 각각 **Notion DB**(영상 DB ·「AI 꿀팁」DB)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -165,7 +165,8 @@ Youtube_Notion_Grap/
 │   ├── kakao_parse.py                 # (v3.0) URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
 │   └── tips_notion.py                 # (v3.0) 「AI 꿀팁」DB 조회/생성 래퍼 (속성 타입 표 고정)
 ├── scripts/
-│   └── clean_pending_queue.js         # (v2.5) 대기 큐 중복 제거 + dead-letter 격리
+│   ├── clean_pending_queue.js         # (v2.5) 대기 큐 중복 제거 + dead-letter 격리
+│   └── test_scheduler_guards.js       # (v3.2.1) 스케줄러 캐시·재시도·배치 조회 회귀 테스트 (네트워크 0회)
 ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md)
 ├── CLAUDE.md                          # 구조·제약·안전장치 — 코드 질문은 여기부터
 └── README.md                          # 이 문서 (v3.0부터 README.html 은 만들지 않는다)
@@ -206,6 +207,9 @@ KAKAO_EXPORT_DIR=/Users/<사용자>/Downloads          # KakaoTalk_Chat_안진�
 # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
 WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
 WIKI_LAN_ASK_DAILY_MAX=20                           # AI 답변 24시간 총량 (Gemini 무료 한도 보호)
+
+# (v3.2.1) 새로 만든 빈 Notion DB 로 처음 돌릴 때만 true. 평소에는 넣지 않는다 — 캐시 0건이면 저장 없이 중단하는 안전장치를 끈다
+# NOTION_CACHE_ALLOW_EMPTY=true
 
 TELEGRAM_ENABLED=true
 TELEGRAM_BOT_TOKEN=1234567890:AAG...
@@ -323,6 +327,7 @@ bash install-scheduler.sh
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v3.2.1** | 2026-10-05 | **스케줄러 네트워크 안전장치 — 빈 캐시 중복 저장 차단**: Notion 캐시 첫 조회가 네트워크 오류로 실패하면 재시도 없이 빈 캐시로 진행해 재생목록 앞 15편을 다시 저장하던 결함 수정(08-12 이후 13회·중복 195건). 캐시는 "전부 읽었거나, 던지거나"로 바꾸고 실패한 실행은 영상 처리를 건너뜀(fail-closed), Notion 401/403 은 즉시 종료. YouTube 조회에 일시 오류 지수 백오프 재시도 추가(오류 한 번에 실행이 통째 실패하던 비율 28%). 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450회)에서 50개 배치 순차(9회)로 교체. 회귀 테스트 `scripts/test_scheduler_guards.js` 신설 |
 | **v3.2** | 2026-10-03 | **집 안 전용 Wiki 검색 서버**: 가족이 같은 네트워크의 다른 컴퓨터에서 `http://<맥이름>.local:3100/wiki`로 검색하도록 읽기 전용 서버 `wiki_lan_server.js` 신설. `server.js`(Notion 쓰기 프록시·인제스트 실행 포함)는 `127.0.0.1` 전용으로 유지하고 검색 경로만 분리 노출. 허용 대역(`WIKI_LAN_ALLOW_CIDR`) 밖 403, 미설정 시 루프백 전용(fail-closed), Host 검사, AI 답변 일일 총량으로 Gemini 무료 한도 보호. `launchd` `com.irichgreen.wiki-lan` 추가 |
 | **v3.1** | 2026-09-10 | **Wiki 인제스트 할당량 소모 구조 교정**: Gemini 429를 `quotaId`로 RPD/RPM 분기(분당 한도 한 번에 키를 하루치 폐기하던 손실 제거), 5xx·네트워크 오류 지수 백오프 추가(전체 오류의 24%가 재시도 없이 버려지던 자리), 무료 티어 일 경계를 태평양시로 교정. `--rebuild` 경로로 띄운 wiki_ingest 의 출력을 `wiki-ingest.log` 에 합류시켜 실행 경로 2개를 한 로그에서 판정 가능하게 함 |
 | **v3.0** | 2026-09-06 | **지식 소스 2원화 — 카카오톡 링크 파이프라인 통합**: 카카오톡 '나와의 채팅' CSV → Notion「AI 꿀팁」DB → Obsidian `AI 꿀팁/` 노트 → 기존 Wiki 합성·MOC 를 그대로 공유. `kakao_ingest.py`·`lib/kakao_parse.py`·`lib/tips_notion.py` 신규, `sync_obsidian.py:sync_tips()`, `scheduler.js` 훅(`--apply --if-new`), 텔레그램 통합 알림. 영상 노트와 꿀팁 노트의 격리 원칙 확립. `README.html` 폐지 |
@@ -342,6 +347,26 @@ bash install-scheduler.sh
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v3.2.1] — 2026-10-05 (🛡️ 스케줄러 네트워크 안전장치)
+
+**배경.** `ytsummarizer.log`(회전본 포함, 2026-08-12 ~ 10-05, 실행 219회)를 집계했다. 실행 통째 실패(`저장 0 · Skip 0 · 오류 1`)가 62회(28%)였고(`ENOTFOUND` 41 · `ETIMEDOUT` 17 · 기타 4), Notion 캐시가 0건인 채 진행한 실행이 23회였다. 그중 13회는 영상 15편을 다시 저장해 **중복 195건**이 생겼다. 결과가 `저장 15 · Skip 0 · 오류 0` 이라 알림에서는 성공으로 보였고, 한 번 터질 때마다 이미 저장된 영상에 Gemini 호출 약 45회가 쓰였다.
+
+**원인.**
+- `loadNotionCache()` 가 `do { … } while (cursor)` 였다. 첫 페이지 조회가 실패하면 `continue` 가 조건 검사로 넘어가는데 그때 `cursor` 가 `undefined` 라 재시도 없이 빈 캐시를 정상값처럼 반환했다. 빈 캐시면 전 영상이 신규로 판정된다. `status !== 200` 재시도 초과 경로도 `break` 로 부분 캐시를 반환했다.
+- `ytFetch()` 에 재시도가 없어 YouTube 조회 한 번의 실패가 실행 전체를 `오류 1` 로 끝냈다.
+- 채널 구독자 수를 채널마다 `Promise.all` 로 동시 조회했다(고유 채널 450개 → 새 연결 약 450개, 450유닛). `channels.list` 는 50개씩 받는다.
+
+**수정.**
+- `loadNotionCache()` — 루프를 `while (!done)` 으로 바꾸고 "전부 읽었거나, 던지거나" 로 고정. 재시도 초과·`results` 배열 없는 200 응답·0건은 throw, 401/403 은 재시도 없이 `fatalAuth`. 새로 만든 빈 DB 만 `NOTION_CACHE_ALLOW_EMPTY=true` 로 허용.
+- `main` — 캐시 로드 실패 시 `flushPendingQueue` 와 영상 처리를 건너뛰고 `오류 1` 로 집계(fail-closed). `fatalAuth` 면 텔레그램 경고 후 즉시 종료.
+- `ytFetch()` — 네트워크 오류·429·5xx 만 지수 백오프(2→4→8→16초, 상한 30초, 최대 5회). 401/403 등은 즉시 던진다.
+- `getBatchSubs()` — 구독자 수를 50개씩 순차 조회(약 450회 → 9회).
+- `scheduler.js` 를 `require.main === module` 가드로 `require` 가능하게 했다(launchd·`server.js` 의 직접 실행 동작은 동일).
+
+**검증.** `scripts/test_scheduler_guards.js` 12/12 PASS(`scheduler.log` 무변경). 모의 실행 2종: 네트워크 전면 실패 시 `www.googleapis.com` 요청 0회·`Notion 저장 완료` 없음·`저장 0 / 오류 1`, Notion 401 시 요청 1회 후 즉시 종료·자식 프로세스 미실행. 읽기 전용 실측: 캐시 3,042 페이지 · 영상 1,412 · 고유 채널 450 → 구독자 수 응답 450 · 신규 판정 22.
+
+**확인하지 못한 것.** 야간(00시·06시) `ENOTFOUND` 의 직접 원인. 원인과 무관하게 동작하는 방어(재시도·연결 수 축소·fail-closed)만 넣었다. Notion 중복 195건 정리는 별도 작업이다.
 
 #### [v3.2] — 2026-10-03 (🏠 집 안 전용 Wiki 검색 서버)
 
