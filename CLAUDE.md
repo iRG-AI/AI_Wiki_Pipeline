@@ -48,6 +48,12 @@ node scripts/clean_pending_queue.js --apply
 # 스케줄러 네트워크 안전장치 회귀 테스트 (v3.2.1) — 네트워크 0회, scheduler.log 무변경
 node scripts/test_scheduler_guards.js
 
+# v4.0 1단계 — 노션 → SQLite 적재 (노션 읽기 전용, 기본 dry-run). 산출물 data/library.db (gitignore)
+/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py                    # dry-run
+/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply --replace  # 다시 적재 (기존 파일은 .bak.<시각>)
+/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify           # 노션 호출 없이 library.db ↔ Vault 대조
+/opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py               # 회귀 테스트 (네트워크 0회, 32/32)
+
 # launchd 제어 (6시간 자동 실행)
 launchctl start com.irichgreen.ytsummarizer
 launchctl stop com.irichgreen.ytsummarizer
@@ -143,6 +149,8 @@ YouTube "AI 영상목록" (마스터 모드)
 | `wiki_mcp.js` | 같은 코어를 Claude에 노출하는 stdio MCP(`search_wiki`, `read_note`). 웹 서버 없이 동작. |
 | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. |
 | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
+| `scripts/notion_to_sqlite.py` | (v4.0 1단계) 노션 두 DB → `data/library.db`. 노션 읽기 전용, 기본 dry-run. 중복 video_id 는 Vault 노트 기준으로 하나만 남기고 `videos_dup` 에 보관. |
+| `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나 — Node 도 같은 파일을 실행) · Python 헬퍼. |
 
 ### Wiki 검색 — 입구는 여럿, 엔진은 하나 (v3.2)
 
@@ -219,6 +227,14 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 - **Telegram Bot**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 
 모든 API 키는 `.env`에서 로드. `scheduler.js`와 `lib/*.js` 각각 자체 `loadEnv()` 포함.
+
+### v4.0 이행 중 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
+
+- **지금(1단계 완료 ~ 2단계 전)은 노션이 여전히 원본이다.** `library.db` 는 적재 시점의 스냅샷이고 스케줄러는 노션에 쓴다. 2단계는 스케줄러를 멈추고 `--apply --replace` 로 다시 적재한 뒤 전환한다.
+- `record_id` = 노션 page id(하이픈 포함) = Obsidian `notion_id`. **프론트매터 키 이름 `notion_id` 를 바꾸지 말 것** — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다. 새 행은 uuid4.
+- `data/` 는 gitignore. 개인 요약 전체가 들어 있다 — `git check-ignore -q data/library.db` 로 확인.
+- `videos_dup` 은 지우지 않는다(중복 페이지 보관, 되돌림용). `has_vault_note=1` 행의 노트는 2단계 첫 동기화에서 `_trash/` 로 격리된다(의도됨).
+- 스키마를 바꾸면 `lib/library_schema.sql` 의 `PRAGMA user_version` 을 올리고 `lib/library_db.py:SCHEMA_VERSION` 도 같이 올린다.
 
 ### 중요한 제약사항
 
@@ -388,6 +404,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-11 (v4.0 1단계)** — 노션 → SQLite 적재. 신규 `scripts/notion_to_sqlite.py`(노션 읽기 전용, 기본 dry-run, `--apply`·`--replace`·`--verify`·`--summary-check`), `scripts/test_notion_to_sqlite.py`(32/32, 네트워크 0회), `lib/library_schema.sql`·`lib/library_db.py`. `.gitignore` 에 `data/`. 적재 결과: 영상 페이지 3,189 → videos 2,986 · videos_dup 203 · tips 135, 요약 대조 무작위 100건 100/100 일치(속성=본문). 기존 파이프라인 코드 무변경(노션이 아직 원본). Vault 대조는 프론트매터 안의 notion_id 만 센다(Vault 루트 schema.md 본문 예시가 영상 id 로 잡혀 1차 dry-run 이 멈췄다). 노션에서 지워진 중복 꿀팁 page 의 잔여 노트 1건을 _trash/<시각>/AI 꿀팁/ 으로 격리. 지시서 `docs/tasks/2026-10-11-v4-notion-to-sqlite.md`·`-fix1.md`.
 - **2026-10-05 (v3.2.1)** — 스케줄러 네트워크 안전장치. 배경: 로그 집계(08-12 ~ 10-05, 실행 219회)에서 실행 통째 실패 62회(28%, ENOTFOUND 41·ETIMEDOUT 17·기타 4)와, Notion 캐시 첫 조회 실패 → 빈 캐시 진행 23회(그중 13회가 영상 15편 재저장, 중복 195건). `loadNotionCache()` 를 "전부 읽었거나, 던지거나" 로 교체(재시도 초과·0건은 throw, 401/403 은 fatalAuth 즉시 종료, `NOTION_CACHE_ALLOW_EMPTY` 로만 빈 DB 허용)하고 `main` 은 캐시 실패 시 영상 처리·큐 재시도를 건너뜀(fail-closed). `ytFetch()` 에 일시 오류 지수 백오프(2→16초, 5회) 추가, 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450)에서 `getBatchSubs()` 50개 배치 순차(9회)로 교체, `scheduler.js` 를 `require.main === module` 가드로 `require` 가능하게 함. 검증: `scripts/test_scheduler_guards.js` 12/12, 모의 실행 2종(네트워크 전면 실패·Notion 401) 기대대로, 읽기 전용 실측(캐시 3,042 · 영상 1,412 · 고유 채널 450 → 구독자 응답 450 · 신규 판정 22). 야간 ENOTFOUND 의 직접 원인은 밝히지 못했다. 지시서 `docs/tasks/2026-10-05-scheduler-network-guards.md`.
 - **2026-10-03 (v3.2)** — 집 안 전용 읽기 전용 Wiki 검색 서버 `wiki_lan_server.js`(포트 3100) 신설 + `com.irichgreen.wiki-lan` 데몬. `server.js` 는 Notion 쓰기 프록시·인제스트 실행 엔드포인트가 함께 있어 `127.0.0.1` 전용을 유지하고, 검색 라우트 6개만 별도 서버로 노출한다. 안전장치: `.env` 의 `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용(미설정·오류 시 127.0.0.1 전용, fail-closed), 소켓 주소만 신뢰(XFF 무시), Host 검사, AI 답변 IP당 분당 5회 + 24시간 총량 제한. `wiki.html` 에 `IS_LOCAL` 추가(가족 PC 에서 Obsidian 링크 숨김). 검증: 바인딩 `*:3100`/`127.0.0.1:3000` 분리 유지, server.js 전용 경로 6종 전부 404, 위조 Host·타 출처 403, 검색 vector 2건, AI 답변 정상 1회. `CLAUDE.md` 머리 버전을 v3.0→v3.2 로 교정(README 는 09-10 에 이미 v3.1)하고, 표에 없던 검색 계열 파일(`wiki.html`·`lib/wiki_search.js`·`wiki_mcp.js`·`build_search_index.py`)을 추가. 방화벽 수신 허용(sudo)과 가족 PC 실접속 확인은 사용자 몫. 지시서 `docs/tasks/2026-10-03-wiki-lan-server.md`. 같은 날 보완: 기동 로그의 접속 주소를 `os.hostname()` → `scutil --get LocalHostName` 기준으로 교정(전자는 `.local`로 풀리지 않는 이름을 줬다), `.gitignore`에 `Claude outputs/` 추가, `AGENTS.md`의 낡은 인터프리터 문구 정정. 지시서 `docs/tasks/2026-10-03-wiki-lan-hostname-fix.md`.
 - **2026-09-10** — wiki-ingest 429 처리를 RPD/RPM 분기로 교정(`wiki_config.py`). 로그 실측 근거: 오류 165건 = 429 125(RPD 108/RPM 17) + 503 39 + 타임아웃 1, 파싱 실패 0. `quotaId` 로 구분해 RPM 은 `retryDelay` 대기 후 같은 키 재시도, RPD 만 dead 처리(`unknown` 은 본문 전량 로깅 후 보수적 RPD). 5xx·URLError 지수 백오프 추가(24%의 오류가 재시도 없이 버려지던 자리). `_today()` 를 태평양시로 교정. 부수 발견: `scheduler.js:1525` 의 `--rebuild` 경로가 `wiki_ingest.py` 를 `capture_output` 으로 띄워 로그에 안 남는 실행이 하루 최대 4회 있었다. `sync_obsidian.py` 에 `_tee_wiki_log()` 추가 — `--rebuild` 경로로 띄운 wiki_ingest 의 출력(WIKI_RESULT 포함)을 `wiki-ingest.log` 에 append 해 두 실행 경로를 한 로그에서 보게 했다(`--rebuild` 중복 실행 자체는 의도된 동작이라 유지). launchd 표의 wiki-ingest 인터프리터·스케줄 기재를 실제값(`/opt/homebrew/bin/python3`, 17:30, 증분)으로 교정. 검증: `--limit=6` processed 6 / errors 0(429 2건을 키 교체로 흡수), `sync_obsidian.py --rebuild` 후 `wiki-ingest.log` 에 tee 블록·WIKI_RESULT 기록 확인. 백업 `wiki_config.py.bak.20260910`(며칠 관찰 후 삭제).

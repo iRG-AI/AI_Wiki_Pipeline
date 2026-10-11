@@ -153,6 +153,14 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 
 모든 API 키는 `.env`에서 로드. `scheduler.js`와 `lib/*.js` 각각 자체 `loadEnv()` 포함.
 
+### v4.0 이행 중 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
+
+- **지금(1단계 완료 ~ 2단계 전)은 노션이 여전히 원본이다.** `library.db` 는 적재 시점의 스냅샷이고 스케줄러는 노션에 쓴다. 2단계는 스케줄러를 멈추고 `--apply --replace` 로 다시 적재한 뒤 전환한다.
+- `record_id` = 노션 page id(하이픈 포함) = Obsidian `notion_id`. **프론트매터 키 이름 `notion_id` 를 바꾸지 말 것** — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다. 새 행은 uuid4.
+- `data/` 는 gitignore. 개인 요약 전체가 들어 있다 — `git check-ignore -q data/library.db` 로 확인.
+- `videos_dup` 은 지우지 않는다(중복 페이지 보관, 되돌림용). `has_vault_note=1` 행의 노트는 2단계 첫 동기화에서 `_trash/` 로 격리된다(의도됨).
+- 스키마를 바꾸면 `lib/library_schema.sql` 의 `PRAGMA user_version` 을 올리고 `lib/library_db.py:SCHEMA_VERSION` 도 같이 올린다.
+
 ### 중요한 제약사항
 
 **Notion 캐시 — 전부 읽었거나, 던지거나 (v3.2.1) — 건드리지 말 것**
@@ -264,6 +272,7 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
 
 ## 변경 이력
 
+- **2026-10-11 (v4.0 1단계)** — 노션 → SQLite 적재. 신규 `scripts/notion_to_sqlite.py`(노션 읽기 전용, 기본 dry-run, `--apply`·`--replace`·`--verify`·`--summary-check`), `scripts/test_notion_to_sqlite.py`(32/32, 네트워크 0회), `lib/library_schema.sql`·`lib/library_db.py`. `.gitignore` 에 `data/`. 적재 결과: 영상 페이지 3,189 → videos 2,986 · videos_dup 203 · tips 135, 요약 대조 무작위 100건 100/100 일치(속성=본문). 기존 파이프라인 코드 무변경(노션이 아직 원본). Vault 대조는 프론트매터 안의 notion_id 만 센다(Vault 루트 schema.md 본문 예시가 영상 id 로 잡혀 1차 dry-run 이 멈췄다). 노션에서 지워진 중복 꿀팁 page 의 잔여 노트 1건을 _trash/<시각>/AI 꿀팁/ 으로 격리. 지시서 `docs/tasks/2026-10-11-v4-notion-to-sqlite.md`·`-fix1.md`.
 - **2026-10-05 (v3.2.1)** — 스케줄러 네트워크 안전장치. 배경: 로그 집계(08-12 ~ 10-05, 실행 219회)에서 실행 통째 실패 62회(28%, ENOTFOUND 41·ETIMEDOUT 17·기타 4)와, Notion 캐시 첫 조회 실패 → 빈 캐시 진행 23회(그중 13회가 영상 15편 재저장, 중복 195건). `loadNotionCache()` 를 "전부 읽었거나, 던지거나" 로 교체(재시도 초과·0건은 throw, 401/403 은 fatalAuth 즉시 종료, `NOTION_CACHE_ALLOW_EMPTY` 로만 빈 DB 허용)하고 `main` 은 캐시 실패 시 영상 처리·큐 재시도를 건너뜀(fail-closed). `ytFetch()` 에 일시 오류 지수 백오프(2→16초, 5회) 추가, 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450)에서 `getBatchSubs()` 50개 배치 순차(9회)로 교체, `scheduler.js` 를 `require.main === module` 가드로 `require` 가능하게 함. 검증: `scripts/test_scheduler_guards.js` 12/12, 모의 실행 2종(네트워크 전면 실패·Notion 401) 기대대로, 읽기 전용 실측(캐시 3,042 · 영상 1,412 · 고유 채널 450 → 구독자 응답 450 · 신규 판정 22). 야간 ENOTFOUND 의 직접 원인은 밝히지 못했다. 지시서 `docs/tasks/2026-10-05-scheduler-network-guards.md`.
 - **2026-08-28 (v2.7.1)** — 토픽 분류의 일시적 서버 오류(5xx) 재시도 추가. `scheduler.js` 분류 catch 블록의 재시도 대상을 429/quota → +`5xx`·`UNAVAILABLE`·`overloaded`·`high demand`로 확장하고 지수 백오프(2→15초 상한)를 적용, 401/403은 즉시 중단으로 명시, `keysCount > 1` 조건을 키 교체에만 적용해 키 1개 환경에서도 재시도되게 했다. 재시도 소진 시 `cls`가 `undefined`인 채 `cls.topics`로 진입하던 잠복 TypeError 경로를 가드 2개로 차단. 지시서 `docs/tasks/2026-08-28-classify-transient-retry.md`.
 - **2026-08-19 (v2.7)** — 재생목록 쓰기 성공/실패 계측 도입. `.quota_state.json`에 `ok`/`fail` 추가(하위호환 기본값 0), `consumeQuota(units, outcome)`로 확장해 `addToPlaylist` 양쪽 경로에서 계상. 텔레그램 큐 블록을 쓰기 결과 3분기(성공/전부실패/시도없음) + 순감 기준 소진 예상일로 교체 — v2.5 이후 "시도했으나 전부 실패한 날"을 구조적으로 감지하지 못하던 구멍을 막았다. 지시서 `docs/tasks/2026-08-18-write-outcome-metrics.md`.
