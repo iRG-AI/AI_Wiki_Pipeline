@@ -191,35 +191,6 @@ def sync_existing_tags(videos, dry_run=False):
         log(f'  ✅ 변경 없음 (모두 최신 상태)\n')
     return updated
 
-# ── 노션 rich_text·블록 → 마크다운 ──
-# 이 파일은 더 이상 쓰지 않는다. scripts/notion_to_sqlite.py(노션 적재, 전환 후 은퇴)가 import 해서 남겨 둔다 — 지시서 3 에서 함께 정리.
-def rich_to_md(rt_list):
-    out = ''
-    for rt in rt_list or []:
-        t = rt.get('text', {}).get('content', '')
-        a = rt.get('annotations', {})
-        if a.get('bold'):   t = f'**{t}**'
-        if a.get('italic'): t = f'*{t}*'
-        if a.get('code'):   t = f'`{t}`'
-        out += t
-    return out
-
-def block_to_md(block):
-    btype = block.get('type', '')
-    b = block.get(btype, {})
-    text = rich_to_md(b.get('rich_text', []))
-    mapping = {
-        'heading_1': f'# {text}',
-        'heading_2': f'## {text}',
-        'heading_3': f'### {text}',
-        'paragraph': text or '',
-        'bulleted_list_item': f'- {text}',
-        'numbered_list_item': f'1. {text}',
-        'quote': f'> {text}',
-        'divider': '---',
-    }
-    return mapping.get(btype, text)
-
 # ── 영상 노트 내용 ──
 # 노션 시절 노트(본문 블록 → 마크다운)와 같은 모양: 빈 줄(썸네일 자리) · '▶ 영상 보기' · 구분선 · 요약.
 def _q(s):

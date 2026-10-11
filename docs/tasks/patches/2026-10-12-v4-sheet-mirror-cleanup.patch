@@ -1,0 +1,3019 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index b63f0b2..4be13bf 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1,26 +1,44 @@
+ # AGENTS.md
+ 
+-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
++> Claude 외 코딩 에이전트(Codex 등)용 사본이다. 내용은 `CLAUDE.md` 와 같고, 어긋나면 **`CLAUDE.md` 가 이긴다**.
++> 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
++> (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
+ 
+-**현재 버전: v2.7.1** (2026-08-28) · 레포 경로: `/Users/tycoonan/Documents/Codex/Projects/Youtube_Notion_Grap`
++**현재 버전: v4.0** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
+ 
+-> 2026-08-17에 `~/Documents/Codex/` → `~/Documents/Codex/Projects/` 로 이관했습니다.
++> v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
++
++> 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+-> 구 백업: `~/Codex/Youtube_Notion_Grap_BACKUP_20260717`.
++> 구 백업: `~/Claude/Youtube_Notion_Grap_BACKUP_20260717`.
+ 
+ ## Commands
+ 
+ ```bash
+-# 서버 (웹 UI + Notion API 프록시, 포트 3000)
++# 서버 (웹 UI + 마스터 인제스트 SSE + Wiki 검색, 127.0.0.1:3000)
+ node server.js
+ 
+ # 스케줄러 (수동 1회 실행)
+ node scheduler.js              # 마스터 인제스트 모드 (기본)
+ node scheduler.js --legacy     # 레거시 33개 재생목록 모드
+ 
+-# Obsidian 동기화
+-python3 sync_obsidian.py       # Notion DB → Obsidian .md 파일 증분 동기화 + Wiki Ingest
+-python3 build_obsidian_wiki.py # MOC + 키워드 허브 파일 재구성
++# Obsidian 동기화 (원본 = 장부, 읽기 전용). --dry-run 은 Vault·장부를 하나도 쓰지 않고 할 일만 센다
++/opt/homebrew/bin/python3 sync_obsidian.py             # 장부 → Obsidian .md 증분 동기화 + Wiki Ingest (영상 + AI 꿀팁)
++/opt/homebrew/bin/python3 sync_obsidian.py --dry-run
++/opt/homebrew/bin/python3 sync_obsidian.py --no-tips   # 꿀팁 동기화 제외 (YouTube 쪽만 진단할 때)
++/opt/homebrew/bin/python3 build_obsidian_wiki.py       # MOC + 키워드 허브 파일 재구성 (내용 같은 파일은 쓰지 않는다)
++
++# 구글 시트 미러 (v4.0 3단계, 보기 전용 단방향). .env 에 SHEET_MIRROR_URL 이 없으면 건너뛴다
++/opt/homebrew/bin/python3 sheet_mirror.py --dry-run    # 보낼 건수만 (네트워크·장부 쓰기 0)
++/opt/homebrew/bin/python3 sheet_mirror.py              # 변경분만 보냄 (스케줄러가 매 실행 자동 호출)
++/opt/homebrew/bin/python3 sheet_mirror.py --full       # 두 탭을 비우고 전부 다시 (열이 바뀌었거나 시트가 어긋났을 때)
++/opt/homebrew/bin/python3 sheet_mirror.py --check      # 시트 행 수 ↔ 장부 행 수 대조 (읽기만)
++
++# 카카오톡 → 장부 tips (스케줄러가 --apply --if-new 로 자동 호출)
++/opt/homebrew/bin/python3 kakao_ingest.py                    # dry-run (기본). 생성될 행 표만 출력
++/opt/homebrew/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 장부에 → 확인
++/opt/homebrew/bin/python3 kakao_ingest.py --apply            # 전량
++/opt/homebrew/bin/python3 kakao_ingest.py --apply --if-new   # 스케줄러 모드: 같은 CSV(mtime)면 장부 조회 없이 즉시 종료 (--force 로 무시)
+ 
+ # Karpathy LLM Wiki
+ python3 wiki_ingest.py              # 증분: 미처리 소스만 Wiki 합성
+@@ -29,14 +47,22 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
+ 
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+-# Obsidian 동기화 (v4.0: 원본 = 장부). --dry-run 은 Vault·장부를 하나도 쓰지 않고 할 일만 센다
+-/opt/homebrew/bin/python3 sync_obsidian.py --dry-run
+-/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py    # 회귀 테스트 (임시 Vault, 네트워크 0회, 23/23)
++# 회귀 테스트 6종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
++/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 19/19  장부 캐시·재시도·배치 조회·시트 미러 훅
++/opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py   # 37/37  (보관 스크립트) 적재·--verify
++/opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
++/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
++/opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
++/opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 10/10  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정
+ 
+ # 대기 큐 정리 (중복 제거 + dead-letter 격리) — 기본 dry-run
+ node scripts/clean_pending_queue.js
+ node scripts/clean_pending_queue.js --apply
+ 
++# 장부 ↔ Vault 대조 (노션 호출 없음) — 보관 스크립트지만 --verify 는 계속 쓴다
++/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify
++# ※ --apply --replace 는 금지(장부가 원본이 된 뒤라 스크립트가 거부한다). 노션 적재 기능은 노션 해지 때 파일째 지운다
++
+ # launchd 제어 (6시간 자동 실행)
+ launchctl start com.irichgreen.ytsummarizer
+ launchctl stop com.irichgreen.ytsummarizer
+@@ -50,6 +76,13 @@ node -e "require('./lib/youtube_oauth').getAccessToken().then(t => console.log('
+ # 상태 스냅샷 (진단 1순위)
+ cat .quota_state.json
+ node -e "for(const f of ['pending_playlist_adds.json','pending_playlist_adds.dead.json'])console.log(f, JSON.parse(require('fs').readFileSync(f)).length)"
++# Wiki 검색 (v3.2) — 입구는 여럿, 엔진은 lib/wiki_search.js 하나
++#   이 맥    http://localhost:3000/wiki          server.js (127.0.0.1 전용)
++#   가족 PC  http://<맥이름>.local:3100/wiki     wiki_lan_server.js (집 대역 전용·읽기 전용)
++#   Claude   MCP wiki-search                     wiki_mcp.js (stdio, 서버 불필요)
++python3 build_search_index.py                    # 검색 인덱스 증분 갱신 (sync_obsidian.py 가 변경 시 자동 호출)
++launchctl list | grep irichgreen.wiki-lan        # 집 안 전용 서버 상태
++tail -20 ~/Library/Logs/irichgreen/wiki-lan.log  # 기동·차단 기록
+ ```
+ 
+ ### OAuth 계정 일치 검증 (1유닛, 재발급 후 필수)
+@@ -58,7 +91,7 @@ node -e "for(const f of ['pending_playlist_adds.json','pending_playlist_adds.dea
+ 재발급 직후 반드시 아래를 돌려 `✅ 일치`를 확인하세요.
+ 
+ ```bash
+-cd /Users/tycoonan/Documents/Codex/Projects/Youtube_Notion_Grap && node -e "
++cd <REPO_ROOT> && node -e "
+ const yt=require('./lib/youtube_oauth');
+ (async()=>{const t=await yt.getAccessToken();
+ const j=await(await fetch('https://www.googleapis.com/youtube/v3/playlists?part=snippet&mine=true&maxResults=50',{headers:{Authorization:'Bearer '+t}})).json();
+@@ -91,31 +124,113 @@ console.log(hit.length===want.length?'✅ 일치':'❌ 불일치 — 재발급 
+ YouTube "AI 영상목록" (마스터 모드)
+     → scheduler.js:processMasterIngest()
+     → lib/classifier.js:classifyTopics()  [Gemini 2.5 Flash, 토픽 1~5개]
+-    → saveToNotionWithTopics()            [Notion DB 저장]
++    → saveToLibrary()                     [로컬 장부 data/library.db 저장 — lib/library.js]
+     → lib/youtube_oauth.js:addToPlaylist() [토픽별 YouTube 재생목록 추가]
+-    → sync_obsidian.py                    [Obsidian .md 파일 생성/갱신]
++    → kakao_ingest.py --apply --if-new    [카톡 CSV → 장부 tips]
++    → sheet_mirror.py                     [장부 변경분 → 구글 시트 (보기용)]
++    → sync_obsidian.py                    [장부 → Obsidian .md 파일 생성/갱신]
+     → wiki_ingest.py                      [Gemini 2.5 Flash, 엔티티/개념 Wiki 페이지 합성]
+     → build_obsidian_wiki.py              [MOC + 키워드 허브 재구성]
+ ```
+ 
+-레거시 모드(`--legacy`)는 33개 토픽 재생목록을 순회하며 동일한 Gemini 요약 → Notion 저장 흐름을 수행합니다.
++레거시 모드(`--legacy`)는 33개 토픽 재생목록을 순회하며 동일한 Gemini 요약 → 장부 저장 흐름을 수행합니다.
+ 
+ ### 핵심 파일 역할
+ 
+ | 파일 | 역할 |
+ |------|------|
+ | `scheduler.js` | 메인 오케스트레이터. YouTube API 조회, Gemini 요약, **로컬 장부 저장(v4.0, `lib/library.js`)**, Telegram 알림. launchd가 6시간 간격 실행. 노션 호출 없음. |
+-| `server.js` | HTTP 서버(포트 3000, `127.0.0.1` 전용). `index.html` 서빙 + SSE `/api/master-ingest`(scheduler.js 실행·실시간 로그) + Wiki 검색 API. v4.0 에서 노션 프록시·`/test-notion` 제거. |
++| `server.js` | HTTP 서버(포트 3000, `127.0.0.1` 전용). `index.html` 서빙 + SSE `/api/master-ingest`(scheduler.js 실행·실시간 로그) + Wiki 검색 API. v4.0 에서 노션 프록시·`/test-notion`·`/api/sync-obsidian` 제거. |
+ | `index.html` | 단일 페이지 웹 UI. 재생목록 관리, 마스터 인제스트 트리거, 처리 결과 테이블. |
+ | `lib/classifier.js` | Gemini 기반 토픽 분류기. `playlists.json`의 토픽 목록만 허용(allowedSet 필터). 신뢰도 0.6 미만이면 YouTube 추가 건너뜀. |
+ | `lib/youtube_oauth.js` | YouTube OAuth2 쓰기 전용. access_token 메모리 캐시(50분), 일일 quota 추적(`.quota_state.json`), 호출 간 200ms rate limit. |
+ | `sync_obsidian.py` | (v4.0) 장부 `data/library.db`(읽기 전용) → Obsidian 증분 동기화. 노션 호출 없음. 내부적으로 `wiki_ingest.py`와 연동. 고아 `.md` 격리 포함(아래 참조). `--dry-run` 으로 할 일만 센다. |
+ | `wiki_ingest.py` | Karpathy LLM Wiki 파이프라인. Obsidian 노트를 순회하며 Gemini로 개념 단위 지식 추출 및 합성. |
+-| `wiki_config.py` | Wiki 인제스트 설정 관리. 230 RPD 토큰 제한, API Rate limit 추적 및 예외 처리 로직 포함. |
+-| `build_obsidian_wiki.py` | 키워드별 허브 파일 27개 자동 생성(`_MOC/AGENTS.md` 등) + MOC 재구성. |
++| `wiki_config.py` | Wiki 인제스트 설정 + Gemini 호출 래퍼. 4키 로테이션, RPD 20 추적(`.wiki_quota.json`), 429 RPD/RPM 분기, 5xx 백오프. |
++| `build_obsidian_wiki.py` | 키워드별 허브 파일 27개 자동 생성(`_MOC/Claude.md` 등) + MOC 재구성. (v4.0) `write_if_changed()` — 내용이 같은 파일은 쓰지 않는다. |
+ | `legacy_scripts/` | (v4.0) 은퇴한 노션 전제 스크립트 보관(`migrate_classify.js`·`check_duplicates.py`·`cleanup_duplicates.py`·`fix_nfc_topics.js`·`notion_to_obsidian.js`). 실행 대상 아님 — `legacy_scripts/README.md`. |
+ | `playlists.json` | 33개 토픽 재생목록 목록. 분류기의 허용 토픽 소스이기도 함. gitignore 대상. |
+ | `scripts/clean_pending_queue.js` | (v2.5) 큐 중복 제거 + dead-letter 격리. 기본 dry-run, `--apply` 필요. |
++| `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. |
++| `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. |
++| `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
++| `lib/tips_notion.py` | (보관) 노션 「AI 꿀팁」 래퍼. **앱은 import 하지 않는다** — `scripts/notion_to_sqlite.py` 만 쓴다. 노션 해지 때 함께 삭제. |
++| `lib/env_util.py` | (v4.0 3단계) `.env` 읽기(의존성 0). `kakao_ingest.py`·`sheet_mirror.py` 가 쓴다. |
++| `sheet_mirror.py` | (v4.0 3단계) 장부 → 구글 시트 미러(보기 전용, 단방향). `updated_at` 워터마크로 변경분만, 200행씩 POST. `--dry-run`·`--full`·`--check`. 아래 "구글 시트 미러" 절. |
++| `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
++| `wiki.html` | Wiki 검색 화면. 의미 검색 + AI 답변, 토픽 필터·정렬. `server.js`와 `wiki_lan_server.js`가 같은 파일을 서빙한다. |
++| `lib/wiki_search.js` | 검색 코어(의존성 0). `wiki_index.json`+`wiki_index.vec`(768차원) 로드, 임베딩 코사인 + 메타 부스트, 임베딩 실패 시 키워드 폴백, Gemini 401/403 래치. |
++| `wiki_mcp.js` | 같은 코어를 Claude에 노출하는 stdio MCP(`search_wiki`, `read_note`). 웹 서버 없이 동작. |
++| `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
++| `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
++| `scripts/notion_to_sqlite.py` | (보관, v4.0 1단계) 노션 두 DB → `data/library.db` 적재 스크립트. 지금 쓰는 기능은 `--verify`(장부 ↔ Vault 대조, 노션 호출 없음)뿐. 노션 rich_text → 마크다운 변환(`block_to_md`)도 여기로 옮겼다. 노션 해지 때 삭제. |
++| `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
++| `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
++| `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
++| `scripts/test_sync_obsidian.py` | (v4.0 2단계) `sync_obsidian.py` 회귀 테스트. 임시 Vault·임시 장부, 하위 단계(재구성·인제스트·인덱스)는 가짜로 바꿔 실제 Vault 를 건드리지 않는다. |
++| `scripts/test_sheet_mirror.py` · `scripts/fake_gas_server.js` | (v4.0 3단계) 시트 미러 회귀 테스트. 가짜 서버가 `gas/sheet_mirror.gs` 원본을 node `vm` 에 올리고 시트·302 리다이렉트를 흉내 낸다(127.0.0.1). 실제 구글 요청 0. |
++| `scripts/test_build_wiki_index.py` | (v4.0 3단계) 재구성 2회차 쓰기 0 · 프론트매터 없는 파일 누적 방지 · 검색 인덱스 프론트매터 한정. 임시 Vault. |
++
++### Wiki 검색 — 입구는 여럿, 엔진은 하나 (v3.2)
++
++| 입구 | 프로세스 | 바인딩 | 용도 |
++|---|---|---|---|
++| `http://localhost:3000/wiki` | `server.js` | `127.0.0.1:3000` | 이 맥에서 직접 |
++| `http://<맥이름>.local:3100/wiki` | `wiki_lan_server.js` | `0.0.0.0:3100` + 대역 필터 | 집 안 다른 컴퓨터(가족) |
++| MCP `wiki-search` | `wiki_mcp.js` (stdio) | 없음 | Claude Code 대화 중 |
++
++- **`server.js`를 `0.0.0.0`으로 열지 말 것.** `/api/master-ingest`(스케줄러 실행)·`/api/config`(키 노출)가 같이 열린다. (노션 쓰기 프록시·`/api/sync-obsidian` 은 v4.0 에서 제거) 집 안 공유는 `wiki_lan_server.js`가 전담한다.
++- **`wiki_lan_server.js`에 쓰기·실행 엔드포인트를 추가하지 말 것.** 라우트는 `/`, `/wiki`, `/favicon.svg`, `/api/wiki-topics`, `/api/wiki-search`, `/api/wiki-ask` 뿐이다.
++- `.env`의 `WIKI_LAN_ALLOW_CIDR`(사설 대역 `/16`~`/32`, 쉼표로 여러 개)가 없거나 틀리면 **`127.0.0.1` 전용으로 떨어진다(fail-closed).** 가족이 "갑자기 안 된다"고 하면 `wiki-lan.log`의 `바인딩:` 줄부터 본다.
++- 클라이언트 IP는 **소켓 주소만** 본다. `X-Forwarded-For`를 읽는 코드를 넣지 말 것(위조 가능).
++- AI 답변은 scheduler·wiki-ingest와 **같은 Gemini 무료 키**를 쓴다. IP당 분당 5회 + 전체 24시간 `WIKI_LAN_ASK_DAILY_MAX`회(기본 20, 메모리 카운터 — 재기동하면 0). 한도를 올리면 영상 요약·Wiki 합성이 429를 맞는다. 일반 검색은 임베딩 모델을 쓰므로 별개이고, 한도에 걸리면 키워드 검색으로 대체된다.
++- 화면의 「Obsidian에서 열기」는 `location.hostname`이 `localhost`/`127.0.0.1`일 때만 나온다(`wiki.html:IS_LOCAL`). 가족 PC에는 Vault가 없다.
++- **맥북이 집에 켜져 있을 때만 된다.** 덮개를 닫아 잠들거나 들고 나가면 가족은 접속할 수 없다. IPv6로는 열지 않는다(대역 검사가 IPv4 전제).
++- `<맥이름>`은 `scutil --get LocalHostName`이다. macOS가 이름 충돌 시 끝 숫자를 올려 바꾸는 일이 있다 — 주소가 안 먹으면 이름부터 확인한다. 기동 로그의 `가족 접속:` 줄도 같은 값(`scutil --get LocalHostName`)을 찍는다. `os.hostname()`은 쓰지 않는다 — 2026-10-03 실측에서 `.local`로 풀리지 않는 이름을 줬다.
++
++### 카카오톡 → 장부 tips → Obsidian (v3.0 → v4.0)
++
++```
++카톡 '나와의 채팅' 내보내기 (수동, 월 1회) → ~/Downloads/KakaoTalk_Chat_*.csv
++  → scheduler.js (YouTube 인제스트 완료 후) → kakao_ingest.py --apply --if-new
++       [최신 CSV mtime 비교(.kakao_state.json) → URL 정규화 → 장부 tips 전량 url_key 대조 → 신규만 한 트랜잭션 INSERT → RESULT_JSON]
++  → 장부 data/library.db 의 tips 테이블
++  → sheet_mirror.py → 구글 시트 '꿀팁' 탭 (보기용)
++  → sync_obsidian.py:sync_tips()  [VAULT/AI 꿀팁/*.md, 신규만]
++  → wiki_ingest.py / build_obsidian_wiki.py  (기존 그대로 공유 — 합성 로직 두 벌 만들지 않는다)
++```
++
++- `.env`: `KAKAO_EXPORT_DIR`(읽기는 `lib/env_util.py`). 노션을 부르지 않는다.
++- 꿀팁 기본값(노션 시절과 같음): 제목이 비면 URL, 카테고리 `기타`, 상태 `미확인`, 중요도 `중`. 카테고리 값 목록은 `lib/kakao_parse.py` 상단. `tags` 는 JSON 배열, `source` 는 **호스트만**(`github.com`).
++- `kakao_ingest.py`의 `--since` 기본값은 `2026-03-01`. 그 이전 카톡 링크 103건은 쇼핑·개인 링크라 AI 자료가 아니다.
++- **꿀팁 노트는 YouTube 로직과 격리된다.** `get_existing_vault_info()`가 `AI 꿀팁/` 폴더를 걷지 않으므로 고아 격리 분모·tags 동기화에 섞이지 않는다. 노트 프론트매터는 `link_url`이며 **`video_url`을 절대 쓰지 않는다** — 쓰는 순간 고아 격리 대상이 된다. `tags` 키도 쓰지 않는다(`keywords`) — `build_obsidian_wiki`가 tags 없는 파일을 폴더명 MOC(`_MOC/AI 꿀팁 MOC.md`)로 묶는다.
++- 폴더는 **평면 구조**다. `wiki_ingest`·`build_obsidian_wiki`가 최상위 폴더 바로 아래 파일만 읽으므로 카테고리 하위 폴더를 만들면 위키에서 사라진다. 카테고리는 프론트매터 `category`로만 둔다.
++- 같은 날 같은 추정 제목이 여럿이면 파일명이 충돌한다. 충돌 시 **id 끝 6자리**를 붙인다(앞자리는 워크스페이스 공통 접두라 구분 불가).
++- 꿀팁 노트는 본문이 거의 없다(제목·링크·태그·메모). `wiki_ingest`가 그대로 먹지만 추출 품질은 낮다. URL 본문을 긁어 Gemini로 요약하는 2차 확장은 미구현(선택).
++- **실행은 `/opt/homebrew/bin/python3`**(스케줄러·wiki-ingest 데몬과 같은 인터프리터).
++- `.kakao_state.json`은 "이 CSV는 이미 봤다"는 **스킵 최적화일 뿐 중복 방지 장치가 아니다.** 중복 방지는 언제나 장부 대조다. `--apply`가 실패 없이 끝났을 때만 기록하고 dry-run·`--limit`은 기록하지 않는다.
++- `scheduler.js`의 카톡 훅(`runKakaoIngest`)은 **절대 reject하지 않는다.** 카톡 단계가 Obsidian 동기화를 막으면 안 된다. (지시서 `docs/tasks/2026-09-06-scheduler-kakao-hook.md`)
++- 꿀팁이 신규 추가되면 `sync_obsidian.py`가 **제한 없이** `wiki_ingest.py`를 띄운다(기존 동작). 처음 대량 적재할 때는 `wiki_ingest.py --limit=20`으로 나눠 돌릴 것. 2026-09-06 첫 적재 시 99건이 한꺼번에 들어가 수동 중단했다.
++- 수동 즉시 반영은 Cowork 스킬 `kakao-tips-update`(장부판).
++
++### 구글 시트 미러 (v4.0 3단계) — 보기 전용, 장부 → 시트 단방향
++
++```
++scheduler.js (카톡 인제스트 뒤, Obsidian 동기화 앞) → runSheetMirror() → sheet_mirror.py
++   [장부 meta.sheet_wm_videos·sheet_wm_tips 이후 updated_at 인 행 → 200행씩 POST(JSON, 토큰은 본문)]
++   → Apps Script 웹앱 gas/sheet_mirror.gs (실행 계정 = 시트 소유자, 액세스 = 모든 사용자 + 토큰)
++   → 시트 탭 '영상'(11열) · '꿀팁'(13열). 1열 record_id 기준 있으면 제자리 덮어쓰기, 없으면 아래에 추가
++```
++
++- **원본은 장부다.** 시트를 고쳐도 장부로 돌아가지 않고 다음 변경 때 덮어써진다. 시트 쪽에 열을 추가하지 말 것 — 머리글이 다르면 웹앱이 쓰기를 거부(`headers_mismatch`)하고, 미러는 `--full` 로만 복구된다.
++- `.env`: `SHEET_MIRROR_URL`(웹앱 `/exec` 주소, `https://script.google.com/macros/s/` 만 허용) · `SHEET_MIRROR_TOKEN`(Apps Script 스크립트 속성 `MIRROR_TOKEN` 과 같은 값). **URL 이 없으면 아무것도 하지 않고 `skipped`** — 설치 전에도 스케줄러가 안전하다.
++- **변경분 = `updated_at` 워터마크.** 별도 outbox 테이블을 두지 않았다(스키마 무변경). 그래서 **장부를 고치는 코드는 반드시 `updated_at` 을 새로 찍어야 한다** — `lib/library.js` 의 `insertVideo`·`addTopic`·`updateStats`, `kakao_ingest.py` 가 그렇게 한다. 손으로 고쳤다면 `--full`.
++- 워터마크는 그 탭의 묶음을 **전부** 보낸 뒤에만 올린다. 중간 실패분은 다음 실행이 다시 보낸다(덮어쓰기라 무해). 전체 다시 쓰기(`--full`·첫 실행·주소 변경)는 시작할 때 `meta.sheet_target` 을 지우고 끝나야 다시 쓴다 — 끊기면 다음 실행도 전체.
++- **안전(1순위 원칙 그대로):** HTTP 401/403·404·토큰 불일치(`auth`)·스크립트 속성 없음(`not_configured`)·HTML 응답(로그인 화면 = 웹앱 액세스가 "모든 사용자"가 아님)은 **재시도 없이 즉시 중단(exit 2)**. 429·5xx·네트워크 오류·`busy` 만 2·4·8초 지수 백오프, 4회 시도 후 중단(exit 1). 웹앱은 HTTP 상태를 고를 수 없어 오류도 200 + `{ok:false, error}` 로 온다.
++- Apps Script 웹앱은 POST 에 302 를 주고 결과는 리다이렉트 주소(GET)에 있다. urllib 의 기본 동작(302 → GET, 본문 재전송 없음)이 정확히 그것이다. 리다이렉트 처리를 바꾸지 말 것.
++- `= + - @` 로 시작하는 글자는 웹앱이 앞에 `'` 를 붙여 수식이 되지 않게 한다(10-12 실데이터 238칸). 1열은 글자 서식(`@`).
++- 스케줄러 훅 `runSheetMirror` 는 **절대 reject 하지 않는다**(카톡 훅과 같은 원칙). 실패하면 텔레그램 메시지에 `📗 구글 시트 미러 ⚠️ 실패` 한 줄이 붙는다(`auth` 면 토큰·배포 확인).
++- 웹앱 코드를 고치면 Apps Script 에서 **배포 관리 → 새 버전**으로 같은 URL 을 유지한다(새 배포를 만들면 URL 이 바뀌어 다음 실행이 전체 다시 쓰기).
+ 
+ ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
+ 
+@@ -148,15 +263,17 @@ YouTube "AI 영상목록" (마스터 모드)
+ 
+ - **YouTube Data API v3** (읽기전용): `YOUTUBE_API_KEY`
+ - **YouTube OAuth v3** (재생목록 쓰기): `YOUTUBE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`
+-- **Gemini 2.5 Flash**: `GEMINI_API_KEY` (요약 + 분류 모두 사용)
+-- **Notion API** (`2022-06-28`): `NOTION_TOKEN`, `NOTION_DB_ID`
++- **Gemini 2.5 Flash**: `GEMINI_API_KEY`·`GEMINI_API_KEYS` (요약 + 분류 + Wiki 합성 + 검색 임베딩)
++- **Google Apps Script 웹앱** (v4.0, 시트 미러 받는 쪽): `SHEET_MIRROR_URL`, `SHEET_MIRROR_TOKEN`
+ - **Telegram Bot**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
++- (보관) **Notion API**: `NOTION_TOKEN`·`NOTION_DB_ID`·`NOTION_TIPS_DB_ID` — 앱은 쓰지 않는다. `scripts/notion_to_sqlite.py` 만 읽는다. 「Notion 데이터 이관」이 끝나 노션을 해지할 때 `lib/tips_notion.py`·`notion_to_sqlite.py` 와 함께 지운다.
+ 
+ 모든 API 키는 `.env`에서 로드. `scheduler.js`와 `lib/*.js` 각각 자체 `loadEnv()` 포함.
+ 
+-### v4.0 이행 중 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
++### v4.0 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
+ 
+-- **2단계 완료(2-a 쓰기 + 2-b 읽기): 장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py` 는 장부를 읽기 전용으로 읽어 노트를 만든다. 파이프라인에 노션 호출이 없다. 노션은 낡은 사본(해지 대기). 노션 키·`lib/tips_notion.py`·`notion_to_sqlite.py` 정리는 지시서 3.
++- **장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py`·`sheet_mirror.py` 는 장부를 읽어 노트·시트를 만든다(`sheet_mirror.py` 는 `meta` 의 `sheet_*` 키만 쓴다). 파이프라인에 노션 호출이 없고 앱 코드는 노션 모듈을 import 하지 않는다. 노션은 낡은 사본(해지 대기).
++- **장부는 이 맥에만 있는 원본이다.** 지우거나 새로 만들지 말 것 — 파일이 없으면 Node·Python 모두 만들지 않고 던진다. 복원은 `data/library.db.bak.*` 또는 맥 백업에서.
+ - 새 영상 노트 본문 = 장부 `summary`(Gemini 요약 원문 마크다운). 모양은 노션 시절 노트와 같다(빈 줄 · `**▶ 영상 보기: **URL` · `---` · 요약).
+ - **`meta.switched_at` 이 찍힌 장부에 `notion_to_sqlite.py --apply --replace` 를 돌리지 말 것** — 스크립트가 거부한다(앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다).
+ - journal_mode 는 기본(DELETE) 그대로 둔다. 접근이 scheduler → kakao_ingest → sync_obsidian 순차라 WAL 이 필요 없다. 겹치면 Node·Python 모두 busy_timeout 5초 대기.
+@@ -183,12 +300,7 @@ v4.0 2단계부터 `scheduler.js:loadLibraryCache()`(장부 `videos` 전량)가
+ - 채널 구독자 수는 `getBatchSubs()` 로 50개씩 순차 조회한다. 채널마다 `Promise.all` 로 부르던 방식(실행당 새 연결·유닛 약 450)으로 되돌리지 말 것.
+ - `scheduler.js` 는 `require.main === module` 일 때만 `main` 을 돈다. 이 가드를 지우면 테스트가 실제 실행을 일으킨다.
+ 
+-**한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. Notion 태그, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `lib/library.js:addTopic()`(v4.0, 장부의 현재 topics 를 다시 읽어 NFC 합집합)이 중복 태그 방지의 핵심.
+-
+-**Notion API 한계**:
+-- 페이지 생성 시 `children` 최대 100블록. 초과분은 `/v1/blocks/{id}/children`으로 append.
+-- `rich_text` 항목당 최대 2000자 (`splitRichText()` 사용).
+-- `rich_text` 배열 최대 100개 (`parseBoldRichText()` 결과 50개씩 묶어 paragraph 생성).
++**한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. 장부 topics·tags, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `lib/library.js:addTopic()`(v4.0, 장부의 현재 topics 를 다시 읽어 NFC 합집합)이 중복 태그 방지의 핵심.
+ 
+ **YouTube Quota**: 일일 10,000 유닛, 태평양시 자정 리셋 = **KST 16:00**. `playlistItems.insert` 50유닛, 대부분의 읽기 1유닛, `search.list` 100유닛. 안전 버퍼 500을 뺀 임계 **9,500유닛**(`QUOTA_THRESHOLD`) 도달 시 `pending_playlist_adds.json`에 적재 후 다음 실행에서 처리.
+ 
+@@ -224,6 +336,49 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
+ - 재발급 중 `accounts.google.com/info/unknownerror`가 뜨면 다중 로그인 세션 충돌이다. 출력된 URL을 **시크릿 창**에 붙여넣는다.
+ - 발급 후 위 §"OAuth 계정 일치 검증"을 먼저 돌린다(1유닛).
+ 
++**wiki-ingest 의 Gemini 무료 할당량 — 3중 함정 (2026-09-10)**
++
++`wiki_config.py:gemini_call`. 로그 근거: `~/Library/Logs/irichgreen/wiki-ingest.log` WIKI_RESULT 29회 = processed 212 / errors 165(44%).
++오류 내역은 **429 125건(RPD 108 + RPM 17) · 503 39건 · 타임아웃 1건**. 파싱 실패는 0건이다.
++
++- **429 는 두 종류다. `quotaId` 로만 구분된다.** 응답 `error.details[].QuotaFailure.violations[].quotaId` 가
++  `GenerateRequestsPerDayPerProjectPerModel-FreeTier`(quotaValue 20)면 RPD,
++  `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`(quotaValue 5)면 RPM이다.
++  `RetryInfo.retryDelay` 에 권장 대기시간이 같이 온다. **추측으로 분기하지 말 것 — 근거는 응답 안에 있다.**
++  예전 코드는 둘을 구분하지 않고 전부 `dead` 처리해서 분당 한도 한 번에 키 하나를 하루치 통째로 버렸다.
++  지금은 RPM이면 `retryDelay+2`초(상한 65) 대기 후 **같은 키로** 재시도하고, RPD일 때만 dead 처리한다.
++  `quotaId` 가 없으면 `unknown` — 본문 전체를 로그에 남기고 보수적으로 RPD 취급한다.
++- **5xx 는 재시도 대상이다.** 오류 165건 중 39건(24%)이 503인데 예전에는 그대로 올려서 소스가 떨어졌다.
++  지금은 지수 백오프(2→15초 상한, 3회)로 같은 키에 재시도한다. `<urlopen error timed out>` 도 같은 취급.
++  **`scheduler.js` v2.7.1 이 JS 쪽에서 고친 것과 같은 결함이었다. 한쪽만 고치면 다른 쪽이 남는다.**
++- **일 경계는 태평양시다.** `_today()` 가 `time.gmtime(now - 8h)` 를 쓴다. KST 자정 기준으로 세면
++  로컬 카운터만 리셋되고 구글 RPD 는 그대로라, **00시 실행이 매번 '깨끗한 장부'로 시작해 즉시 429 를 맞는다.**
++  `lib/youtube_oauth.js:todayKey()` 와 같은 취지의 교정이다.
++
++**wiki_ingest 실행 경로는 두 개다 (2026-09-10)**
++
++```
++① launchd  com.irichgreen.wiki-ingest         매일 17:30 (= PT 01:30, RPD 리셋 직후)
++② scheduler.js:1525  totalSaved === 0  →  sync_obsidian.py --rebuild
++     └ sync_obsidian.py:516  --rebuild → force=True
++       └ sync_obsidian.py:538  subprocess.run([sys.executable, 'wiki_ingest.py'], capture_output=True)
++```
++
++②는 **저장 0건인 스케줄러 실행마다(00/06/12/18시)** 돈다. 증분 모드라 할 일이 없으면 즉시 끝나고,
++KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후라 서로 할당량을 뺏지 않는다.
++**②를 끄지 말 것 — 의도된 동작이다.**
++
++- ②의 stdout 은 `capture_output=True` 라 예전에는 `ytsummarizer.log` 로 흡수돼
++  `wiki-ingest.log` 에 아무것도 안 남았다. `.wiki_state.json` 의 `last_run` 만 갱신되고 로그는 그대로여서
++  "안 도는 줄" 오판하기 좋았다(2026-09-10 06:01:11 사건).
++  지금은 `sync_obsidian.py:_tee_wiki_log()` 가 캡처한 출력을 `wiki-ingest.log` 에 append 한다.
++  `───── via sync_obsidian.py (subprocess) <ISO시각> ─────` 헤더가 붙고 **`WIKI_RESULT` 줄이 그대로 남는다.**
++  `WIKI_RESULT` 가 유일한 판정 지표이므로 이 tee 를 지우면 ②는 다시 안 보이게 된다.
++- **두 경로의 인터프리터는 같다: `/opt/homebrew/bin/python3`.**
++  plist 의 `ProgramArguments`, `scheduler.js:1514`, `server.js:232` 가 모두 이 경로를 하드코딩하고,
++  `sync_obsidian.py` 는 `sys.executable` 을 물려주므로 ②도 같은 파이썬을 탄다.
++  **셋 중 하나만 바꾸면 라이브러리가 갈린다 — 바꿀 때는 3곳을 함께 고칠 것.**
++
+ **Gemini 분류 경로 — 요약 경로와 대응이 달랐던 자리 (v2.7.1)**
+ 
+ - `scheduler.js`의 분류 재시도 catch는 원래 **429/quota만** 재시도했다. 요약 경로(`:459`)는 503에 키 로테이션 + 재시도로 대응하는데 분류만 빠져 있어 **503 한 번에 영상이 떨어졌다**(2026-08-28 06:00 실제 발생). 지금은 `5xx`·`UNAVAILABLE`·`overloaded`·`high demand`도 지수 백오프(2→15초 상한)로 재시도한다. **분류 쪽 재시도 조건을 손댈 때 요약 경로와 대칭인지 먼저 확인할 것.**
+@@ -235,7 +390,9 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
+ 
+ **토픽 추가 시**: `playlists.json`에 새 항목 추가 + `build_obsidian_wiki.py`의 `VALID_NOTION_TAGS` 동기화 필수.
+ 
+-**server.js 보안**: Notion API 프록시는 `ALLOWED_NOTION_PATHS` 화이트리스트만 통과. CORS는 `localhost:3000`만 허용. IP당 분당 120요청 rate limit.
++**Vault 경로 중첩 (2026-09-19)**: 실제 Vault는 `~/Documents/Obsidian/AI LLM Wiki/AI LLM Wiki` (바깥 `AI LLM Wiki/`는 빈 껍데기, `README-여기가-아님.txt` 있음). 동작에 문제 없음. 이 경로는 `sync_obsidian.py`·`build_obsidian_wiki.py`·`wiki_config.py`·`lib/wiki_search.js`·`cleanup_duplicates.py`·`notion_to_obsidian.js` 6곳 + `legacy_scripts/` 2곳 + Obsidian 앱 등록에 박혀 있다. **v3.3(2nd_Brain 2단계 — `build_search_index.py`에 `_Brain/` 포함)과 같은 작업지시서로 한 단계 승격한다. 그 전에 옮기지 말 것.** 절차: 데몬 전부 stop(`wiki-lan` 포함 — 같은 Vault 경로를 읽는다) → `mv` → 8파일 치환 → Obsidian 재등록 → `--orphans-dry-run --no-tips`로 "notion_id 2,542·고아 0" 확인 → 인덱스 재빌드 → 재기동.
++
++**server.js 보안**: `127.0.0.1` 전용 바인딩. CORS는 `localhost:3000`만 허용. IP당 분당 120요청 rate limit. 노션 프록시(v4.0 2-b)·`/api/sync-obsidian`(v4.0 3단계)은 제거됐다 — 다시 만들지 말 것.
+ 
+ ### launchd 데몬
+ 
+@@ -246,21 +403,23 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
+ | `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분) | 매일 17:30 | `/opt/homebrew/bin/python3` |
+ | `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | `KeepAlive`, `RunAtLoad`, `ThrottleInterval 60` — 상주 | `/opt/homebrew/bin/node` |
+ 
+-- **실제 동작하는 plist는 `~/Library/LaunchAgents/`에 있다.** 레포 루트의 plist 3개는 그 원본이며, 2026-08-17부터 3개 모두 실경로(`/Users/tycoonan/Documents/Codex/Projects/Youtube_Notion_Grap`)가 들어 있다. 예전에 `server`·`ytsummarizer` 두 개에 있던 `/Users/사용자명/youtube-notion-app` 플레이스홀더는 제거했다.
++- **실제 동작하는 plist는 `~/Library/LaunchAgents/`에 있다.** 레포 루트의 plist 3개는 그 원본이며, 2026-08-17부터 3개 모두 실경로(`<REPO_ROOT>` 의 절대경로)가 들어 있다. 예전에 `server`·`ytsummarizer` 두 개에 있던 `/Users/사용자명/youtube-notion-app` 플레이스홀더는 제거했다.
+ - 각 plist는 `ProgramArguments`·`WorkingDirectory` **2곳에 절대경로**가 박혀 있다. 경로 변경 시 6군데 동기화 + `plutil -lint` + unload/load.
+ - `install-server.sh`·`install-scheduler.sh`는 plist를 `~/Library/LaunchAgents/`로 복사하며 **sed로 이 실경로를 `$APP_DIR`로 치환**한다. 레포 경로를 바꾸면 두 스크립트의 sed 패턴도 같이 고쳐야 치환이 동작한다.
+ - `com.irichgreen.server`는 상주 프로세스라 **코드를 고쳐도 재기동 전까지 반영되지 않는다.**
++- `com.irichgreen.wiki-lan`의 로그(`wiki-lan.log`)는 **`rotate_extra_logs.sh`에 넣지 않는다.** 상주형이라 rename 회전이 안전하지 않다. 대신 서버가 기동·차단·오류만 찍는다.
++- **macOS 방화벽의 수신 허용은 node 실행 파일의 실제 경로(Cellar 버전 폴더)에 걸린다**(2026-10-03 실측: 허용 목록에 옛 버전 경로만 남아 있었다). `brew upgrade node` 후에는 경로가 바뀌므로 `wiki-lan`이 살아 있어도 가족 PC에서만 접속이 막힐 수 있다 — 이 맥에서의 `curl`은 정상으로 보일 수 있으니 판정은 다른 기기로 한다. 재기동 + 방화벽 재허용이 한 세트다.
+ - **`brew upgrade` 후에는 상주 데몬을 반드시 재기동한다.** 데몬은 기동 시점의 Cellar 경로를 물고 도는데, 업그레이드로 그 폴더가 삭제되면 이후 지연 import가 전부 실패한다. 이미 로드된 모듈은 멀쩡히 동작해 **부분 실패로 나타나므로 알아채기 어렵다.** (2026-08-17 자매 프로젝트 실장애)
+ 
+ ### 보안 — 절대 커밋 금지
+ 
+-`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.Codex/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`
++`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`).
+ 
+ > ⚠️ **새 상태 파일을 만들면 `.gitignore` 패턴을 반드시 재확인한다.**
+ > `pending_playlist_adds.json*` 패턴이 `.dead.json`·`.backup.*.json`을 못 잡아 커밋될 뻔한 사고가 있었다(2026-08-17). 현재는 `pending_playlist_adds*`로 수정됨.
+ > 새 파일 추가 시 `git check-ignore -q <파일>`로 확인할 것.
+ 
+-`.env`·`.Codex/`·상태 파일은 gitignore라 **`git clone`으로 복제되지 않는다.** 환경 이전은 clone이 아니라 `mv`/수동 복사로 한다.
++`.env`·`.claude/`·상태 파일은 gitignore라 **`git clone`으로 복제되지 않는다.** 환경 이전은 clone이 아니라 `mv`/수동 복사로 한다.
+ 
+ ### 로그 파일
+ 
+@@ -274,182 +433,31 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
+ 
+ ---
+ 
++## 산출물 규칙
++
++- 커밋 전 **`README.md`만** 갱신한다. **`README.html`은 v3.0에서 폐지 — 다시 만들지 않는다.** (2026-09-06)
++- `README.md` 버전 이력은 요약 표 1행 + 상세 변경 내역 1절을 함께 쓴다. 메이저는 아키텍처 확장(소스·저장소·합성 엔진 추가), 마이너는 기능·안정성.
++- `CLAUDE.md`는 구조·제약이 바뀔 때 갱신하고 하단 이력에 날짜와 함께 남긴다.
++- `AGENTS.md`는 **git 추적 대상**이다(2026-09-08~). `CLAUDE.md`와 함께 갱신하고, 두 문서가 어긋나면 **`CLAUDE.md`가 이긴다**.
++- 문서에 **개인 절대경로를 새로 쓰지 않는다**(2026-09-09~). 앞으로 추가·수정하는 줄은 `<REPO_ROOT>/...` 또는 `~/...` 표기를 쓴다. 기존 표기는 소급 정리하지 않는다.
++- Cowork → Claude Code 핸드오프는 `docs/tasks/YYYY-MM-DD-<슬러그>.md` 작업지시서로 한다.
++- `git push`는 사용자 확인 후.
++
+ ## 변경 이력
+ 
++- **2026-10-12 (v4.0 3단계 — v4.0 완료)** — 구글 시트 미러: `sheet_mirror.py`(장부 → 시트, `updated_at` 워터마크로 변경분만, 401/403·토큰·HTML 응답 즉시 중단, 5xx 지수 백오프) + `gas/sheet_mirror.gs`(Apps Script 웹앱, 토큰·탭 화이트리스트·머리글 대조·수식 방지), `scheduler.js:runSheetMirror()`(reject 없음, 실패는 텔레그램). 노션 정리: `kakao_ingest.py` 의 `tips_notion` import → `lib/env_util.py`, `block_to_md` → `scripts/notion_to_sqlite.py`(보관) — 앱은 노션 모듈을 import 하지 않는다. `lib/tips_notion.py`·`notion_to_sqlite.py`·`.env` `NOTION_*` 는 노션 해지 때 삭제. `server.js` `/api/sync-obsidian` 제거. `build_search_index.py` 프론트매터 한정(실 Vault 3,121 노트 옛 코드와 동일). `build_obsidian_wiki.py` 내용 같으면 안 쓰기(실 Vault 사본 재구성 2회차 쓰기 0 — 10-11 의 Vault 전체 mtime 갱신 해소) + 프론트매터 없는 파일에 관련 항목이 쌓이던 잠복 결함 수정. 문서 전면 갱신(README v4.0, 이 파일의 카톡 절·명령·파일 표, AGENTS.md 를 이 파일과 같은 내용으로). 테스트: `test_scheduler_guards.js` 19/19(+3), `test_kakao_ingest.py` 18/18(+1), 신규 `test_sheet_mirror.py` 45/45 · `test_build_wiki_index.py` 10/10, 기존 37/37 · 23/23. 지시서 `docs/tasks/2026-10-12-v4-sheet-mirror-cleanup.md`.
+ - **2026-10-11 (v4.0 2단계-b)** — 읽기 전환. `sync_obsidian.py` 가 장부(읽기 전용)를 읽어 노트를 만든다 — 노션 호출 0, 본문은 `summary` 마크다운(노션 시절 노트와 같은 모양). `notion_id`·`video_url` 은 프론트매터 안의 것만 센다. 고아 격리 3중 안전장치 유지, 꿀팁 고아는 보고만. `--dry-run` 신설. `server.js`·`index.html` 노션 프록시·토큰 테스트·브라우저 직접 처리 제거. `migrate_classify.js` 등 5개 → `legacy_scripts/`. 테스트: 신규 `test_sync_obsidian.py` 23/23, `test_notion_to_sqlite.py` 37/37(vault_ignored 1 → 0). 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-b.md`.
+ - **2026-10-11 (v4.0 2단계-a)** — 쓰기 전환. `scheduler.js` 의 노션 캐시·저장·주제 추가·통계 갱신을 로컬 장부(`lib/library.js`, `node:sqlite`)로 교체 — 노션 호출 0. `kakao_ingest.py` 는 장부 `tips` 에 한 트랜잭션으로 쓴다. `lib/library_db.py:open_existing()`(없으면 만들지 않음). `notion_to_sqlite.py --mark-switched` + 전환 후 `--apply --replace` 거부. WAL 미전환(순차 접근, busy_timeout 5초). 테스트: `test_scheduler_guards.js` 16/16(노션 캐시 5건 → 장부 9건), `test_notion_to_sqlite.py` 37/37, 신규 `test_kakao_ingest.py` 17/17. 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-a.md`.
+ - **2026-10-11 (v4.0 1단계)** — 노션 → SQLite 적재. 신규 `scripts/notion_to_sqlite.py`(노션 읽기 전용, 기본 dry-run, `--apply`·`--replace`·`--verify`·`--summary-check`), `scripts/test_notion_to_sqlite.py`(32/32, 네트워크 0회), `lib/library_schema.sql`·`lib/library_db.py`. `.gitignore` 에 `data/`. 적재 결과: 영상 페이지 3,189 → videos 2,986 · videos_dup 203 · tips 135, 요약 대조 무작위 100건 100/100 일치(속성=본문). 기존 파이프라인 코드 무변경(노션이 아직 원본). Vault 대조는 프론트매터 안의 notion_id 만 센다(Vault 루트 schema.md 본문 예시가 영상 id 로 잡혀 1차 dry-run 이 멈췄다). 노션에서 지워진 중복 꿀팁 page 의 잔여 노트 1건을 _trash/<시각>/AI 꿀팁/ 으로 격리. 지시서 `docs/tasks/2026-10-11-v4-notion-to-sqlite.md`·`-fix1.md`.
+ - **2026-10-05 (v3.2.1)** — 스케줄러 네트워크 안전장치. 배경: 로그 집계(08-12 ~ 10-05, 실행 219회)에서 실행 통째 실패 62회(28%, ENOTFOUND 41·ETIMEDOUT 17·기타 4)와, Notion 캐시 첫 조회 실패 → 빈 캐시 진행 23회(그중 13회가 영상 15편 재저장, 중복 195건). `loadNotionCache()` 를 "전부 읽었거나, 던지거나" 로 교체(재시도 초과·0건은 throw, 401/403 은 fatalAuth 즉시 종료, `NOTION_CACHE_ALLOW_EMPTY` 로만 빈 DB 허용)하고 `main` 은 캐시 실패 시 영상 처리·큐 재시도를 건너뜀(fail-closed). `ytFetch()` 에 일시 오류 지수 백오프(2→16초, 5회) 추가, 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450)에서 `getBatchSubs()` 50개 배치 순차(9회)로 교체, `scheduler.js` 를 `require.main === module` 가드로 `require` 가능하게 함. 검증: `scripts/test_scheduler_guards.js` 12/12, 모의 실행 2종(네트워크 전면 실패·Notion 401) 기대대로, 읽기 전용 실측(캐시 3,042 · 영상 1,412 · 고유 채널 450 → 구독자 응답 450 · 신규 판정 22). 야간 ENOTFOUND 의 직접 원인은 밝히지 못했다. 지시서 `docs/tasks/2026-10-05-scheduler-network-guards.md`.
++- **2026-10-03 (v3.2)** — 집 안 전용 읽기 전용 Wiki 검색 서버 `wiki_lan_server.js`(포트 3100) 신설 + `com.irichgreen.wiki-lan` 데몬. `server.js` 는 Notion 쓰기 프록시·인제스트 실행 엔드포인트가 함께 있어 `127.0.0.1` 전용을 유지하고, 검색 라우트 6개만 별도 서버로 노출한다. 안전장치: `.env` 의 `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용(미설정·오류 시 127.0.0.1 전용, fail-closed), 소켓 주소만 신뢰(XFF 무시), Host 검사, AI 답변 IP당 분당 5회 + 24시간 총량 제한. `wiki.html` 에 `IS_LOCAL` 추가(가족 PC 에서 Obsidian 링크 숨김). 검증: 바인딩 `*:3100`/`127.0.0.1:3000` 분리 유지, server.js 전용 경로 6종 전부 404, 위조 Host·타 출처 403, 검색 vector 2건, AI 답변 정상 1회. `CLAUDE.md` 머리 버전을 v3.0→v3.2 로 교정(README 는 09-10 에 이미 v3.1)하고, 표에 없던 검색 계열 파일(`wiki.html`·`lib/wiki_search.js`·`wiki_mcp.js`·`build_search_index.py`)을 추가. 방화벽 수신 허용(sudo)과 가족 PC 실접속 확인은 사용자 몫. 지시서 `docs/tasks/2026-10-03-wiki-lan-server.md`. 같은 날 보완: 기동 로그의 접속 주소를 `os.hostname()` → `scutil --get LocalHostName` 기준으로 교정(전자는 `.local`로 풀리지 않는 이름을 줬다), `.gitignore`에 `Claude outputs/` 추가, `AGENTS.md`의 낡은 인터프리터 문구 정정. 지시서 `docs/tasks/2026-10-03-wiki-lan-hostname-fix.md`.
++- **2026-09-10** — wiki-ingest 429 처리를 RPD/RPM 분기로 교정(`wiki_config.py`). 로그 실측 근거: 오류 165건 = 429 125(RPD 108/RPM 17) + 503 39 + 타임아웃 1, 파싱 실패 0. `quotaId` 로 구분해 RPM 은 `retryDelay` 대기 후 같은 키 재시도, RPD 만 dead 처리(`unknown` 은 본문 전량 로깅 후 보수적 RPD). 5xx·URLError 지수 백오프 추가(24%의 오류가 재시도 없이 버려지던 자리). `_today()` 를 태평양시로 교정. 부수 발견: `scheduler.js:1525` 의 `--rebuild` 경로가 `wiki_ingest.py` 를 `capture_output` 으로 띄워 로그에 안 남는 실행이 하루 최대 4회 있었다. `sync_obsidian.py` 에 `_tee_wiki_log()` 추가 — `--rebuild` 경로로 띄운 wiki_ingest 의 출력(WIKI_RESULT 포함)을 `wiki-ingest.log` 에 append 해 두 실행 경로를 한 로그에서 보게 했다(`--rebuild` 중복 실행 자체는 의도된 동작이라 유지). launchd 표의 wiki-ingest 인터프리터·스케줄 기재를 실제값(`/opt/homebrew/bin/python3`, 17:30, 증분)으로 교정. 검증: `--limit=6` processed 6 / errors 0(429 2건을 키 교체로 흡수), `sync_obsidian.py --rebuild` 후 `wiki-ingest.log` 에 tee 블록·WIKI_RESULT 기록 확인. 백업 `wiki_config.py.bak.20260910`(며칠 관찰 후 삭제).
++- **2026-09-09 (문서)** — 규약 1줄: 문서에 개인 절대경로를 새로 쓰지 않는다(`<REPO_ROOT>`·`~` 표기). 기존 8곳(CLAUDE.md 3 · AGENTS.md 5)은 09-06 push 분이 이미 공개라 소급 정리하지 않는다(사용자 판정).
++- **2026-09-08 (문서)** — `AGENTS.md` git 추적 시작(420줄, 그동안 untracked). 추적 밖이라 diff·리뷰에 안 잡혀 `AGENTS.md:409`가 "README.md + README.html 양쪽 동시 갱신"으로 남아 `CLAUDE.md:284`(v3.0 폐지)와 어긋나 있었다 — 금지 문구로 교체하고 추적 규약을 산출물 규칙에 추가. 코드 무변경.
++- **2026-09-06 (v3.0)** — 메이저 승격: 지식 소스 2원화(YouTube + 카카오톡). `kakao_ingest.py`에 `--if-new`·`.kakao_state.json`·`RESULT_JSON`·`KakaoTalk_Chat_안진훈_` 접두 필터(NFC) 추가. `scheduler.js` 훅 지시서 `docs/tasks/2026-09-06-scheduler-kakao-hook.md`. 생성 경로 검증(테스트 행 생성→아카이브). **`README.html` 삭제·폐지 — 앞으로 만들지 않는다.** README.md v3.0 상세 이력·데이터 흐름도.
++- **2026-09-06 (v2.8, 같은 날 v3.0에 흡수)** — 카카오톡 → Notion「AI 꿀팁」→ Obsidian 연동. 신규 `kakao_ingest.py`(기본 dry-run, `--apply`), `lib/kakao_parse.py`, `lib/tips_notion.py`. `sync_obsidian.py`에 `sync_tips()` 추가(`AI 꿀팁/` 평면 폴더, `link_url` 프론트매터, YouTube 고아 격리·tags 동기화에서 폴더 제외, `--no-tips`, `RESULT_JSON.tips_added`). `.env`에 `NOTION_TIPS_DB_ID`·`KAKAO_EXPORT_DIR`, `.gitignore`에 `KakaoTalk_Chat_*`. 첫 적재 99건, 멱등성(같은 CSV 재실행 0건) 확인. 지시서 `docs/tasks/2026-09-06-kakao-tips-ingest.md`.
+ - **2026-08-28 (v2.7.1)** — 토픽 분류의 일시적 서버 오류(5xx) 재시도 추가. `scheduler.js` 분류 catch 블록의 재시도 대상을 429/quota → +`5xx`·`UNAVAILABLE`·`overloaded`·`high demand`로 확장하고 지수 백오프(2→15초 상한)를 적용, 401/403은 즉시 중단으로 명시, `keysCount > 1` 조건을 키 교체에만 적용해 키 1개 환경에서도 재시도되게 했다. 재시도 소진 시 `cls`가 `undefined`인 채 `cls.topics`로 진입하던 잠복 TypeError 경로를 가드 2개로 차단. 지시서 `docs/tasks/2026-08-28-classify-transient-retry.md`.
+ - **2026-08-19 (v2.7)** — 재생목록 쓰기 성공/실패 계측 도입. `.quota_state.json`에 `ok`/`fail` 추가(하위호환 기본값 0), `consumeQuota(units, outcome)`로 확장해 `addToPlaylist` 양쪽 경로에서 계상. 텔레그램 큐 블록을 쓰기 결과 3분기(성공/전부실패/시도없음) + 순감 기준 소진 예상일로 교체 — v2.5 이후 "시도했으나 전부 실패한 날"을 구조적으로 감지하지 못하던 구멍을 막았다. 지시서 `docs/tasks/2026-08-18-write-outcome-metrics.md`.
+ - **2026-08-17 (v2.6)** — quota 일 경계를 UTC → 태평양시(PT)로 교정. `todayKey()`를 `Intl` 기반으로 바꾸고 export해 `scheduler.js:1475`이 같은 키를 쓰게 했다(텔레그램 오경보 제거). KST 09:00~16:00 동안 스로틀이 무력화되던 구간을 없앴다. 지시서 `docs/tasks/2026-08-17-quota-day-boundary.md`. 커밋 `7eb112c`.
+ - **2026-08-17 (v2.5)** — 레포를 `Projects/` 하위로 이관. 대기 큐 안전장치 도입(중복 방지·연속 실패 10회 차단기·dead-letter 격리·실패 요청 quota 계상), `scripts/clean_pending_queue.js` 신규, `.gitignore` 패턴 수정. OAuth 토큰을 「타이쿤안」 채널로 재발급하고 GCP 게시 상태를 프로덕션으로 전환. 큐 5,392 → 2,365 정리. 커밋 `66ab4a2`.
+ - **2026-05-21** — 최초 작성.
+-
+-## Imported Claude Cowork project instructions
+-
+-# A. 프로젝트 지침 (여기부터 복사)
+-
+-## 프로젝트 개요
+-
+-YouTube 영상을 자동 수집·요약·분류해 Notion DB와 YouTube 재생목록에 적재하고,
+-Obsidian 볼트로 동기화한 뒤 LLM Wiki(개념·엔티티 페이지)까지 합성하는 파이프라인.
+-Node.js(수집·분류·서버) + Python(Obsidian 동기화·Wiki 합성) 혼합 구성.
+-
+-- 레포: `/Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap`
+-- GitHub: `iRG-AI/YouTube_Notion_Grab` (main), 현재 v2.5
+-- 상세 아키텍처는 레포 루트 `CLAUDE.md` 참조
+-
+-## 역할 분담 — Cowork(여기) / Claude Code
+-
+-**Cowork = 컨트롤 타워.** 개선사항 정리, 우선순위 결정, 작업지시서 작성,
+-로그·상태 진단, 문서 산출물, 결과 검증.
+-
+-**Claude Code = 실행.** 코드 수정, 테스트, launchd 제어, 커밋.
+-
+-핸드오프는 **작업지시서 `.md`**로 한다. `docs/tasks/YYYY-MM-DD-<영문-슬러그>.md`에
+-저장하고 "해당 파일 읽고 그대로 실행"만 지시한다. 지시서 필수 항목:
+-배경 → AS-IS·TO-BE 코드 → 검증 명령과 기대 출력 → 데몬 재기동 → 롤백 → 범위 밖.
+-
+-문구 수정·상수 변경 같은 잔손질은 Cowork에서 직접 처리한다.
+-
+-## 작업 시작 규칙
+-
+-1. 코드·구조 질문은 추측하지 말고 `CLAUDE.md`를 먼저 읽는다.
+-2. **Node 영역인지 Python 영역인지 먼저 구분한다.**
+-   - Node: `scheduler.js`, `server.js`, `lib/*.js`, `migrate_classify.js`, `wiki_mcp.js`
+-   - Python: `sync_obsidian.py`, `wiki_ingest.py`, `wiki_config.py`, `build_obsidian_wiki.py`
+-3. 파일 수정 전 `git status`로 미커밋 변경 확인.
+-4. 진단 요청 시 추측 금지 — 로그·`git`·`launchctl`·파일 mtime으로 근거를 확인하고 답한다.
+-
+-## 🚨 상시 주의사항
+-
+-### launchd 데몬
+-
+-| 라벨 | 실행 대상 | 스케줄 | 인터프리터 |
+-|------|-----------|--------|-----------|
+-| `com.irichgreen.server` | `server.js` (포트 3000) | `KeepAlive`, `RunAtLoad` — 상주 | `/opt/homebrew/bin/node` |
+-| `com.irichgreen.ytsummarizer` | `scheduler.js` | 00 / 06 / 12 / 18시 | `/opt/homebrew/bin/node` |
+-| `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분) | 매일 17:30 | `/opt/homebrew/bin/python3` |
+-| `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | `KeepAlive`, `RunAtLoad`, `ThrottleInterval 60` — 상주 | `/opt/homebrew/bin/node` |
+-
+-- plist는 `~/Library/LaunchAgents/`. 각각 `ProgramArguments`·`WorkingDirectory`
+-  **2곳에 절대경로**가 박혀 있다. 경로를 바꾸면 6군데 동기화 + `plutil -lint` + unload/load.
+-- `com.irichgreen.server`는 상주 프로세스라 **코드를 고쳐도 재기동 전까지 반영되지 않는다.**
+-- 인터프리터는 위 표가 원본이다. Node 데몬은 `/opt/homebrew/bin/node`, `wiki-ingest`는 `/opt/homebrew/bin/python3`(2026-09-10부터. 예전의 `/usr/bin/python3`가 아니다).
+-- **`brew upgrade` 후에는 상주 데몬을 반드시 재기동한다.** 데몬은 기동 시점의 Cellar
+-  경로를 물고 도는데, 업그레이드로 그 폴더가 삭제되면 이후 지연 import가 전부 실패한다.
+-  이미 로드된 모듈은 멀쩡히 동작해 **부분 실패로 나타나므로 알아채기 어렵다.**
+-  (2026-08-17 자매 프로젝트에서 실장애)
+-
+-### YouTube OAuth — 가장 자주 깨지는 지점
+-
+-```
+-필요 채널 : 타이쿤안 (UCGDu0ceSSUgzhrRHbW0pQ9w)
+-GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
+-```
+-
+-- **토큰 재발급 시 반드시 「타이쿤안」 채널을 선택한다.** 다른 계정/채널로 발급하면
+-  33개 재생목록에 대해 `403 playlistItemsNotAccessible`이 난다.
+-  이 에러는 "재생목록이 삭제됨"이 아니라 **계정 불일치 신호로 먼저 의심할 것.**
+-- GCP 게시 상태가 **「테스트」로 돌아가면 refresh token이 7일마다 만료**된다.
+-  `invalid_grant`가 재발하면 게시 상태부터 확인한다.
+-- 재발급은 `node oauth_setup.js`. 다중 로그인 세션 충돌로
+-  `accounts.google.com/info/unknownerror`가 뜨면 출력된 URL을 **시크릿 창**에 붙여넣는다.
+-- 발급 후 반드시 계정 일치를 먼저 검증한다 (1유닛).
+-
+-```bash
+-cd /Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap && node -e "
+-const yt=require('./lib/youtube_oauth');
+-(async()=>{const t=await yt.getAccessToken();
+-const j=await(await fetch('https://www.googleapis.com/youtube/v3/playlists?part=snippet&mine=true&maxResults=50',{headers:{Authorization:'Bearer '+t}})).json();
+-if(j.error)return console.log('ERR',j.error.errors?.[0]?.reason);
+-const mine=new Map((j.items||[]).map(x=>[x.id,x.snippet]));
+-const want=require('./playlists.json').map(p=>(p.url.match(/list=([^&]+)/)||[])[1]).filter(Boolean);
+-const hit=want.filter(x=>mine.has(x));
+-console.log('채널:',[...new Set([...mine.values()].map(s=>s.channelTitle))].join(','),'| 일치',hit.length+'/'+want.length);
+-console.log(hit.length===want.length?'✅ 일치':'❌ 불일치 — 재발급 필요');})();"
+-```
+-
+-### YouTube quota
+-
+-- 일 **10,000유닛**, 태평양시 자정 리셋 = **KST 16:00**.
+-- `playlistItems.insert` **50유닛**, 대부분의 읽기 1유닛, `search.list` 100유닛.
+-- **실패 요청도 quota를 소비한다.** 계정이 어긋난 채 방치하면 하루치가 통째로 날아간다.
+-- 하루 처리 가능한 재생목록 추가는 **약 190건**이 상한. 코드로 늘릴 수 없다.
+-- 무료 할당량이자 상한선이라 **초과해도 과금되지 않는다.** 403으로 거부될 뿐이다.
+-- 진행 상황은 `.quota_state.json`(`date`/`used`)으로 본다. `date`가 오늘이 아니면
+-  **그날 YouTube 쓰기가 한 건도 성공하지 않았다는 뜻**이다. 최우선 이상 신호.
+-
+-### 재생목록 대기 큐 (v2.5 구조)
+-
+-| 파일 | 역할 |
+-|---|---|
+-| `pending_playlist_adds.json` | 처리 대기 큐 |
+-| `pending_playlist_adds.dead.json` | 영구 실패·재시도 초과 격리 (dead-letter) |
+-| `pending_playlist_adds.backup.*.json` | 정리 스크립트가 만든 백업 (**삭제 금지**) |
+-| `scripts/clean_pending_queue.js` | 중복 제거 + dead 격리. `--dry-run` 기본, `--apply` 필요 |
+-
+-v2.5에서 들어간 안전장치 — **건드리지 말 것.**
+-
+-- `appendPending`은 `(videoId, playlistId)` 중복을 적재하지 않는다.
+-  (없으면 큐가 며칠 만에 2배로 부푼다. 실제로 46.7%까지 중복됐던 이력)
+-- `flushPendingQueue`는 **연속 실패 10회에서 큐 처리를 중단**한다.
+-  403을 수백 번 난사하면 구글이 어뷰징으로 보고 계정을 정지시킨다.
+-- 개별 항목은 `retryCount` 5회 초과 시 dead-letter로 보낸다. 무한 순환 금지.
+-- `migrate_classify.js`도 **같은 큐 파일에 쓴다.** 큐 로직을 바꾸면 양쪽 다 고칠 것.
+-
+-### 보안 — 절대 커밋 금지
+-
+-`.gitignore`: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`,
+-`playlists.json`, `.DS_Store`, `.claude/settings.local.json`,
+-`wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`,
+-`.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`
+-
+-`.env` 키: `YOUTUBE_API_KEY`, `YOUTUBE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`,
+-`GEMINI_API_KEY`, `GEMINI_API_KEYS`(무료 4개 로테이션), `NOTION_TOKEN`, `NOTION_DB_ID`,
+-`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+-
+-> ⚠️ **새 상태 파일을 만들면 `.gitignore` 패턴을 반드시 재확인한다.**
+-> `pending_playlist_adds.json*`이 `.dead.json`·`.backup.*.json`을 못 잡아
+-> 커밋될 뻔한 사고가 있었다(2026-08-17). `git check-ignore -q <파일>`로 확인할 것.
+-
+-`.env`·`.claude/`·상태 파일은 gitignore라 **git clone으로 복제되지 않는다.**
+-환경 이전은 clone이 아니라 `mv`/수동 복사로 한다.
+-
+-### API 안전 원칙 (기능 구현보다 우선)
+-
+-1. **401/403(인증 만료·권한 거부·프로젝트 정지) 감지 시 연쇄 요청을 멈추고 즉시 종료.**
+-   실패 요청을 루프로 난사하면 구글 보안 봇이 어뷰징으로 판단해 계정 정지를 유발한다.
+-2. 일시 오류(429, 5xx) 재시도는 고정 대기가 아니라 **지수 백오프**. 최대 시도 초과 시 중단.
+-3. 개발·테스트는 별도 테스트 계정/GCP 프로젝트로 격리한다.
+-
+-### 자주 깨지는 지점
+-
+-- **한글 NFC**: macOS는 파일명을 NFD로 저장한다. Notion 태그·재생목록명·Obsidian
+-  파일명은 모두 `.normalize('NFC')` 필수. 중복 태그 버그의 주범.
+-- **Gemini 비용**: 2.5 Flash 호출 시
+-  `generationConfig: { thinkingConfig: { thinkingBudget: 0 } }` 필수 (약 85% 절감).
+-- **Notion 한계**: 페이지 생성 시 children 최대 100블록, `rich_text` 항목당 2000자,
+-  배열 최대 100개.
+-- **토픽 추가 시**: `playlists.json` 추가 + `build_obsidian_wiki.py`의
+-  `VALID_NOTION_TAGS` 동기화, 둘 다 해야 한다.
+-- **Obsidian VAULT 경로**(`~/Documents/Obsidian/AI LLM Wiki/...`)가 소스 6곳에
+-  하드코딩돼 있다. 레포 경로 일괄 치환 시 **같이 망가지지 않게 주의.**
+-- `scheduler.log`는 20MB 규모다. 통째로 읽지 말고 `tail`/`grep`으로 볼 것.
+-
+-## 산출물 규칙
+-
+-- 커밋 전 **`README.md`만** 갱신, semver Changelog 반영. **`README.html`은 생성하지 않는다** (v3.0 폐지)
+-- 문서에 **개인 절대경로를 새로 쓰지 않는다**(2026-09-09~). 앞으로 추가·수정하는 줄은 `<REPO_ROOT>/...` 또는 `~/...` 표기를 쓴다. 기존 표기는 소급 정리하지 않는다.
+-- `CLAUDE.md`는 구조·제약이 바뀔 때 갱신하고 하단 이력에 날짜와 함께 남긴다
+-- `git push`는 사전 확인 후 실행
+-- Obsidian·Notion용 출력은 마크다운 우선
+-
+-## 답변 방식
+-
+-- 결론 먼저, 그다음 부연. 불필요한 서론·사족 생략
+-- 실행 가능한 코드/명령 위주, 구체적 숫자 포함
+-- 복잡한 솔루션보다 단순하고 실행 가능한 구조 우선
+-
+-#
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 80eb08e..7a12e83 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -2,7 +2,9 @@
+ 
+ This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+ 
+-**현재 버전: v3.2.1** (2026-10-05) · 레포 경로: `/Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap`
++**현재 버전: v4.0** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
++
++> v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -11,25 +13,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
+ ## Commands
+ 
+ ```bash
+-# 서버 (웹 UI + Notion API 프록시, 포트 3000)
++# 서버 (웹 UI + 마스터 인제스트 SSE + Wiki 검색, 127.0.0.1:3000)
+ node server.js
+ 
+ # 스케줄러 (수동 1회 실행)
+ node scheduler.js              # 마스터 인제스트 모드 (기본)
+ node scheduler.js --legacy     # 레거시 33개 재생목록 모드
+ 
+-# Obsidian 동기화
+-python3 sync_obsidian.py       # Notion DB → Obsidian .md 파일 증분 동기화 + Wiki Ingest (v3.0: AI 꿀팁 포함)
+-python3 sync_obsidian.py --no-tips   # 꿀팁 동기화 제외 (YouTube 쪽만 진단할 때)
+-python3 build_obsidian_wiki.py # MOC + 키워드 허브 파일 재구성
++# Obsidian 동기화 (원본 = 장부, 읽기 전용). --dry-run 은 Vault·장부를 하나도 쓰지 않고 할 일만 센다
++/opt/homebrew/bin/python3 sync_obsidian.py             # 장부 → Obsidian .md 증분 동기화 + Wiki Ingest (영상 + AI 꿀팁)
++/opt/homebrew/bin/python3 sync_obsidian.py --dry-run
++/opt/homebrew/bin/python3 sync_obsidian.py --no-tips   # 꿀팁 동기화 제외 (YouTube 쪽만 진단할 때)
++/opt/homebrew/bin/python3 build_obsidian_wiki.py       # MOC + 키워드 허브 파일 재구성 (내용 같은 파일은 쓰지 않는다)
++
++# 구글 시트 미러 (v4.0 3단계, 보기 전용 단방향). .env 에 SHEET_MIRROR_URL 이 없으면 건너뛴다
++/opt/homebrew/bin/python3 sheet_mirror.py --dry-run    # 보낼 건수만 (네트워크·장부 쓰기 0)
++/opt/homebrew/bin/python3 sheet_mirror.py              # 변경분만 보냄 (스케줄러가 매 실행 자동 호출)
++/opt/homebrew/bin/python3 sheet_mirror.py --full       # 두 탭을 비우고 전부 다시 (열이 바뀌었거나 시트가 어긋났을 때)
++/opt/homebrew/bin/python3 sheet_mirror.py --check      # 시트 행 수 ↔ 장부 행 수 대조 (읽기만)
+ 
+-# 카카오톡 → 장부 tips (v4.0 2단계~: 노션 대신 data/library.db. 스케줄러가 --apply --if-new 로 자동 호출. 수동 실행은 /opt/homebrew/bin/python3)
+-# ※ 아래 '→ Notion 육안 확인'·lib/tips_notion.py 줄은 v3.x 설명이다. 지금은 장부에 쓴다 (지시서 3 에서 정리)
+-/usr/bin/python3 kakao_ingest.py                    # dry-run (기본). 생성될 행 표만 출력
+-/usr/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 실제 생성 → Notion 육안 확인
+-/usr/bin/python3 kakao_ingest.py --apply            # 전량
+-/usr/bin/python3 kakao_ingest.py --apply --if-new   # 스케줄러 모드: 같은 CSV(mtime)면 Notion 조회 없이 즉시 종료 (--force 로 무시)
+-/usr/bin/python3 lib/tips_notion.py                 # 「AI 꿀팁」DB 조회 상태 (건수·카테고리 분포)
++# 카카오톡 → 장부 tips (스케줄러가 --apply --if-new 로 자동 호출)
++/opt/homebrew/bin/python3 kakao_ingest.py                    # dry-run (기본). 생성될 행 표만 출력
++/opt/homebrew/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 장부에 → 확인
++/opt/homebrew/bin/python3 kakao_ingest.py --apply            # 전량
++/opt/homebrew/bin/python3 kakao_ingest.py --apply --if-new   # 스케줄러 모드: 같은 CSV(mtime)면 장부 조회 없이 즉시 종료 (--force 로 무시)
+ 
+ # Karpathy LLM Wiki
+ python3 wiki_ingest.py              # 증분: 미처리 소스만 Wiki 합성
+@@ -38,24 +45,21 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
+ 
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+-# Obsidian 동기화 (v4.0: 원본 = 장부). --dry-run 은 Vault·장부를 하나도 쓰지 않고 할 일만 센다
+-/opt/homebrew/bin/python3 sync_obsidian.py --dry-run
+-/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py    # 회귀 테스트 (임시 Vault, 네트워크 0회, 23/23)
++# 회귀 테스트 6종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
++/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 19/19  장부 캐시·재시도·배치 조회·시트 미러 훅
++/opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py   # 37/37  (보관 스크립트) 적재·--verify
++/opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
++/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
++/opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
++/opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 10/10  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정
+ 
+ # 대기 큐 정리 (중복 제거 + dead-letter 격리) — 기본 dry-run
+ node scripts/clean_pending_queue.js
+ node scripts/clean_pending_queue.js --apply
+ 
+-# 스케줄러 네트워크 안전장치 회귀 테스트 (v3.2.1) — 네트워크 0회, scheduler.log 무변경
+-node scripts/test_scheduler_guards.js
+-
+-# v4.0 1단계 — 노션 → SQLite 적재 (노션 읽기 전용, 기본 dry-run). 산출물 data/library.db (gitignore)
+-/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py                    # dry-run
+-/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply --replace  # 다시 적재 (기존 파일은 .bak.<시각>)
+-/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify           # 노션 호출 없이 library.db ↔ Vault 대조
+-/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --mark-switched    # (2단계) 장부를 원본으로 확정 — 이후 --apply --replace 거부
+-/opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py               # 회귀 테스트 (네트워크 0회, 37/37)
+-/opt/homebrew/bin/python3 scripts/test_kakao_ingest.py                   # (2단계) 카톡 → 장부 tips 회귀 테스트 (17/17)
++# 장부 ↔ Vault 대조 (노션 호출 없음) — 보관 스크립트지만 --verify 는 계속 쓴다
++/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify
++# ※ --apply --replace 는 금지(장부가 원본이 된 뒤라 스크립트가 거부한다). 노션 적재 기능은 노션 해지 때 파일째 지운다
+ 
+ # launchd 제어 (6시간 자동 실행)
+ launchctl start com.irichgreen.ytsummarizer
+@@ -85,7 +89,7 @@ tail -20 ~/Library/Logs/irichgreen/wiki-lan.log  # 기동·차단 기록
+ 재발급 직후 반드시 아래를 돌려 `✅ 일치`를 확인하세요.
+ 
+ ```bash
+-cd /Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap && node -e "
++cd <REPO_ROOT> && node -e "
+ const yt=require('./lib/youtube_oauth');
+ (async()=>{const t=await yt.getAccessToken();
+ const j=await(await fetch('https://www.googleapis.com/youtube/v3/playlists?part=snippet&mine=true&maxResults=50',{headers:{Authorization:'Bearer '+t}})).json();
+@@ -118,45 +122,52 @@ console.log(hit.length===want.length?'✅ 일치':'❌ 불일치 — 재발급 
+ YouTube "AI 영상목록" (마스터 모드)
+     → scheduler.js:processMasterIngest()
+     → lib/classifier.js:classifyTopics()  [Gemini 2.5 Flash, 토픽 1~5개]
+-    → saveToNotionWithTopics()            [Notion DB 저장]
++    → saveToLibrary()                     [로컬 장부 data/library.db 저장 — lib/library.js]
+     → lib/youtube_oauth.js:addToPlaylist() [토픽별 YouTube 재생목록 추가]
+-    → sync_obsidian.py                    [Obsidian .md 파일 생성/갱신]
++    → kakao_ingest.py --apply --if-new    [카톡 CSV → 장부 tips]
++    → sheet_mirror.py                     [장부 변경분 → 구글 시트 (보기용)]
++    → sync_obsidian.py                    [장부 → Obsidian .md 파일 생성/갱신]
+     → wiki_ingest.py                      [Gemini 2.5 Flash, 엔티티/개념 Wiki 페이지 합성]
+     → build_obsidian_wiki.py              [MOC + 키워드 허브 재구성]
+ ```
+ 
+-레거시 모드(`--legacy`)는 33개 토픽 재생목록을 순회하며 동일한 Gemini 요약 → Notion 저장 흐름을 수행합니다.
++레거시 모드(`--legacy`)는 33개 토픽 재생목록을 순회하며 동일한 Gemini 요약 → 장부 저장 흐름을 수행합니다.
+ 
+ ### 핵심 파일 역할
+ 
+ | 파일 | 역할 |
+ |------|------|
+ | `scheduler.js` | 메인 오케스트레이터. YouTube API 조회, Gemini 요약, **로컬 장부 저장(v4.0, `lib/library.js`)**, Telegram 알림. launchd가 6시간 간격 실행. 노션 호출 없음. |
+-| `server.js` | HTTP 서버(포트 3000, `127.0.0.1` 전용). `index.html` 서빙 + SSE `/api/master-ingest`(scheduler.js 실행·실시간 로그) + Wiki 검색 API. v4.0 에서 노션 프록시·`/test-notion` 제거. |
++| `server.js` | HTTP 서버(포트 3000, `127.0.0.1` 전용). `index.html` 서빙 + SSE `/api/master-ingest`(scheduler.js 실행·실시간 로그) + Wiki 검색 API. v4.0 에서 노션 프록시·`/test-notion`·`/api/sync-obsidian` 제거. |
+ | `index.html` | 단일 페이지 웹 UI. 재생목록 관리, 마스터 인제스트 트리거, 처리 결과 테이블. |
+ | `lib/classifier.js` | Gemini 기반 토픽 분류기. `playlists.json`의 토픽 목록만 허용(allowedSet 필터). 신뢰도 0.6 미만이면 YouTube 추가 건너뜀. |
+ | `lib/youtube_oauth.js` | YouTube OAuth2 쓰기 전용. access_token 메모리 캐시(50분), 일일 quota 추적(`.quota_state.json`), 호출 간 200ms rate limit. |
+ | `sync_obsidian.py` | (v4.0) 장부 `data/library.db`(읽기 전용) → Obsidian 증분 동기화. 노션 호출 없음. 내부적으로 `wiki_ingest.py`와 연동. 고아 `.md` 격리 포함(아래 참조). `--dry-run` 으로 할 일만 센다. |
+ | `wiki_ingest.py` | Karpathy LLM Wiki 파이프라인. Obsidian 노트를 순회하며 Gemini로 개념 단위 지식 추출 및 합성. |
+ | `wiki_config.py` | Wiki 인제스트 설정 + Gemini 호출 래퍼. 4키 로테이션, RPD 20 추적(`.wiki_quota.json`), 429 RPD/RPM 분기, 5xx 백오프. |
+-| `build_obsidian_wiki.py` | 키워드별 허브 파일 27개 자동 생성(`_MOC/Claude.md` 등) + MOC 재구성. |
++| `build_obsidian_wiki.py` | 키워드별 허브 파일 27개 자동 생성(`_MOC/Claude.md` 등) + MOC 재구성. (v4.0) `write_if_changed()` — 내용이 같은 파일은 쓰지 않는다. |
+ | `legacy_scripts/` | (v4.0) 은퇴한 노션 전제 스크립트 보관(`migrate_classify.js`·`check_duplicates.py`·`cleanup_duplicates.py`·`fix_nfc_topics.js`·`notion_to_obsidian.js`). 실행 대상 아님 — `legacy_scripts/README.md`. |
+ | `playlists.json` | 33개 토픽 재생목록 목록. 분류기의 허용 토픽 소스이기도 함. gitignore 대상. |
+ | `scripts/clean_pending_queue.js` | (v2.5) 큐 중복 제거 + dead-letter 격리. 기본 dry-run, `--apply` 필요. |
+ | `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. |
+ | `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. |
+ | `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
+-| `lib/tips_notion.py` | (v3.0) 「AI 꿀팁」DB 조회/생성 래퍼. 속성 타입 표를 주석에 고정. 401/403 → `NotionAuthError` 즉시 종료. |
++| `lib/tips_notion.py` | (보관) 노션 「AI 꿀팁」 래퍼. **앱은 import 하지 않는다** — `scripts/notion_to_sqlite.py` 만 쓴다. 노션 해지 때 함께 삭제. |
++| `lib/env_util.py` | (v4.0 3단계) `.env` 읽기(의존성 0). `kakao_ingest.py`·`sheet_mirror.py` 가 쓴다. |
++| `sheet_mirror.py` | (v4.0 3단계) 장부 → 구글 시트 미러(보기 전용, 단방향). `updated_at` 워터마크로 변경분만, 200행씩 POST. `--dry-run`·`--full`·`--check`. 아래 "구글 시트 미러" 절. |
++| `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
+ | `wiki.html` | Wiki 검색 화면. 의미 검색 + AI 답변, 토픽 필터·정렬. `server.js`와 `wiki_lan_server.js`가 같은 파일을 서빙한다. |
+ | `lib/wiki_search.js` | 검색 코어(의존성 0). `wiki_index.json`+`wiki_index.vec`(768차원) 로드, 임베딩 코사인 + 메타 부스트, 임베딩 실패 시 키워드 폴백, Gemini 401/403 래치. |
+ | `wiki_mcp.js` | 같은 코어를 Claude에 노출하는 stdio MCP(`search_wiki`, `read_note`). 웹 서버 없이 동작. |
+-| `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. |
++| `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
+ | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
+-| `scripts/notion_to_sqlite.py` | (v4.0 1단계) 노션 두 DB → `data/library.db`. 노션 읽기 전용, 기본 dry-run. 중복 video_id 는 Vault 노트 기준으로 하나만 남기고 `videos_dup` 에 보관. |
++| `scripts/notion_to_sqlite.py` | (보관, v4.0 1단계) 노션 두 DB → `data/library.db` 적재 스크립트. 지금 쓰는 기능은 `--verify`(장부 ↔ Vault 대조, 노션 호출 없음)뿐. 노션 rich_text → 마크다운 변환(`block_to_md`)도 여기로 옮겼다. 노션 해지 때 삭제. |
+ | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
+ | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
+ | `scripts/test_sync_obsidian.py` | (v4.0 2단계) `sync_obsidian.py` 회귀 테스트. 임시 Vault·임시 장부, 하위 단계(재구성·인제스트·인덱스)는 가짜로 바꿔 실제 Vault 를 건드리지 않는다. |
++| `scripts/test_sheet_mirror.py` · `scripts/fake_gas_server.js` | (v4.0 3단계) 시트 미러 회귀 테스트. 가짜 서버가 `gas/sheet_mirror.gs` 원본을 node `vm` 에 올리고 시트·302 리다이렉트를 흉내 낸다(127.0.0.1). 실제 구글 요청 0. |
++| `scripts/test_build_wiki_index.py` | (v4.0 3단계) 재구성 2회차 쓰기 0 · 프론트매터 없는 파일 누적 방지 · 검색 인덱스 프론트매터 한정. 임시 Vault. |
+ 
+ ### Wiki 검색 — 입구는 여럿, 엔진은 하나 (v3.2)
+ 
+@@ -166,7 +177,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `http://<맥이름>.local:3100/wiki` | `wiki_lan_server.js` | `0.0.0.0:3100` + 대역 필터 | 집 안 다른 컴퓨터(가족) |
+ | MCP `wiki-search` | `wiki_mcp.js` (stdio) | 없음 | Claude Code 대화 중 |
+ 
+-- **`server.js`를 `0.0.0.0`으로 열지 말 것.** `/api/master-ingest`(스케줄러 실행)·`/api/sync-obsidian`·`/api/config`(키 노출)가 같이 열린다. (노션 쓰기 프록시는 v4.0 에서 제거) 집 안 공유는 `wiki_lan_server.js`가 전담한다.
++- **`server.js`를 `0.0.0.0`으로 열지 말 것.** `/api/master-ingest`(스케줄러 실행)·`/api/config`(키 노출)가 같이 열린다. (노션 쓰기 프록시·`/api/sync-obsidian` 은 v4.0 에서 제거) 집 안 공유는 `wiki_lan_server.js`가 전담한다.
+ - **`wiki_lan_server.js`에 쓰기·실행 엔드포인트를 추가하지 말 것.** 라우트는 `/`, `/wiki`, `/favicon.svg`, `/api/wiki-topics`, `/api/wiki-search`, `/api/wiki-ask` 뿐이다.
+ - `.env`의 `WIKI_LAN_ALLOW_CIDR`(사설 대역 `/16`~`/32`, 쉼표로 여러 개)가 없거나 틀리면 **`127.0.0.1` 전용으로 떨어진다(fail-closed).** 가족이 "갑자기 안 된다"고 하면 `wiki-lan.log`의 `바인딩:` 줄부터 본다.
+ - 클라이언트 IP는 **소켓 주소만** 본다. `X-Forwarded-For`를 읽는 코드를 넣지 말 것(위조 가능).
+@@ -175,30 +186,49 @@ YouTube "AI 영상목록" (마스터 모드)
+ - **맥북이 집에 켜져 있을 때만 된다.** 덮개를 닫아 잠들거나 들고 나가면 가족은 접속할 수 없다. IPv6로는 열지 않는다(대역 검사가 IPv4 전제).
+ - `<맥이름>`은 `scutil --get LocalHostName`이다. macOS가 이름 충돌 시 끝 숫자를 올려 바꾸는 일이 있다 — 주소가 안 먹으면 이름부터 확인한다. 기동 로그의 `가족 접속:` 줄도 같은 값(`scutil --get LocalHostName`)을 찍는다. `os.hostname()`은 쓰지 않는다 — 2026-10-03 실측에서 `.local`로 풀리지 않는 이름을 줬다.
+ 
+-### 카카오톡 →「AI 꿀팁」→ Obsidian (v3.0)
+-
+-> **v4.0 2단계부터 아래 그림의 "Notion「AI 꿀팁」DB" 자리는 장부 `tips` 테이블이다.** `kakao_ingest.py` 는 노션을 부르지 않고(`POST /v1/pages` 없음), `sync_tips()` 는 장부를 읽는다. 노션 속성 타입 설명은 v3.x 기록이다. 그림·본문은 지시서 3 에서 다시 쓴다.
++### 카카오톡 → 장부 tips → Obsidian (v3.0 → v4.0)
+ 
+ ```
+ 카톡 '나와의 채팅' 내보내기 (수동, 월 1회) → ~/Downloads/KakaoTalk_Chat_*.csv
+   → scheduler.js (YouTube 인제스트 완료 후) → kakao_ingest.py --apply --if-new
+-       [최신 CSV mtime 비교(.kakao_state.json) → URL 정규화 → DB 전량 대조 → 신규만 POST /v1/pages → RESULT_JSON]
+-  → Notion「AI 꿀팁」DB (NOTION_TIPS_DB_ID)
++       [최신 CSV mtime 비교(.kakao_state.json) → URL 정규화 → 장부 tips 전량 url_key 대조 → 신규만 한 트랜잭션 INSERT → RESULT_JSON]
++  → 장부 data/library.db 의 tips 테이블
++  → sheet_mirror.py → 구글 시트 '꿀팁' 탭 (보기용)
+   → sync_obsidian.py:sync_tips()  [VAULT/AI 꿀팁/*.md, 신규만]
+   → wiki_ingest.py / build_obsidian_wiki.py  (기존 그대로 공유 — 합성 로직 두 벌 만들지 않는다)
+ ```
+ 
+-- `.env`: `NOTION_TIPS_DB_ID`(=`3bca3cbc…`), `KAKAO_EXPORT_DIR`. **`NOTION_DB_ID`(YouTube용)와 다른 변수명**이다. 섞으면 YouTube 파이프라인이 엉뚱한 DB에 쓴다.
+-- 「AI 꿀팁」속성 타입은 `lib/tips_notion.py` 상단 주석이 원본이다. `태그`는 **rich_text(쉼표 결합)**, `출처`는 **url 타입이지만 호스트만** 저장(`github.com`). 추측 금지 — 틀리면 400.
+-- `kakao_ingest.py`의 `--since` 기본값은 `2026-03-01`(DB 시작일). 그 이전 카톡 링크 103건은 쇼핑·개인 링크라 AI 자료가 아니다.
++- `.env`: `KAKAO_EXPORT_DIR`(읽기는 `lib/env_util.py`). 노션을 부르지 않는다.
++- 꿀팁 기본값(노션 시절과 같음): 제목이 비면 URL, 카테고리 `기타`, 상태 `미확인`, 중요도 `중`. 카테고리 값 목록은 `lib/kakao_parse.py` 상단. `tags` 는 JSON 배열, `source` 는 **호스트만**(`github.com`).
++- `kakao_ingest.py`의 `--since` 기본값은 `2026-03-01`. 그 이전 카톡 링크 103건은 쇼핑·개인 링크라 AI 자료가 아니다.
+ - **꿀팁 노트는 YouTube 로직과 격리된다.** `get_existing_vault_info()`가 `AI 꿀팁/` 폴더를 걷지 않으므로 고아 격리 분모·tags 동기화에 섞이지 않는다. 노트 프론트매터는 `link_url`이며 **`video_url`을 절대 쓰지 않는다** — 쓰는 순간 고아 격리 대상이 된다. `tags` 키도 쓰지 않는다(`keywords`) — `build_obsidian_wiki`가 tags 없는 파일을 폴더명 MOC(`_MOC/AI 꿀팁 MOC.md`)로 묶는다.
+ - 폴더는 **평면 구조**다. `wiki_ingest`·`build_obsidian_wiki`가 최상위 폴더 바로 아래 파일만 읽으므로 카테고리 하위 폴더를 만들면 위키에서 사라진다. 카테고리는 프론트매터 `category`로만 둔다.
+-- 같은 날 같은 추정 제목이 여럿이면(`노션 자료 (제목 미확인)`) 파일명이 충돌해 덮어쓰기 → notion_id 유실 → 매 실행 재생성된다. 충돌 시 **id 끝 6자리**를 붙인다(앞자리는 워크스페이스 공통 접두라 구분 불가).
++- 같은 날 같은 추정 제목이 여럿이면 파일명이 충돌한다. 충돌 시 **id 끝 6자리**를 붙인다(앞자리는 워크스페이스 공통 접두라 구분 불가).
+ - 꿀팁 노트는 본문이 거의 없다(제목·링크·태그·메모). `wiki_ingest`가 그대로 먹지만 추출 품질은 낮다. URL 본문을 긁어 Gemini로 요약하는 2차 확장은 미구현(선택).
+-- **실행은 `/usr/bin/python3`.** PATH의 `python3`(python.org 3.11)는 루트 인증서가 없어 Notion 호출이 `CERTIFICATE_VERIFY_FAILED`로 죽는다. (2026-09-10 실측: PATH 의 `python3` 는 이제 Homebrew 3.14.7 이고 Notion TLS 가 정상이다 — python.org 3.11 은 더 이상 PATH 에 없다. wiki-ingest 데몬은 `/opt/homebrew/bin/python3` 를 쓴다.)
+-- `.kakao_state.json`은 "이 CSV는 이미 봤다"는 **스킵 최적화일 뿐 중복 방지 장치가 아니다.** 중복 방지는 언제나 DB 대조다. `--apply`가 실패 없이 끝났을 때만 기록하고 dry-run·`--limit`은 기록하지 않는다.
+-- `scheduler.js`의 카톡 훅(`runKakaoIngest`)은 **절대 reject하지 않는다.** 카톡 단계가 Obsidian 동기화를 막으면 안 된다. `RESULT_JSON.error === 'auth'`면 로그만 남기고 다음 단계로 간다. (지시서 `docs/tasks/2026-09-06-scheduler-kakao-hook.md`)
+-- 꿀팁이 신규 추가되면 `sync_obsidian.py`가 **제한 없이** `wiki_ingest.py`를 띄운다(기존 동작). 처음 대량 적재할 때는 `sync_tips()`를 단독 실행한 뒤 `wiki_ingest.py --limit=20`으로 나눠 돌릴 것. 2026-09-06 첫 적재 시 99건이 한꺼번에 들어가 수동 중단했다.
++- **실행은 `/opt/homebrew/bin/python3`**(스케줄러·wiki-ingest 데몬과 같은 인터프리터).
++- `.kakao_state.json`은 "이 CSV는 이미 봤다"는 **스킵 최적화일 뿐 중복 방지 장치가 아니다.** 중복 방지는 언제나 장부 대조다. `--apply`가 실패 없이 끝났을 때만 기록하고 dry-run·`--limit`은 기록하지 않는다.
++- `scheduler.js`의 카톡 훅(`runKakaoIngest`)은 **절대 reject하지 않는다.** 카톡 단계가 Obsidian 동기화를 막으면 안 된다. (지시서 `docs/tasks/2026-09-06-scheduler-kakao-hook.md`)
++- 꿀팁이 신규 추가되면 `sync_obsidian.py`가 **제한 없이** `wiki_ingest.py`를 띄운다(기존 동작). 처음 대량 적재할 때는 `wiki_ingest.py --limit=20`으로 나눠 돌릴 것. 2026-09-06 첫 적재 시 99건이 한꺼번에 들어가 수동 중단했다.
++- 수동 즉시 반영은 Cowork 스킬 `kakao-tips-update`(장부판).
++
++### 구글 시트 미러 (v4.0 3단계) — 보기 전용, 장부 → 시트 단방향
++
++```
++scheduler.js (카톡 인제스트 뒤, Obsidian 동기화 앞) → runSheetMirror() → sheet_mirror.py
++   [장부 meta.sheet_wm_videos·sheet_wm_tips 이후 updated_at 인 행 → 200행씩 POST(JSON, 토큰은 본문)]
++   → Apps Script 웹앱 gas/sheet_mirror.gs (실행 계정 = 시트 소유자, 액세스 = 모든 사용자 + 토큰)
++   → 시트 탭 '영상'(11열) · '꿀팁'(13열). 1열 record_id 기준 있으면 제자리 덮어쓰기, 없으면 아래에 추가
++```
++
++- **원본은 장부다.** 시트를 고쳐도 장부로 돌아가지 않고 다음 변경 때 덮어써진다. 시트 쪽에 열을 추가하지 말 것 — 머리글이 다르면 웹앱이 쓰기를 거부(`headers_mismatch`)하고, 미러는 `--full` 로만 복구된다.
++- `.env`: `SHEET_MIRROR_URL`(웹앱 `/exec` 주소, `https://script.google.com/macros/s/` 만 허용) · `SHEET_MIRROR_TOKEN`(Apps Script 스크립트 속성 `MIRROR_TOKEN` 과 같은 값). **URL 이 없으면 아무것도 하지 않고 `skipped`** — 설치 전에도 스케줄러가 안전하다.
++- **변경분 = `updated_at` 워터마크.** 별도 outbox 테이블을 두지 않았다(스키마 무변경). 그래서 **장부를 고치는 코드는 반드시 `updated_at` 을 새로 찍어야 한다** — `lib/library.js` 의 `insertVideo`·`addTopic`·`updateStats`, `kakao_ingest.py` 가 그렇게 한다. 손으로 고쳤다면 `--full`.
++- 워터마크는 그 탭의 묶음을 **전부** 보낸 뒤에만 올린다. 중간 실패분은 다음 실행이 다시 보낸다(덮어쓰기라 무해). 전체 다시 쓰기(`--full`·첫 실행·주소 변경)는 시작할 때 `meta.sheet_target` 을 지우고 끝나야 다시 쓴다 — 끊기면 다음 실행도 전체.
++- **안전(1순위 원칙 그대로):** HTTP 401/403·404·토큰 불일치(`auth`)·스크립트 속성 없음(`not_configured`)·HTML 응답(로그인 화면 = 웹앱 액세스가 "모든 사용자"가 아님)은 **재시도 없이 즉시 중단(exit 2)**. 429·5xx·네트워크 오류·`busy` 만 2·4·8초 지수 백오프, 4회 시도 후 중단(exit 1). 웹앱은 HTTP 상태를 고를 수 없어 오류도 200 + `{ok:false, error}` 로 온다.
++- Apps Script 웹앱은 POST 에 302 를 주고 결과는 리다이렉트 주소(GET)에 있다. urllib 의 기본 동작(302 → GET, 본문 재전송 없음)이 정확히 그것이다. 리다이렉트 처리를 바꾸지 말 것.
++- `= + - @` 로 시작하는 글자는 웹앱이 앞에 `'` 를 붙여 수식이 되지 않게 한다(10-12 실데이터 238칸). 1열은 글자 서식(`@`).
++- 스케줄러 훅 `runSheetMirror` 는 **절대 reject 하지 않는다**(카톡 훅과 같은 원칙). 실패하면 텔레그램 메시지에 `📗 구글 시트 미러 ⚠️ 실패` 한 줄이 붙는다(`auth` 면 토큰·배포 확인).
++- 웹앱 코드를 고치면 Apps Script 에서 **배포 관리 → 새 버전**으로 같은 URL 을 유지한다(새 배포를 만들면 URL 이 바뀌어 다음 실행이 전체 다시 쓰기).
+ 
+ ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
+ 
+@@ -231,15 +261,17 @@ YouTube "AI 영상목록" (마스터 모드)
+ 
+ - **YouTube Data API v3** (읽기전용): `YOUTUBE_API_KEY`
+ - **YouTube OAuth v3** (재생목록 쓰기): `YOUTUBE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`
+-- **Gemini 2.5 Flash**: `GEMINI_API_KEY` (요약 + 분류 모두 사용)
+-- **Notion API** (`2022-06-28`): `NOTION_TOKEN`, `NOTION_DB_ID`
++- **Gemini 2.5 Flash**: `GEMINI_API_KEY`·`GEMINI_API_KEYS` (요약 + 분류 + Wiki 합성 + 검색 임베딩)
++- **Google Apps Script 웹앱** (v4.0, 시트 미러 받는 쪽): `SHEET_MIRROR_URL`, `SHEET_MIRROR_TOKEN`
+ - **Telegram Bot**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
++- (보관) **Notion API**: `NOTION_TOKEN`·`NOTION_DB_ID`·`NOTION_TIPS_DB_ID` — 앱은 쓰지 않는다. `scripts/notion_to_sqlite.py` 만 읽는다. 「Notion 데이터 이관」이 끝나 노션을 해지할 때 `lib/tips_notion.py`·`notion_to_sqlite.py` 와 함께 지운다.
+ 
+ 모든 API 키는 `.env`에서 로드. `scheduler.js`와 `lib/*.js` 각각 자체 `loadEnv()` 포함.
+ 
+-### v4.0 이행 중 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
++### v4.0 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
+ 
+-- **2단계 완료(2-a 쓰기 + 2-b 읽기): 장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py` 는 장부를 읽기 전용으로 읽어 노트를 만든다. 파이프라인에 노션 호출이 없다. 노션은 낡은 사본(해지 대기). 노션 키·`lib/tips_notion.py`·`notion_to_sqlite.py` 정리는 지시서 3.
++- **장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py`·`sheet_mirror.py` 는 장부를 읽어 노트·시트를 만든다(`sheet_mirror.py` 는 `meta` 의 `sheet_*` 키만 쓴다). 파이프라인에 노션 호출이 없고 앱 코드는 노션 모듈을 import 하지 않는다. 노션은 낡은 사본(해지 대기).
++- **장부는 이 맥에만 있는 원본이다.** 지우거나 새로 만들지 말 것 — 파일이 없으면 Node·Python 모두 만들지 않고 던진다. 복원은 `data/library.db.bak.*` 또는 맥 백업에서.
+ - 새 영상 노트 본문 = 장부 `summary`(Gemini 요약 원문 마크다운). 모양은 노션 시절 노트와 같다(빈 줄 · `**▶ 영상 보기: **URL` · `---` · 요약).
+ - **`meta.switched_at` 이 찍힌 장부에 `notion_to_sqlite.py --apply --replace` 를 돌리지 말 것** — 스크립트가 거부한다(앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다).
+ - journal_mode 는 기본(DELETE) 그대로 둔다. 접근이 scheduler → kakao_ingest → sync_obsidian 순차라 WAL 이 필요 없다. 겹치면 Node·Python 모두 busy_timeout 5초 대기.
+@@ -266,12 +298,7 @@ v4.0 2단계부터 `scheduler.js:loadLibraryCache()`(장부 `videos` 전량)가
+ - 채널 구독자 수는 `getBatchSubs()` 로 50개씩 순차 조회한다. 채널마다 `Promise.all` 로 부르던 방식(실행당 새 연결·유닛 약 450)으로 되돌리지 말 것.
+ - `scheduler.js` 는 `require.main === module` 일 때만 `main` 을 돈다. 이 가드를 지우면 테스트가 실제 실행을 일으킨다.
+ 
+-**한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. Notion 태그, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `lib/library.js:addTopic()`(v4.0, 장부의 현재 topics 를 다시 읽어 NFC 합집합)이 중복 태그 방지의 핵심.
+-
+-**Notion API 한계**:
+-- 페이지 생성 시 `children` 최대 100블록. 초과분은 `/v1/blocks/{id}/children`으로 append.
+-- `rich_text` 항목당 최대 2000자 (`splitRichText()` 사용).
+-- `rich_text` 배열 최대 100개 (`parseBoldRichText()` 결과 50개씩 묶어 paragraph 생성).
++**한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. 장부 topics·tags, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `lib/library.js:addTopic()`(v4.0, 장부의 현재 topics 를 다시 읽어 NFC 합집합)이 중복 태그 방지의 핵심.
+ 
+ **YouTube Quota**: 일일 10,000 유닛, 태평양시 자정 리셋 = **KST 16:00**. `playlistItems.insert` 50유닛, 대부분의 읽기 1유닛, `search.list` 100유닛. 안전 버퍼 500을 뺀 임계 **9,500유닛**(`QUOTA_THRESHOLD`) 도달 시 `pending_playlist_adds.json`에 적재 후 다음 실행에서 처리.
+ 
+@@ -363,7 +390,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ **Vault 경로 중첩 (2026-09-19)**: 실제 Vault는 `~/Documents/Obsidian/AI LLM Wiki/AI LLM Wiki` (바깥 `AI LLM Wiki/`는 빈 껍데기, `README-여기가-아님.txt` 있음). 동작에 문제 없음. 이 경로는 `sync_obsidian.py`·`build_obsidian_wiki.py`·`wiki_config.py`·`lib/wiki_search.js`·`cleanup_duplicates.py`·`notion_to_obsidian.js` 6곳 + `legacy_scripts/` 2곳 + Obsidian 앱 등록에 박혀 있다. **v3.3(2nd_Brain 2단계 — `build_search_index.py`에 `_Brain/` 포함)과 같은 작업지시서로 한 단계 승격한다. 그 전에 옮기지 말 것.** 절차: 데몬 전부 stop(`wiki-lan` 포함 — 같은 Vault 경로를 읽는다) → `mv` → 8파일 치환 → Obsidian 재등록 → `--orphans-dry-run --no-tips`로 "notion_id 2,542·고아 0" 확인 → 인덱스 재빌드 → 재기동.
+ 
+-**server.js 보안**: Notion API 프록시는 `ALLOWED_NOTION_PATHS` 화이트리스트만 통과. CORS는 `localhost:3000`만 허용. IP당 분당 120요청 rate limit.
++**server.js 보안**: `127.0.0.1` 전용 바인딩. CORS는 `localhost:3000`만 허용. IP당 분당 120요청 rate limit. 노션 프록시(v4.0 2-b)·`/api/sync-obsidian`(v4.0 3단계)은 제거됐다 — 다시 만들지 말 것.
+ 
+ ### launchd 데몬
+ 
+@@ -374,7 +401,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ | `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분) | 매일 17:30 | `/opt/homebrew/bin/python3` |
+ | `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | `KeepAlive`, `RunAtLoad`, `ThrottleInterval 60` — 상주 | `/opt/homebrew/bin/node` |
+ 
+-- **실제 동작하는 plist는 `~/Library/LaunchAgents/`에 있다.** 레포 루트의 plist 3개는 그 원본이며, 2026-08-17부터 3개 모두 실경로(`/Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap`)가 들어 있다. 예전에 `server`·`ytsummarizer` 두 개에 있던 `/Users/사용자명/youtube-notion-app` 플레이스홀더는 제거했다.
++- **실제 동작하는 plist는 `~/Library/LaunchAgents/`에 있다.** 레포 루트의 plist 3개는 그 원본이며, 2026-08-17부터 3개 모두 실경로(`<REPO_ROOT>` 의 절대경로)가 들어 있다. 예전에 `server`·`ytsummarizer` 두 개에 있던 `/Users/사용자명/youtube-notion-app` 플레이스홀더는 제거했다.
+ - 각 plist는 `ProgramArguments`·`WorkingDirectory` **2곳에 절대경로**가 박혀 있다. 경로 변경 시 6군데 동기화 + `plutil -lint` + unload/load.
+ - `install-server.sh`·`install-scheduler.sh`는 plist를 `~/Library/LaunchAgents/`로 복사하며 **sed로 이 실경로를 `$APP_DIR`로 치환**한다. 레포 경로를 바꾸면 두 스크립트의 sed 패턴도 같이 고쳐야 치환이 동작한다.
+ - `com.irichgreen.server`는 상주 프로세스라 **코드를 고쳐도 재기동 전까지 반영되지 않는다.**
+@@ -384,7 +411,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ### 보안 — 절대 커밋 금지
+ 
+-`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`
++`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`).
+ 
+ > ⚠️ **새 상태 파일을 만들면 `.gitignore` 패턴을 반드시 재확인한다.**
+ > `pending_playlist_adds.json*` 패턴이 `.dead.json`·`.backup.*.json`을 못 잡아 커밋될 뻔한 사고가 있었다(2026-08-17). 현재는 `pending_playlist_adds*`로 수정됨.
+@@ -416,6 +443,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-12 (v4.0 3단계 — v4.0 완료)** — 구글 시트 미러: `sheet_mirror.py`(장부 → 시트, `updated_at` 워터마크로 변경분만, 401/403·토큰·HTML 응답 즉시 중단, 5xx 지수 백오프) + `gas/sheet_mirror.gs`(Apps Script 웹앱, 토큰·탭 화이트리스트·머리글 대조·수식 방지), `scheduler.js:runSheetMirror()`(reject 없음, 실패는 텔레그램). 노션 정리: `kakao_ingest.py` 의 `tips_notion` import → `lib/env_util.py`, `block_to_md` → `scripts/notion_to_sqlite.py`(보관) — 앱은 노션 모듈을 import 하지 않는다. `lib/tips_notion.py`·`notion_to_sqlite.py`·`.env` `NOTION_*` 는 노션 해지 때 삭제. `server.js` `/api/sync-obsidian` 제거. `build_search_index.py` 프론트매터 한정(실 Vault 3,121 노트 옛 코드와 동일). `build_obsidian_wiki.py` 내용 같으면 안 쓰기(실 Vault 사본 재구성 2회차 쓰기 0 — 10-11 의 Vault 전체 mtime 갱신 해소) + 프론트매터 없는 파일에 관련 항목이 쌓이던 잠복 결함 수정. 문서 전면 갱신(README v4.0, 이 파일의 카톡 절·명령·파일 표, AGENTS.md 를 이 파일과 같은 내용으로). 테스트: `test_scheduler_guards.js` 19/19(+3), `test_kakao_ingest.py` 18/18(+1), 신규 `test_sheet_mirror.py` 45/45 · `test_build_wiki_index.py` 10/10, 기존 37/37 · 23/23. 지시서 `docs/tasks/2026-10-12-v4-sheet-mirror-cleanup.md`.
+ - **2026-10-11 (v4.0 2단계-b)** — 읽기 전환. `sync_obsidian.py` 가 장부(읽기 전용)를 읽어 노트를 만든다 — 노션 호출 0, 본문은 `summary` 마크다운(노션 시절 노트와 같은 모양). `notion_id`·`video_url` 은 프론트매터 안의 것만 센다. 고아 격리 3중 안전장치 유지, 꿀팁 고아는 보고만. `--dry-run` 신설. `server.js`·`index.html` 노션 프록시·토큰 테스트·브라우저 직접 처리 제거. `migrate_classify.js` 등 5개 → `legacy_scripts/`. 테스트: 신규 `test_sync_obsidian.py` 23/23, `test_notion_to_sqlite.py` 37/37(vault_ignored 1 → 0). 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-b.md`.
+ - **2026-10-11 (v4.0 2단계-a)** — 쓰기 전환. `scheduler.js` 의 노션 캐시·저장·주제 추가·통계 갱신을 로컬 장부(`lib/library.js`, `node:sqlite`)로 교체 — 노션 호출 0. `kakao_ingest.py` 는 장부 `tips` 에 한 트랜잭션으로 쓴다. `lib/library_db.py:open_existing()`(없으면 만들지 않음). `notion_to_sqlite.py --mark-switched` + 전환 후 `--apply --replace` 거부. WAL 미전환(순차 접근, busy_timeout 5초). 테스트: `test_scheduler_guards.js` 16/16(노션 캐시 5건 → 장부 9건), `test_notion_to_sqlite.py` 37/37, 신규 `test_kakao_ingest.py` 17/17. 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-a.md`.
+ - **2026-10-11 (v4.0 1단계)** — 노션 → SQLite 적재. 신규 `scripts/notion_to_sqlite.py`(노션 읽기 전용, 기본 dry-run, `--apply`·`--replace`·`--verify`·`--summary-check`), `scripts/test_notion_to_sqlite.py`(32/32, 네트워크 0회), `lib/library_schema.sql`·`lib/library_db.py`. `.gitignore` 에 `data/`. 적재 결과: 영상 페이지 3,189 → videos 2,986 · videos_dup 203 · tips 135, 요약 대조 무작위 100건 100/100 일치(속성=본문). 기존 파이프라인 코드 무변경(노션이 아직 원본). Vault 대조는 프론트매터 안의 notion_id 만 센다(Vault 루트 schema.md 본문 예시가 영상 id 로 잡혀 1차 dry-run 이 멈췄다). 노션에서 지워진 중복 꿀팁 page 의 잔여 노트 1건을 _trash/<시각>/AI 꿀팁/ 으로 격리. 지시서 `docs/tasks/2026-10-11-v4-notion-to-sqlite.md`·`-fix1.md`.
+diff --git a/README.md b/README.md
+index cafad61..c6c7725 100644
+--- a/README.md
++++ b/README.md
+@@ -1,11 +1,13 @@
+-# 🎬 YouTube + 📎 카카오톡 → Notion → Obsidian LLM Wiki
++# 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
+ 
+-**현재 버전: v3.2.1** (2026-10-05)
++**현재 버전: v4.0** (2026-10-12)
+ 
+ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
+-각각 **Notion DB**(영상 DB ·「AI 꿀팁」DB)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
++맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
++장부 내용은 **구글 시트**에 보기용 사본(미러)으로 자동 복사됩니다.
+ 
+-> v3.0부터 지식 소스가 **YouTube 영상 + 카카오톡 링크** 두 갈래가 되었습니다. Notion 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 완전히 공유합니다.
++> v4.0 에서 노션을 뺐습니다. 원본 = 장부(`data/library.db`), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없습니다.
++> v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
+ 
+ ---
+ 
+@@ -21,18 +23,20 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카
+ 
+ - 🎥 **YouTube 재생목록 자동 수집** — YouTube Data API v3로 재생목록 영상 전체 조회
+ - 🤖 **Gemini AI 자동 요약** — 영상 제목·설명·태그 기반 4섹션 보고서 자동 생성
+-- 📝 **Notion DB 자동 저장** — 요약 결과를 Notion 데이터베이스에 구조화하여 저장
+-- 🔄 **스마트 중복 방지** — Notion 전체 캐시 로드 후 메모리에서 즉시 중복 체크
+-- 📊 **통계 자동 업데이트** — 조회수·구독자수 15% 이상 변화 시만 Notion API 호출
+-- 📎 **카카오톡 링크 자동 수집 (v3.0)** — '나와의 채팅' 내보내기 CSV에서 AI 자료 링크를 추출·정규화해 Notion「AI 꿀팁」DB에 신규만 적재 (DB 대조 기반 멱등성)
+-- 📓 **Obsidian 자동 동기화** — 영상 DB +「AI 꿀팁」DB 신규 항목을 Obsidian 노트로 생성, LLM Wiki 자동 합성
+-- 🔗 **Wiki 링크 자동 구성** — 재생목록별 MOC, 채널별 목차, 키워드 링크 자동 생성
+-- 📱 **텔레그램 알림** — 노션 저장 결과 + Obsidian 동기화 결과 통합 전송
++- 🗄️ **로컬 장부 저장 (v4.0)** — 요약 결과를 맥의 SQLite 파일 `data/library.db` 에 저장 (외부 서비스 의존 없음)
++- 🔄 **스마트 중복 방지** — 장부 전량을 캐시로 읽어 메모리에서 즉시 중복 체크 ("전부 읽었거나, 던지거나")
++- 📊 **통계 자동 업데이트** — 조회수·구독자수 15% 이상 변화 시만 갱신
++- 📎 **카카오톡 링크 자동 수집 (v3.0)** — '나와의 채팅' 내보내기 CSV에서 AI 자료 링크를 추출·정규화해 장부 `tips` 에 신규만 적재 (장부 대조 기반 멱등성)
++- 📓 **Obsidian 자동 동기화** — 장부의 영상·꿀팁 신규 항목을 Obsidian 노트로 생성, LLM Wiki 자동 합성
++- 📗 **구글 시트 미러 (v4.0)** — 장부의 영상·꿀팁을 구글 시트 두 탭에 보기용으로 복사 (매 실행 끝에 변경분만)
++- 🔗 **Wiki 링크 자동 구성** — 재생목록별 MOC, 채널별 목차, 키워드 링크 자동 생성 (내용이 같으면 파일을 다시 쓰지 않음)
++- 🔎 **Wiki 검색 (v3.2)** — 이 맥·집 안 다른 컴퓨터·Claude(MCP)에서 의미 검색 + AI 답변
++- 📱 **텔레그램 알림** — 장부 저장·카톡·시트·Obsidian 결과 통합 전송
+ - ⏰ **launchd 자동 스케줄링** — Mac 로그인 시 서버 자동 시작, 6시간 간격 스케줄러 실행
+ 
+ ---
+ 
+-## 🏗️ 시스템 아키텍처 (v3.0)
++## 🏗️ 시스템 아키텍처 (v4.0)
+ 
+ ### 전체 데이터 흐름
+ 
+@@ -48,7 +52,7 @@ flowchart TD
+     subgraph TRIGGER["⏰ 실행 트리거"]
+         SCHED["launchd · com.irichgreen.ytsummarizer\n00 / 06 / 12 / 18시 → scheduler.js"]
+         WEBUI["웹 UI localhost:3000\nserver.js (SSE)"]
+-        WIKI_SCHED["launchd · com.irichgreen.wiki-ingest\n매일 03:00 → wiki_ingest.py --full"]
++        WIKI_SCHED["launchd · com.irichgreen.wiki-ingest\n매일 17:30 → wiki_ingest.py (증분)"]
+     end
+ 
+     SCHED --> ENTRY
+@@ -56,45 +60,51 @@ flowchart TD
+ 
+     subgraph YT["🎬 ① YouTube 인제스트 (scheduler.js, Node)"]
+         ENTRY["processMasterIngest()"]
+-        FETCH["영상 메타 조회 (Data API v3)\n+ Notion 캐시 · 중복 체크"]
++        FETCH["영상 메타 조회 (Data API v3)\n+ 장부 캐시 · 중복 체크"]
+         GEMINI["lib/classifier.js\nGemini 2.5 Flash · thinkingBudget 0\n4섹션 요약 + 토픽 1~5개"]
+-        NSAVE["saveToNotionWithTopics()"]
++        LSAVE["saveToLibrary()\nlib/library.js (node:sqlite)"]
+         YSAVE["lib/youtube_oauth.js\nplaylistItems.insert (50유닛)"]
+-        ENTRY --> FETCH --> GEMINI --> NSAVE --> YSAVE
++        ENTRY --> FETCH --> GEMINI --> LSAVE --> YSAVE
+     end
+     MASTER -->|Data API v3| FETCH
+ 
+-    subgraph KK["📎 ② 카카오톡 인제스트 (kakao_ingest.py, Python) — v3.0"]
++    subgraph KK["📎 ② 카카오톡 인제스트 (kakao_ingest.py, Python)"]
+         KFIND["최신 CSV 탐지\n.kakao_state.json (mtime) 으로\n이미 본 CSV 는 즉시 종료"]
+         KPARSE["lib/kakao_parse.py\nURL 추출 · 트래킹 파라미터 제거\n· 정규화 키 · 제목/카테고리 추정"]
+-        KDEDUP["lib/tips_notion.py\n「AI 꿀팁」DB 전량 조회\nURL 키 대조 → 신규만"]
+-        KPUSH["POST /v1/pages\n350ms 간격 · 401/403 즉시 종료"]
+-        KFIND --> KPARSE --> KDEDUP --> KPUSH
++        KDEDUP["장부 tips 전량\nurl_key 대조 → 신규만\n한 트랜잭션"]
++        KFIND --> KPARSE --> KDEDUP
+     end
+     CSV --> KFIND
+     SCHED -->|"YouTube 완료 후\n--apply --if-new"| KFIND
+ 
+-    NSAVE --> NOTION_V[("📋 Notion 영상 DB\nNOTION_DB_ID")]
+-    KPUSH --> NOTION_T[("📋 Notion「AI 꿀팁」DB\nNOTION_TIPS_DB_ID")]
++    LSAVE --> LIB[("🗄️ 로컬 장부 data/library.db\nvideos · tips · videos_dup · meta")]
++    KDEDUP --> LIB
+     YSAVE -->|"quota 여유"| YT_PL[("📺 YouTube 토픽 재생목록 33개")]
+     YSAVE -->|"quota 초과·실패"| PENDING[("⏳ pending_playlist_adds.json\n(dead-letter 격리 · 연속실패 10회 차단)")]
+     PENDING -->|"다음 실행 시 소진"| YT_PL
+ 
+-    subgraph OBS["📓 ③ Obsidian LLM Wiki (Python, 두 소스 공유)"]
+-        SYNC["sync_obsidian.py"]
+-        SYNC_V["sync_new_pages()\n영상 노트 → <토픽>/*.md\nvideo_url · tags"]
+-        SYNC_T["sync_tips() — v3.0\n꿀팁 노트 → AI 꿀팁/*.md\nlink_url · keywords · category"]
++    subgraph MIR["📗 ③ 구글 시트 미러 (sheet_mirror.py → Apps Script 웹앱)"]
++        SM["updated_at 워터마크 이후 행만\n200행씩 POST · 토큰은 본문\n401/403 즉시 중단 · 5xx 백오프"]
++        GS[("구글 시트\n탭 '영상' · '꿀팁' (보기 전용)")]
++        SM --> GS
++    end
++    LIB --> SM
++
++    subgraph OBS["📓 ④ Obsidian LLM Wiki (Python, 두 소스 공유)"]
++        SYNC["sync_obsidian.py (장부 읽기 전용)"]
++        SYNC_V["영상 노트 → <토픽>/*.md\nvideo_url · tags · notion_id(=record_id)"]
++        SYNC_T["sync_tips()\n꿀팁 노트 → AI 꿀팁/*.md\nlink_url · keywords · category"]
+         ORPHAN["quarantine_orphans()\n영상 노트만 · 3중 안전장치\n→ _trash/"]
+-        WIKI_INGEST["wiki_ingest.py\nGemini · 엔티티/개념 추출\n(230 RPD 상한)"]
+-        BUILD["build_obsidian_wiki.py\nMOC 재구성 · 키워드 허브 27개\n_MOC/AI 꿀팁 MOC.md 포함"]
++        BUILD["build_obsidian_wiki.py\nMOC 재구성 · 키워드 허브\n내용 같으면 안 씀"]
++        WIKI_INGEST["wiki_ingest.py\nGemini · 엔티티/개념 추출"]
++        IDX["build_search_index.py\n임베딩 인덱스 증분"]
+         VAULT[("📁 Obsidian Vault\nAI LLM Wiki/")]
+-        SYNC --> SYNC_V --> ORPHAN --> SYNC_T --> BUILD --> WIKI_INGEST --> VAULT
++        SYNC --> SYNC_V --> ORPHAN --> SYNC_T --> BUILD --> WIKI_INGEST --> IDX --> VAULT
+     end
+-    NOTION_V -->|"영상 처리 완료 후 1회"| SYNC
+-    NOTION_T --> SYNC_T
++    LIB --> SYNC
+     WIKI_SCHED --> WIKI_INGEST
+ 
+-    VAULT --> TG["📱 Telegram 통합 알림 (1개 메시지)\nYouTube 결과 + 꿀팁 신규 + Obsidian 결과"]
++    VAULT --> TG["📱 Telegram 통합 알림 (1개 메시지)\nYouTube 결과 + 꿀팁 신규 + 시트 + Obsidian 결과"]
+     YT_PL --> TG
+ ```
+ 
+@@ -102,15 +112,16 @@ flowchart TD
+ 
+ | 순서 | 단계 | 실행 주체 | 입력 | 출력 | 아무 것도 없을 때 |
+ |:--:|---|---|---|---|---|
+-| 1 | YouTube 마스터 인제스트 | `scheduler.js` | 'AI 영상목록' 신규 영상 | Notion 영상 DB 행 + 토픽 재생목록 추가 | Notion 캐시 대조 후 0건 처리 |
++| 1 | YouTube 마스터 인제스트 | `scheduler.js` | 'AI 영상목록' 신규 영상 | 장부 `videos` 행 + 토픽 재생목록 추가 | 장부 캐시 대조 후 0건 처리 |
+ | 2 | 대기 큐 소진 | `scheduler.js:flushPendingQueue()` | `pending_playlist_adds.json` | 재생목록 추가 (quota 한도 내) | 큐 비어 있으면 생략 |
+-| 3 | 카톡 인제스트 (v3.0) | `kakao_ingest.py --apply --if-new` | `~/Downloads` 최신 CSV | Notion「AI 꿀팁」신규 행 | 같은 CSV(mtime)면 Notion 조회 없이 즉시 종료 |
+-| 4 | 영상 노트 동기화 | `sync_obsidian.py:sync_new_pages()` | Notion 영상 DB | `VAULT/<토픽>/*.md` | 0건 |
+-| 5 | 고아 격리 | `sync_obsidian.py:quarantine_orphans()` | Vault 영상 노트 vs Notion | `_trash/<ts>/` 이동 | 3중 안전장치 하나라도 걸리면 아무것도 안 함 |
+-| 6 | 꿀팁 노트 동기화 (v3.0) | `sync_obsidian.py:sync_tips()` | Notion「AI 꿀팁」DB | `VAULT/AI 꿀팁/*.md` | 0건 |
+-| 7 | MOC·키워드 재구성 | `build_obsidian_wiki.py` | Vault 전체 | `_MOC/*.md`, 노트 하단 관련 항목 | 4·5·6이 전부 0건이면 생략 |
+-| 8 | Wiki 합성 | `wiki_ingest.py` | 미처리 노트 | `wiki/entities`, `wiki/concepts` | 신규 노트 없으면 생략 |
+-| 9 | 알림 | `scheduler.js` | 1·3·4~8 결과 | Telegram 1개 메시지 | 변경 0이면 발송 생략 |
++| 3 | 카톡 인제스트 | `kakao_ingest.py --apply --if-new` | `~/Downloads` 최신 CSV | 장부 `tips` 신규 행 | 같은 CSV(mtime)면 장부 조회 없이 즉시 종료 |
++| 4 | 시트 미러 (v4.0) | `sheet_mirror.py` | 장부 중 `updated_at` > 워터마크 | 시트 '영상'·'꿀팁' 탭 덮어쓰기/추가 | 바뀐 행 0이면 요청 0. `.env` 미설정이면 건너뜀 |
++| 5 | 영상 노트 동기화 | `sync_obsidian.py` | 장부 `videos` | `VAULT/<토픽>/*.md` | 0건 |
++| 6 | 고아 격리 | `sync_obsidian.py:quarantine_orphans()` | Vault 영상 노트 vs 장부 | `_trash/<ts>/` 이동 | 3중 안전장치 하나라도 걸리면 아무것도 안 함 |
++| 7 | 꿀팁 노트 동기화 | `sync_obsidian.py:sync_tips()` | 장부 `tips` | `VAULT/AI 꿀팁/*.md` | 0건 |
++| 8 | MOC·키워드 재구성 | `build_obsidian_wiki.py` | Vault 전체 | `_MOC/*.md`, 노트 하단 관련 항목 | 내용이 같으면 파일을 쓰지 않음 (v4.0) |
++| 9 | Wiki 합성 | `wiki_ingest.py` | 미처리 노트 | `_wiki/entities`, `_wiki/concepts` | 신규 노트 없으면 생략 |
++| 10 | 알림 | `scheduler.js` | 1·3·4·5~9 결과 | Telegram 1개 메시지 | 변경 0이면 발송 생략 (시트 실패는 알림) |
+ 
+ ### 두 소스의 격리 원칙
+ 
+@@ -120,8 +131,8 @@ flowchart TD
+ |---|---|---|
+ | 폴더 | `<토픽명>/` (33개) | `AI 꿀팁/` (평면, 하위 폴더 없음) |
+ | 원본 링크 키 | `video_url` | `link_url` — **`video_url` 절대 금지** |
+-| 분류 키 | `tags: [..]` (Notion 주제와 동기화) | `keywords: [..]` + `category` — `tags` 없음 → 폴더명 MOC |
+-| 고아 격리 대상 | ✅ | ❌ (`get_existing_vault_info()`가 폴더를 걷지 않음) |
++| 분류 키 | `tags: [..]` (장부 `topics` 와 동기화) | `keywords: [..]` + `category` — `tags` 없음 → 폴더명 MOC |
++| 고아 격리 대상 | ✅ | ❌ (보고만, `RESULT_JSON.tips_orphans`) |
+ | 파일명 | `<채널>_<제목>_<날짜>.md` | `<저장일>_<제목>.md` (충돌 시 `_<id 끝 6자리>`) |
+ | Wiki 합성 | ✅ 본문 요약 기반 | ✅ 제목·태그·메모 기반 (본문이 거의 없어 추출 품질은 낮음) |
+ 
+@@ -131,45 +142,47 @@ flowchart TD
+ 
+ ```
+ Youtube_Notion_Grap/
+-├── server.js                          # 웹 서버 + Notion API 프록시 + Obsidian 트리거
+-├── scheduler.js                       # 자동 스케줄러 (6시간 간격, 마스터 인제스트 포함)
++├── server.js                          # 웹 서버 (127.0.0.1:3000) — UI · 마스터 인제스트 SSE · Wiki 검색
++├── scheduler.js                       # 자동 스케줄러 (6시간 간격) — YouTube → 장부 → 카톡 → 시트 → Obsidian → 알림
+ ├── index.html                         # 웹 앱 UI (단일 파일)
+ ├── package.json                       # Node.js CommonJS 설정
+-├── playlists.json                     # 등록된 재생목록 목록
++├── playlists.json                     # 등록된 재생목록 목록 (gitignore)
+ ├── .env                               # API 키 (gitignore — 절대 커밋 금지)
++├── data/library.db                    # (v4.0) 로컬 원본 장부 — SQLite (gitignore, 개인 요약 전체)
+ ├── favicon.svg                        # 브라우저 탭 아이콘
+-├── migrate_classify.js                # 기존 영상 일괄 재분류 스크립트 (v102)
+-├── oauth_setup.js                     # YouTube OAuth refresh_token 1회 발급 도구 (v102)
+-├── notion_to_obsidian.js              # Notion → Obsidian 일회성 마이그레이션
+-├── wiki_lan_server.js                 # (v3.2) 집 안 전용 읽기 전용 Wiki 검색 서버 (포트 3100, 허용 대역 + 루프백만)
++├── oauth_setup.js                     # YouTube OAuth refresh_token 1회 발급 도구
++├── kakao_ingest.py                    # 카톡 CSV → 장부 tips (기본 dry-run, --apply / --if-new)
++├── sheet_mirror.py                    # (v4.0) 장부 → 구글 시트 미러 (변경분만, --dry-run / --full / --check)
++├── gas/sheet_mirror.gs                # (v4.0) 시트 쪽 Apps Script 웹앱 (받는 쪽, 설치 순서는 파일 머리 주석)
++├── sync_obsidian.py                   # 장부 → Obsidian 증분 동기화 (영상·꿀팁 노트, 고아 격리, --dry-run)
++├── build_obsidian_wiki.py             # MOC + 채널 목차 + 키워드 링크 빌더 (내용 같으면 안 씀)
++├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 위키 페이지 합성
++├── wiki_config.py                     # Wiki Ingest 공통 설정 및 Gemini 호출 유틸
++├── build_search_index.py              # 검색 인덱스(임베딩) 증분 빌드 (프론트매터의 notion_id 기준)
++├── wiki_lan_server.js                 # (v3.2) 집 안 전용 읽기 전용 Wiki 검색 서버 (포트 3100)
+ ├── wiki.html                          # Wiki 검색 화면 (server.js·wiki_lan_server.js 공용)
+ ├── wiki_mcp.js                        # Wiki 검색 stdio MCP (search_wiki, read_note)
+-├── build_search_index.py              # 검색 인덱스(임베딩) 증분 빌드
+-├── kakao_ingest.py                    # (v3.0) 카톡 CSV → Notion「AI 꿀팁」 (기본 dry-run, --apply / --if-new)
+-├── sync_obsidian.py                   # Obsidian 증분 동기화 (영상 노트 + 꿀팁 노트, 고아 격리, 위키 인제스트 연동)
+-├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 위키 페이지 합성 스크립트 (v111)
+-├── wiki_config.py                     # Wiki Ingest 공통 설정 및 API 호출 유틸 (v111)
+-├── build_obsidian_wiki.py             # MOC + 채널 목차 + 키워드 링크 빌더
+-├── cleanup_duplicates.py              # 노션/Obsidian 중복 정리 도구
+-├── com.irichgreen.server.plist        # launchd 서버 자동시작 설정
+-├── com.irichgreen.ytsummarizer.plist  # launchd 스케줄러 설정
+-├── com.irichgreen.wiki-ingest.plist   # launchd 일일 Wiki 인제스트 스케줄러 (v111)
+-├── com.irichgreen.wiki-lan.plist      # (v3.2) launchd 집 안 전용 검색 서버 (상주, ThrottleInterval 60)
+-├── install-server.sh                  # 서버 자동시작 설치 스크립트
+-├── install-scheduler.sh               # 스케줄러 설치 스크립트
+-├── install-wiki-ingest.sh             # 일일 Wiki 인제스트 스케줄러 설치 스크립트 (v111)
++├── com.irichgreen.*.plist             # launchd 원본 (server · ytsummarizer · wiki-ingest · wiki-lan)
++├── install-*.sh                       # launchd 설치 스크립트
+ ├── lib/
+-│   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert (v102)
+-│   ├── wiki_search.js                 # Wiki 검색 코어 (임베딩 코사인 + 키워드 폴백 + Gemini 401/403 래치)
+-│   ├── classifier.js                  # Gemini 기반 토픽 분류기 (v102)
+-│   ├── kakao_parse.py                 # (v3.0) URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
+-│   └── tips_notion.py                 # (v3.0) 「AI 꿀팁」DB 조회/생성 래퍼 (속성 타입 표 고정)
++│   ├── library.js                     # (v4.0) 장부 Node 헬퍼 (openLibrary·insertVideo·addTopic·updateStats)
++│   ├── library_db.py                  # (v4.0) 장부 Python 헬퍼 (open_existing — 없으면 만들지 않음)
++│   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 1)
++│   ├── env_util.py                    # (v4.0) .env 읽기 (의존성 없음)
++│   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
++│   ├── classifier.js                  # Gemini 기반 토픽 분류기
++│   ├── wiki_search.js                 # Wiki 검색 코어 (임베딩 코사인 + 키워드 폴백)
++│   ├── kakao_parse.py                 # URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
++│   └── tips_notion.py                 # (보관) 노션 래퍼 — notion_to_sqlite.py 만 쓴다. 노션 해지 때 삭제
+ ├── scripts/
+-│   ├── clean_pending_queue.js         # (v2.5) 대기 큐 중복 제거 + dead-letter 격리
+-│   └── test_scheduler_guards.js       # (v3.2.1) 스케줄러 캐시·재시도·배치 조회 회귀 테스트 (네트워크 0회)
+-├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md)
+-├── CLAUDE.md                          # 구조·제약·안전장치 — 코드 질문은 여기부터
+-└── README.md                          # 이 문서 (v3.0부터 README.html 은 만들지 않는다)
++│   ├── notion_to_sqlite.py            # (보관) v4.0 1단계 노션 → 장부 적재 · --verify (장부 ↔ Vault 대조)
++│   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
++│   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
++│   └── test_*.{js,py}                 # 회귀 테스트 6종 (네트워크 0회)
++├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
++├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
++├── CLAUDE.md                          # 구조·제약·안전장치 — 코드 질문은 여기부터 (AGENTS.md 는 같은 내용)
++└── README.md                          # 이 문서 (README.html 은 만들지 않는다)
+ ```
+ 
+ ---
+@@ -178,12 +191,13 @@ Youtube_Notion_Grap/
+ 
+ | 분류 | 기술 |
+ |------|------|
+-| **Runtime** | Node.js v25+, Python 3 |
+-| **Backend** | Node.js HTTP 서버 (Notion API 프록시) |
++| **Runtime** | Node.js (데몬 `/opt/homebrew/bin/node`, `node:sqlite` 사용), Python 3 (`/opt/homebrew/bin/python3`) |
++| **Backend** | Node.js HTTP 서버 (`127.0.0.1` 전용) |
+ | **Frontend** | Vanilla HTML/CSS/JavaScript (Single File) |
+ | **AI 요약** | Google Gemini 2.5 Flash API |
+-| **데이터 소스** | YouTube Data API v3 |
+-| **저장소** | Notion Database API |
++| **데이터 소스** | YouTube Data API v3, 카카오톡 내보내기 CSV |
++| **저장소** | 로컬 SQLite (`data/library.db`) — v4.0 |
++| **보기용 사본** | 구글 시트 + Apps Script 웹앱 — v4.0 |
+ | **Wiki** | Obsidian (로컬 마크다운 지식베이스) |
+ | **알림** | Telegram Bot API, Gmail SMTP |
+ | **스케줄링** | macOS launchd |
+@@ -197,19 +211,20 @@ Youtube_Notion_Grap/
+ ```env
+ YOUTUBE_API_KEY=AIzaSy...
+ GEMINI_API_KEY=AIzaSy...
+-NOTION_TOKEN=ntn_...
+-NOTION_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx        # YouTube 영상 DB
++GEMINI_API_KEYS=AIzaSy...,AIzaSy...                 # 무료 키 로테이션 (쉼표)
+ 
+-# (v3.0) 카카오톡 →「AI 꿀팁」 — NOTION_DB_ID 와 반드시 다른 변수명. 섞으면 영상 파이프라인이 엉뚱한 DB에 쓴다
+-NOTION_TIPS_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   # 「AI 꿀팁」DB (같은 NOTION_TOKEN 통합에 연결 필요)
+ KAKAO_EXPORT_DIR=/Users/<사용자>/Downloads          # KakaoTalk_Chat_안진훈_*.csv 가 떨어지는 폴더
+ 
++# (v4.0) 구글 시트 미러 — 둘 다 없으면 미러를 건너뛴다 (설치 순서: gas/sheet_mirror.gs 머리 주석)
++SHEET_MIRROR_URL=https://script.google.com/macros/s/.../exec
++SHEET_MIRROR_TOKEN=<openssl rand -hex 24 로 만든 값 — Apps Script 스크립트 속성 MIRROR_TOKEN 과 같게>
++
+ # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
+ WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
+ WIKI_LAN_ASK_DAILY_MAX=20                           # AI 답변 24시간 총량 (Gemini 무료 한도 보호)
+ 
+-# (v3.2.1) 새로 만든 빈 Notion DB 로 처음 돌릴 때만 true. 평소에는 넣지 않는다 — 캐시 0건이면 저장 없이 중단하는 안전장치를 끈다
+-# NOTION_CACHE_ALLOW_EMPTY=true
++# (v4.0) 새로 만든 빈 장부로 처음 돌릴 때만 true. 평소에는 넣지 않는다 — 장부 0건이면 저장 없이 중단하는 안전장치를 끈다
++# LIBRARY_ALLOW_EMPTY=true
+ 
+ TELEGRAM_ENABLED=true
+ TELEGRAM_BOT_TOKEN=1234567890:AAG...
+@@ -220,12 +235,17 @@ EMAIL_FROM=your@gmail.com
+ EMAIL_TO=recipient@email.com
+ EMAIL_APP_PASS=xxxx xxxx xxxx xxxx
+ 
+-# YouTube OAuth 2.0 (v102 — 토픽 재생목록 자동 추가용)
+-# oauth_setup.js 실행 후 자동 기입됩니다
++# YouTube OAuth 2.0 — 토픽 재생목록 자동 추가용. oauth_setup.js 실행 후 자동 기입
+ YOUTUBE_OAUTH_CLIENT_ID=...
+ YOUTUBE_OAUTH_CLIENT_SECRET=...
+ YOUTUBE_OAUTH_REFRESH_TOKEN=...
+ YOUTUBE_MASTER_PLAYLIST_ID=PLxxxxxxxxxxxxxxxxxxxxxxxx
++YOUTUBE_PLAYLIST_SYNC=true
++
++# (보관) 노션 — scripts/notion_to_sqlite.py 만 읽는다. 앱은 쓰지 않는다. 노션 해지 때 함께 지운다
++NOTION_TOKEN=ntn_...
++NOTION_DB_ID=...
++NOTION_TIPS_DB_ID=...
+ ```
+ 
+ ---
+@@ -233,10 +253,9 @@ YOUTUBE_MASTER_PLAYLIST_ID=PLxxxxxxxxxxxxxxxxxxxxxxxx
+ ## 📦 설치 및 실행
+ 
+ ### 1. 사전 요구사항
+-- Node.js v18 이상, Python 3
+-- YouTube Data API v3 키
+-- Google Gemini API 키
+-- Notion Integration 토큰 + 데이터베이스 ID
++- Node.js 22.5 이상 (`node:sqlite`), Python 3
++- YouTube Data API v3 키, Google Gemini API 키
++- 장부 `data/library.db` (원본 — 새로 만들지 않는다. 없으면 백업에서 복원)
+ 
+ ### 2. 서버 및 스케줄러 실행
+ ```bash
+@@ -248,20 +267,32 @@ bash install-server.sh
+ bash install-scheduler.sh
+ ```
+ 
+-### 3. 카카오톡 링크 인제스트 (v3.0)
++### 3. 카카오톡 링크 인제스트
+ 
+ ```bash
+ # 카카오톡 PC → '나와의 채팅' → 대화 내보내기 → ~/Downloads 에 CSV 저장 (월 1회 정도)
+ # 이후는 스케줄러가 자동 처리한다. 수동으로 돌릴 때는 반드시 dry-run 부터.
+-/usr/bin/python3 kakao_ingest.py                    # dry-run — 생성될 행을 표로만 출력
+-/usr/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 생성 → Notion 육안 확인
+-/usr/bin/python3 kakao_ingest.py --apply            # 전량
+-/usr/bin/python3 lib/tips_notion.py                 # 「AI 꿀팁」DB 상태 (건수·카테고리 분포)
++/opt/homebrew/bin/python3 kakao_ingest.py                    # dry-run — 생성될 행을 표로만 출력
++/opt/homebrew/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 → 장부 확인
++/opt/homebrew/bin/python3 kakao_ingest.py --apply            # 전량
+ ```
+ 
+-> 인터프리터는 `/usr/bin/python3` 또는 `/opt/homebrew/bin/python3`. PATH 의 `python3`(python.org 3.11)는 루트 인증서가 없어 Notion 호출이 SSL 오류로 죽는다.
++### 4. 구글 시트 미러 (v4.0)
++
++1. 구글 시트를 하나 만들고 확장 프로그램 → Apps Script 에 `gas/sheet_mirror.gs` 를 붙여 넣는다.
++2. 맥에서 토큰을 만들어 `.env` 의 `SHEET_MIRROR_TOKEN` 과 Apps Script 스크립트 속성 `MIRROR_TOKEN` 에 같은 값을 넣는다.
++3. 웹 앱으로 배포(실행 계정 "나", 액세스 "모든 사용자") → URL 을 `.env` 의 `SHEET_MIRROR_URL` 에 넣는다.
++4. 첫 전송과 대조:
++
++```bash
++/opt/homebrew/bin/python3 sheet_mirror.py --dry-run   # 보낼 건수만 (네트워크 0)
++/opt/homebrew/bin/python3 sheet_mirror.py             # 처음엔 두 탭을 비우고 전부 보낸다 (약 3천 행, 요청 18회 = 탭 비우기 2 + 영상 15 + 꿀팁 1)
++/opt/homebrew/bin/python3 sheet_mirror.py --check     # 시트 행 수 = 장부 행 수 인지
++```
+ 
+-### 4. Wiki 검색 (v3.2)
++> 시트는 보기 전용 사본이다. 시트를 고쳐도 장부로 돌아가지 않고, 다음 변경 때 덮어써진다. 열을 추가하지 말 것(머리글이 다르면 쓰기를 멈춘다 → `--full`).
++
++### 5. Wiki 검색 (v3.2)
+ 
+ | 입구 | 프로세스 | 바인딩 | 용도 |
+ |---|---|---|---|
+@@ -274,46 +305,28 @@ bash install-scheduler.sh
+ 2. `cp com.irichgreen.wiki-lan.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.irichgreen.wiki-lan.plist`
+ 3. macOS 방화벽에서 `node` 수신 연결 허용 (관리자 권한 필요 — 사람이 직접)
+ 
+-> 제약: 맥이 집에 켜져 있고 깨어 있을 때만 접속된다. 읽기 전용(검색·AI 답변)이며, Notion 쓰기·인제스트 실행 엔드포인트는 이 서버에 없다.
++> 제약: 맥이 집에 켜져 있고 깨어 있을 때만 접속된다. 읽기 전용(검색·AI 답변)이며, 인제스트 실행 엔드포인트는 이 서버에 없다.
+ 
+ ---
+ 
+ ## 📓 Obsidian LLM Wiki
+ 
+-노션에 저장된 AI 영상 요약을 Obsidian 지식베이스로 자동 변환하며, `wiki_ingest.py`를 통해 지식 간의 관계를 분석하여 위키 페이지를 합성합니다. 자세한 구조는 [CLAUDE.md](CLAUDE.md)를 참조하세요.
++장부에 저장된 AI 영상 요약·꿀팁을 Obsidian 지식베이스로 자동 변환하며, `wiki_ingest.py`를 통해 지식 간의 관계를 분석하여 위키 페이지를 합성합니다. 자세한 구조는 [CLAUDE.md](CLAUDE.md)를 참조하세요.
+ 
+ ---
+ 
+-## 📊 Notion DB 컬럼 구조
+-
+-| 컬럼명 | 타입 | 설명 |
+-|--------|------|------|
+-| 영상 제목 | Title | YouTube 영상 제목 |
+-| 요약 내용 | Rich Text | Gemini AI 생성 4섹션 보고서 |
+-| 유튜브 채널 | Rich Text | 채널명 |
+-| 업로드 일자 | Date | 실제 영상 업로드 날짜 |
+-| 조회수 | Number | 최신 조회수 |
+-| 구독자수 | Number | 채널 구독자수 |
+-| 영상 URL | URL | YouTube 영상 링크 |
+-| 썸네일 URL | URL | 영상 썸네일 이미지 |
+-| 처리 상태 | Select | 완료 / 오류 |
+-| 주제 | Multi-Select | 재생목록명 (NFC 정규화 적용) |
+-
+-### 「AI 꿀팁」DB (v3.0) — `NOTION_TIPS_DB_ID`
+-
+-속성 타입은 `lib/tips_notion.py` 상단 주석이 원본이다. 추측해서 쓰면 400이 난다.
+-
+-| 컬럼명 | 타입 | 값 · 비고 |
+-|--------|------|------|
+-| 제목 | Title | 규칙 기반 추정 (`<레포명> (GitHub 레포)`, `노션 자료 (…)`). 슬러그에 한글이 없으면 `(제목 미확인)` |
+-| URL | URL | 트래킹 파라미터(`utm_*`, `fbclid`, `pvs`, `source`…)를 제거한 원본 링크 |
+-| 출처 | URL | **호스트만** 저장 (`github.com`, `xxx.notion.site`) |
+-| 태그 | Rich Text | 쉼표 결합 문자열 (`ClaudeCode,GitHub`) — multi_select 가 아니다 |
+-| 카테고리 | Select | 프롬프트 / 개발툴 / 기타 / 모델/LLM / 뉴스/트렌드 / 지식관리 / 사업/마케팅 |
+-| 상태 | Select | 미확인 (생성 시 기본값) |
+-| 중요도 | Select | 상 / 중 / 하 (생성 시 기본 `중`) |
+-| 저장일 | Date | 카톡 메시지 날짜 |
+-| 메모 | Rich Text | `원문 확인 필요` 등 추정 근거 |
++## 🗄️ 장부 구조 (`data/library.db`, v4.0)
++
++스키마 원본은 `lib/library_schema.sql` 하나다(Python·Node 가 같은 파일을 실행). 문자열은 NFC, 목록은 JSON 배열 문자열, 시각은 ISO 8601 UTC.
++
++| 테이블 | 내용 | 시트 탭 |
++|---|---|---|
++| `videos` | 영상 1건 1행. `record_id`(노션에서 옮긴 행 = 노션 page id, 새 행 = uuid4 = Obsidian `notion_id`) · `video_id`(UNIQUE) · 제목 · 채널 · `topics` · 업로드일 · 조회수 · 구독자 · URL · `summary`(Gemini 요약 마크다운) | **영상** |
++| `tips` | 카톡 링크 1건 1행. 제목 · URL · `url_key`(중복 판정) · 출처(호스트) · `tags` · 카테고리 · 상태 · 중요도 · 저장일 · 메모 | **꿀팁** |
++| `videos_dup` | 1단계 적재 때 같은 video_id 로 겹친 노션 페이지 보관본 (지우지 않음) | — |
++| `meta` | `switched_at`(장부 원본 확정 시각) · `sheet_wm_videos`·`sheet_wm_tips`(시트에 보낸 마지막 `updated_at`) · `sheet_target` · `sheet_last_ok` | — |
++
++시트 열 — **영상**: record_id · 업로드일 · 채널 · 제목 · 주제 · 조회수 · 구독자 · URL · 요약 · 저장 · 수정 / **꿀팁**: record_id · 저장일 · 제목 · URL · 출처 · 카테고리 · 태그 · 중요도 · 상태 · 메모 · 본문 · 저장 · 수정 (저장·수정은 KST).
+ 
+ ---
+ 
+@@ -327,6 +340,7 @@ bash install-scheduler.sh
+ 
+ | 버전 | 날짜 | 주요 내용 요약 |
+ | :-- | :--- | :--- |
++| **v4.0** | 2026-10-12 | **노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러**: 원본을 노션에서 맥의 SQLite 장부 `data/library.db` 로 옮김(1단계 적재 · 2단계 쓰기/읽기 전환 · 3단계 정리, 단계마다 실데이터 판정). 파이프라인 노션 호출 0. 장부 → 구글 시트(탭 영상·꿀팁) 단방향 미러 `sheet_mirror.py` + Apps Script 웹앱 `gas/sheet_mirror.gs`(변경분만, 인증 오류 즉시 중단). 앱의 노션 코드 의존 제거, `/api/sync-obsidian` 제거, 재구성 시 내용 같은 파일 안 쓰기(Vault 전체 mtime 갱신 해소). 회귀 테스트 6종 |
+ | **v3.2.1** | 2026-10-05 | **스케줄러 네트워크 안전장치 — 빈 캐시 중복 저장 차단**: Notion 캐시 첫 조회가 네트워크 오류로 실패하면 재시도 없이 빈 캐시로 진행해 재생목록 앞 15편을 다시 저장하던 결함 수정(08-12 이후 13회·중복 195건). 캐시는 "전부 읽었거나, 던지거나"로 바꾸고 실패한 실행은 영상 처리를 건너뜀(fail-closed), Notion 401/403 은 즉시 종료. YouTube 조회에 일시 오류 지수 백오프 재시도 추가(오류 한 번에 실행이 통째 실패하던 비율 28%). 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450회)에서 50개 배치 순차(9회)로 교체. 회귀 테스트 `scripts/test_scheduler_guards.js` 신설 |
+ | **v3.2** | 2026-10-03 | **집 안 전용 Wiki 검색 서버**: 가족이 같은 네트워크의 다른 컴퓨터에서 `http://<맥이름>.local:3100/wiki`로 검색하도록 읽기 전용 서버 `wiki_lan_server.js` 신설. `server.js`(Notion 쓰기 프록시·인제스트 실행 포함)는 `127.0.0.1` 전용으로 유지하고 검색 경로만 분리 노출. 허용 대역(`WIKI_LAN_ALLOW_CIDR`) 밖 403, 미설정 시 루프백 전용(fail-closed), Host 검사, AI 답변 일일 총량으로 Gemini 무료 한도 보호. `launchd` `com.irichgreen.wiki-lan` 추가 |
+ | **v3.1** | 2026-09-10 | **Wiki 인제스트 할당량 소모 구조 교정**: Gemini 429를 `quotaId`로 RPD/RPM 분기(분당 한도 한 번에 키를 하루치 폐기하던 손실 제거), 5xx·네트워크 오류 지수 백오프 추가(전체 오류의 24%가 재시도 없이 버려지던 자리), 무료 티어 일 경계를 태평양시로 교정. `--rebuild` 경로로 띄운 wiki_ingest 의 출력을 `wiki-ingest.log` 에 합류시켜 실행 경로 2개를 한 로그에서 판정 가능하게 함 |
+@@ -348,6 +362,33 @@ bash install-scheduler.sh
+ 
+ ### 📝 상세 변경 내역 (Detailed Change Log)
+ 
++#### [v4.0] — 2026-10-12 (🗄️ 노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러)
++
++**배경.** 2026-10-11 노션을 더 이상 쓰지 않기로 했다. 앱은 방안 A 로 옮긴다: 원본 = 맥의 SQLite 장부 `data/library.db`, 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 세 단계로 나눠 각 단계를 맥 실데이터로 판정한 뒤 넘어갔다.
++
++| 단계 | 내용 | 커밋 · 지시서 |
++|---|---|---|
++| 1 | 노션 두 DB → 장부 적재(노션 읽기 전용). 영상 페이지 3,189 → `videos` 2,986 · `videos_dup` 203 · `tips` 135. 같은 video_id 중복(빈 캐시 사고분)은 Obsidian 노트가 가리키는 페이지를 남기고 나머지는 보관 | `c1025dc` · `2026-10-11-v4-notion-to-sqlite.md` |
++| 2-a | 쓰기 전환 — `scheduler.js`(`lib/library.js`, `node:sqlite`)·`kakao_ingest.py` 가 노션 대신 장부에 쓴다. 장부가 없으면 만들지 않고 던진다(fail-closed) | `b9fa138` · `2026-10-11-v4-sqlite-switch-a.md` |
++| 2-b | 읽기 전환 — `sync_obsidian.py` 가 장부를 읽기 전용으로 읽어 노트를 만든다. 노션 프록시·브라우저 직접 처리 제거, 노션 전제 스크립트 5개 `legacy_scripts/` | `114d3cb` · `2026-10-11-v4-sqlite-switch-b.md` |
++| 3 | 구글 시트 미러, 앱의 노션 코드 정리, `/api/sync-obsidian` 제거, 재구성 시 같은 내용 안 쓰기, 문서 전면 갱신 | 이 커밋 · `2026-10-12-v4-sheet-mirror-cleanup.md` |
++
++**3단계 — 구글 시트 미러.**
++- `sheet_mirror.py`(보내는 쪽) + `gas/sheet_mirror.gs`(구글 시트에 붙인 Apps Script 웹앱, 받는 쪽). 탭 '영상'·'꿀팁', 1열 `record_id` 기준 있으면 제자리 덮어쓰기·없으면 추가.
++- 변경분 판정은 별도 outbox 테이블 대신 `updated_at` 워터마크(장부 `meta.sheet_wm_*`) — 스키마 무변경. 워터마크는 탭의 묶음을 전부 보낸 뒤에만 올린다(실패분은 다음 실행이 다시 보냄). 시트 주소가 바뀌거나 전체 다시 쓰기가 끊기면 다음 실행이 자동으로 전체.
++- 스케줄러가 카톡 인제스트 뒤·Obsidian 동기화 앞에 부른다. 실패해도 동기화를 막지 않고, 실패는 텔레그램에 한 줄로 알린다. `.env` 에 URL 이 없으면 건너뛴다.
++- 안전: 401/403·토큰 불일치·HTML 응답(웹앱 권한 오류)은 재시도 없이 즉시 중단, 429·5xx·busy 는 2·4·8초 지수 백오프 후 중단. 토큰은 본문으로만 보내고 URL 은 `script.google.com` 만 허용. `= + - @` 로 시작하는 글자는 수식이 되지 않게 `'` 를 붙인다(실데이터 238칸).
++
++**3단계 — 정리.**
++- `kakao_ingest.py` 가 노션 래퍼(`lib/tips_notion.py`)를 `.env` 읽기용으로 import 하던 것을 `lib/env_util.py` 로 교체(실제 `.env` 로 두 파서 결과 동일 확인). 노션 rich_text → 마크다운 변환(`block_to_md`)은 `sync_obsidian.py` 에서 `scripts/notion_to_sqlite.py` 로 옮김. 이제 앱은 노션 코드를 import 하지 않는다. `lib/tips_notion.py`·`notion_to_sqlite.py`·`.env` 의 `NOTION_*` 는 「Notion 데이터 이관」이 끝나 노션을 해지할 때 지운다.
++- `server.js` 의 `POST /api/sync-obsidian`(호출하는 화면이 없음) 제거.
++- `build_search_index.py` 가 `notion_id`·제목·태그를 맨 앞 프론트매터에서만 읽는다(`sync_obsidian.py` 와 같은 규칙). 실 Vault 3,121 노트 — 옛 코드와 결과 동일.
++- `build_obsidian_wiki.py` 가 내용이 같으면 파일을 쓰지 않는다. 저장 0건 실행마다(하루 최대 4회) Vault 전체 mtime 이 바뀌던 일(10-11 실측 3,193개)이 없어진다 — 실 Vault 사본으로 재구성 2회차 쓰기 0개. 같이 고친 잠복 결함: 프론트매터 없는 노트는 재구성마다 '🔗 관련 항목' 절이 한 벌씩 쌓였다(실 Vault 해당 파일 0개).
++
++**검증.** 회귀 테스트 6종 — `test_scheduler_guards.js` 19/19 · `test_notion_to_sqlite.py` 37/37 · `test_kakao_ingest.py` 18/18 · `test_sync_obsidian.py` 23/23 · `test_sheet_mirror.py` 45/45(가짜 Apps Script 서버가 `gas/sheet_mirror.gs` 원본을 그대로 실행) · `test_build_wiki_index.py` 10/10. 맥 네이티브(데몬 node v26.10.0 · Homebrew Python 3.14) 동일. 실데이터: 시트 행 영상 2,986 · 꿀팁 135, 최대 셀 3,253자, 요청 1회 최대 782KB.
++
++**확인하지 못한 것.** 구글 Workspace 관리 설정에 따라 웹앱 액세스 "모든 사용자"가 막혀 있을 수 있다(그때 응답이 로그인 화면 HTML → 미러가 auth 로 멈춘다). 실제 구글 시트로의 첫 전송은 설치 후 `--check` 로 판정한다.
++
+ #### [v3.2.1] — 2026-10-05 (🛡️ 스케줄러 네트워크 안전장치)
+ 
+ **배경.** `ytsummarizer.log`(회전본 포함, 2026-08-12 ~ 10-05, 실행 219회)를 집계했다. 실행 통째 실패(`저장 0 · Skip 0 · 오류 1`)가 62회(28%)였고(`ENOTFOUND` 41 · `ETIMEDOUT` 17 · 기타 4), Notion 캐시가 0건인 채 진행한 실행이 23회였다. 그중 13회는 영상 15편을 다시 저장해 **중복 195건**이 생겼다. 결과가 `저장 15 · Skip 0 · 오류 0` 이라 알림에서는 성공으로 보였고, 한 번 터질 때마다 이미 저장된 영상에 Gemini 호출 약 45회가 쓰였다.
+diff --git a/build_obsidian_wiki.py b/build_obsidian_wiki.py
+index f5b220c..9e4aeda 100644
+--- a/build_obsidian_wiki.py
++++ b/build_obsidian_wiki.py
+@@ -14,7 +14,26 @@ def nfc(s):
+     """macOS NFD 파일명을 NFC로 정규화 (한글 깨짐 방지)"""
+     return unicodedata.normalize('NFC', s) if s else s
+ 
+-# ── 노션 유효 태그 목록 (이것만 MOC 생성 + 폴더 사용) ──
++# ── 내용이 같으면 쓰지 않는다 (v4.0 3단계) ──
++# 저장 0건 실행마다(하루 최대 4회) sync_obsidian --rebuild 가 이 빌더를 부르는데, 예전에는 노트 전부를
++# 비교 없이 다시 써서 Vault 전체 mtime 이 바뀌었다(2026-10-11 실측 3,193개). 내용은 같았다.
++WRITE_STATS = {'written': 0, 'same': 0}
++
++def write_if_changed(path, text):
++    """text 와 파일 내용이 다를 때만 쓴다. 썼으면 True."""
++    try:
++        with open(path, encoding='utf-8') as fh:
++            if fh.read() == text:
++                WRITE_STATS['same'] += 1
++                return False
++    except FileNotFoundError:
++        pass
++    with open(path, 'w', encoding='utf-8') as fh:
++        fh.write(text)
++    WRITE_STATS['written'] += 1
++    return True
++
++# ── 유효 태그 = 재생목록 주제 목록 (이것만 MOC 생성 + 폴더 사용. 이름의 NOTION 은 v3.x 흔적) ──
+ # 새 태그 추가 시 여기에도 반드시 추가할 것
+ VALID_NOTION_TAGS = {
+     'AI Antigravity', 'AI Claude', 'AI Codex', 'AI Gemini', 'AI Gemma',
+@@ -136,7 +155,7 @@ def build_moc_files(files):
+                 lines.append(f"- [[{f['filename']}|{f['title']}]] {date}\n")
+ 
+         moc_path = os.path.join(MOC_DIR, nfc(f"{playlist} MOC.md"))
+-        open(moc_path, 'w', encoding='utf-8').write(unicodedata.normalize('NFC', ''.join(lines)))
++        write_if_changed(moc_path, unicodedata.normalize('NFC', ''.join(lines)))
+         print(f"  ✅ {playlist} MOC.md ({len(pfiles)}개)")
+ 
+     # ── 채널별 MOC ──
+@@ -156,7 +175,7 @@ def build_moc_files(files):
+             channel_lines.append(f"- ... 외 {len(cfiles)-5}개\n")
+         channel_lines.append('\n')
+ 
+-    open(os.path.join(MOC_DIR, '채널별 목차.md'), 'w', encoding='utf-8').write(nfc(''.join(channel_lines)))
++    write_if_changed(os.path.join(MOC_DIR, '채널별 목차.md'), nfc(''.join(channel_lines)))
+     print(f"  ✅ 채널별 목차.md ({len(channel_map)}개 채널)")
+ 
+     # ── 전체 인덱스 (카탈로그) ──
+@@ -200,7 +219,7 @@ def build_moc_files(files):
+             index_lines.append(f"- *... 외 {len(pfiles)-3}개 → [[{playlist} MOC]]*\n")
+         index_lines.append('\n')
+ 
+-    open(os.path.join(VAULT, '🗂 전체 인덱스.md'), 'w', encoding='utf-8').write(nfc(''.join(index_lines)))
++    write_if_changed(os.path.join(VAULT, '🗂 전체 인덱스.md'), nfc(''.join(index_lines)))
+     print(f"  ✅ 🗂 전체 인덱스.md (카탈로그 + 한 줄 요약)")
+ 
+ # ══════════════════════════════════════════════
+@@ -212,7 +231,10 @@ def add_keyword_links(files):
+     updated = 0
+     for f in files:
+         content = f['content']
+-        fm_end = content.find('\n---\n', 4) + 5
++        # 프론트매터가 없는 파일은 fm_end = 0 (예전에는 find 가 '🔗 관련 항목' 앞의 --- 를 잡아 재구성마다 그 절이 한 벌씩 쌓였다)
++        fm_end = content.find('\n---\n', 4) + 5 if content.startswith('---\n') else 0
++        if fm_end < 5:
++            fm_end = 0
+         frontmatter = content[:fm_end]
+         body = content[fm_end:]
+ 
+@@ -242,10 +264,10 @@ def add_keyword_links(files):
+ 
+         related = f'\n\n---\n## 🔗 관련 항목\n\n**재생목록**: {moc_links}{kw_section}\n'
+ 
+-        open(f['path'], 'w', encoding='utf-8').write(nfc(frontmatter + new_body + related))
+-        updated += 1
++        if write_if_changed(f['path'], nfc(frontmatter + new_body + related)):
++            updated += 1
+ 
+-    print(f"  ✅ {updated}개 파일 MOC + 키워드 링크 삽입 완료")
++    print(f"  ✅ MOC + 키워드 링크 — 바뀐 파일 {updated}개 / 그대로 {len(files) - updated}개")
+ 
+ # ══════════════════════════════════════════════
+ # 2.5단계: 키워드별 허브 파일 생성 (독립 노드 해소용)
+@@ -270,7 +292,7 @@ def build_keyword_hubs(files):
+             date = str(f['upload_date'])[:10] if f['upload_date'] else ''
+             lines.append(f"- [[{f['filename']}|{f['title']}]] `{f['channel']}` {date}\n")
+         hub_path = os.path.join(MOC_DIR, nfc(f'{alias}.md'))
+-        open(hub_path, 'w', encoding='utf-8').write(nfc(''.join(lines)))
++        write_if_changed(hub_path, nfc(''.join(lines)))
+         created += 1
+     print(f"  ✅ 키워드 허브 {created}개 생성 (독립 노드 해소)")
+ 
+@@ -299,7 +321,7 @@ def build_keyword_index(files):
+             lines.append(f"- [[{f['filename']}|{f['title']}]]\n")
+         lines.append('\n')
+ 
+-    open(os.path.join(MOC_DIR, '키워드 인덱스.md'), 'w', encoding='utf-8').write(nfc(''.join(lines)))
++    write_if_changed(os.path.join(MOC_DIR, '키워드 인덱스.md'), nfc(''.join(lines)))
+     print(f"  ✅ 키워드 인덱스.md ({len(kw_map)}개 키워드)")
+ 
+ # ══════════════════════════════════════════════
+@@ -348,7 +370,7 @@ def lint_wiki(files):
+     lint_lines = [f'# 🔍 Wiki Lint 결과\n\n> 마지막 실행: {now}\n\n']
+     for issue in issues:
+         lint_lines.append(f'{issue}\n')
+-    open(os.path.join(MOC_DIR, 'lint.md'), 'w', encoding='utf-8').write(nfc(''.join(lint_lines)))
++    write_if_changed(os.path.join(MOC_DIR, 'lint.md'), nfc(''.join(lint_lines)))
+ 
+     # 콘솔 출력
+     problem_count = sum(1 for i in issues if i.startswith('⚠️'))
+@@ -412,11 +434,11 @@ def build_schema(files):
+     lines.append('`Obsidian` `옵시디언` `Notion` `노션`\n\n---\n\n')
+ 
+     lines.append('## 🔄 워크플로우\n\n')
+-    lines.append('### 자동 파이프라인\n```\nYouTube → Gemini 요약 → Notion 저장\n→ sync_obsidian.py → .md 생성 → build_obsidian_wiki.py\n→ MOC + 키워드 링크 + lint + schema 재생성 → log.md 기록\n```\n\n')
++    lines.append('### 자동 파이프라인\n```\nYouTube → Gemini 요약 → 로컬 장부(data/library.db) 저장\n→ sync_obsidian.py → .md 생성 → build_obsidian_wiki.py\n→ MOC + 키워드 링크 + lint + schema 재생성 → log.md 기록\n```\n\n')
+     lines.append('### 수동 명령어\n```bash\npython3 sync_obsidian.py --rebuild   # 전체 재구성\npython3 build_obsidian_wiki.py       # MOC/링크/schema 재구성\npython3 sync_obsidian.py --dry-run   # 장부↔Vault 할 일만 세기 (쓰기 없음)\ngrep "^## \\[" log.md | tail -10      # 최근 10개 변경 이력\n```\n\n')
+     lines.append('*이 파일은 `build_obsidian_wiki.py` 실행 시 자동으로 재생성됩니다.*\n')
+ 
+-    open(os.path.join(VAULT, 'schema.md'), 'w', encoding='utf-8').write(nfc(''.join(lines)))
++    write_if_changed(os.path.join(VAULT, 'schema.md'), nfc(''.join(lines)))
+     print(f'  ✅ schema.md 자동 재생성 완료 (태그 {len(all_tags)}개, 폴더 {len(folders)}개)')
+ 
+ # ── 메인 실행 ──
+@@ -451,6 +473,8 @@ if __name__ == '__main__':
+     print('\n📐 schema.md 업데이트 중...')
+     build_schema(files)
+ 
++    print(f"\n📝 파일 쓰기 — 바뀜 {WRITE_STATS['written']}개 / 내용 같아 건너뜀 {WRITE_STATS['same']}개")
++
+     # ── log.md 기록 (직접 실행 시에만) ──
+     try:
+         from sync_obsidian import write_wiki_log
+diff --git a/build_search_index.py b/build_search_index.py
+index 68786a3..90b5d2d 100644
+--- a/build_search_index.py
++++ b/build_search_index.py
+@@ -89,6 +89,14 @@ def batch_embed(texts):
+ 
+ SKIP_FILES = {'log.md', 'schema.md', '캔버스.md'}
+ 
++# 프론트매터(맨 앞 YAML 블록) 안의 키만 읽는다 — 본문 코드블록의 'notion_id: …' 예시를 노트로 오인하지 않게
++# (v4.0 3단계. sync_obsidian.py:FM_RE·scripts/notion_to_sqlite.py 와 같은 규칙)
++FM_RE = re.compile(r'\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)', re.S)
++
++def fm_text(content):
++    m = FM_RE.match(content or '')
++    return m.group(1) if m else ''
++
+ def collect_notes():
+     """Vault 순회 → 노트 메타 + 임베딩 텍스트 목록"""
+     notes = []
+@@ -102,15 +110,16 @@ def collect_notes():
+                 content = nfc(open(fpath, encoding='utf-8', errors='ignore').read())
+             except Exception:
+                 continue
+-            m = re.search(r'^notion_id:\s*(.+)$', content, re.MULTILINE)
++            head = fm_text(content)
++            m = re.search(r'^notion_id:\s*(.+)$', head, re.MULTILINE)
+             if not m: continue
+             nid = m.group(1).strip()
+ 
+             def fm(key, default=''):
+-                mm = re.search(rf'^{key}:\s*(.*)$', content, re.MULTILINE)
++                mm = re.search(rf'^{key}:\s*(.*)$', head, re.MULTILINE)
+                 return mm.group(1).strip().strip('"') if mm else default
+ 
+-            tags_m = re.search(r'^tags:\s*\[(.*)\]$', content, re.MULTILINE)
++            tags_m = re.search(r'^tags:\s*\[(.*)\]$', head, re.MULTILINE)
+             tags = [t.strip().strip('"') for t in tags_m.group(1).split(',')] if tags_m and tags_m.group(1).strip() else []
+ 
+             def section(name):
+diff --git a/gas/sheet_mirror.gs b/gas/sheet_mirror.gs
+new file mode 100644
+index 0000000..a01f2de
+--- /dev/null
++++ b/gas/sheet_mirror.gs
+@@ -0,0 +1,159 @@
++/**
++ * YouTube_Notion_Grab v4.0 — 장부(data/library.db) → 구글 시트 미러 수신부 (Apps Script 웹앱)
++ *
++ * 보기 전용 단방향 미러다. 원본은 맥의 장부이고, 이 시트를 고쳐도 장부로 돌아가지 않는다.
++ * 보내는 쪽: 레포 루트 sheet_mirror.py (스케줄러가 매 실행 끝에 변경분만 보낸다).
++ *
++ * 설치 (시트 하나에 한 번):
++ *   1) 이 시트에서 확장 프로그램 → Apps Script → 이 파일 내용을 Code.gs 에 통째로 붙여 넣고 저장
++ *   2) 프로젝트 설정(톱니) → 스크립트 속성 → MIRROR_TOKEN = (맥 .env 의 SHEET_MIRROR_TOKEN 과 같은 값)
++ *   3) 배포 → 새 배포 → 유형 "웹 앱" → 실행 계정 "나", 액세스 권한 "모든 사용자" → 배포 → 웹 앱 URL 복사
++ *      (권한 승인 창이 뜨면 이 시트 소유 계정으로 승인)
++ *   코드를 고친 뒤에는 배포 → 배포 관리 → 연필 → 버전 "새 버전" 으로 같은 URL 을 유지한다.
++ *
++ * 요청 (POST, JSON 본문):
++ *   { token, op: 'ping' }                                → { ok, counts: { 영상: n, 꿀팁: m } }
++ *   { token, op: 'reset',  sheet, headers }              → 탭을 비우고 머리글만 쓴다
++ *   { token, op: 'upsert', sheet, headers, rows: [[…]] } → 1열(record_id) 기준 있으면 덮어쓰기, 없으면 아래에 추가
++ * 응답은 언제나 JSON. 실패는 { ok:false, error } — 'auth' | 'not_configured' | 'bad_request' | 'headers_mismatch' | 'busy' | 'internal'
++ * (Apps Script 웹앱은 HTTP 상태 코드를 고를 수 없어서 오류도 200 으로 나간다. 보내는 쪽은 error 값으로 판단한다)
++ *
++ * 지키는 것:
++ *   · 토큰이 맞지 않으면 아무것도 쓰지 않는다. 토큰은 URL 이 아니라 본문으로만 받는다.
++ *   · 탭은 '영상'·'꿀팁' 둘만 만든다(화이트리스트).
++ *   · 머리글이 보내는 쪽과 다르면 쓰지 않는다(headers_mismatch) — 열이 바뀌면 보내는 쪽이 --full 로 다시 깐다.
++ *   · '=' '+' '-' '@' 로 시작하는 글자는 앞에 ' 를 붙여 수식으로 해석되지 않게 한다.
++ *   · 동시에 두 요청이 오면 스크립트 잠금으로 줄 세운다(30초 대기 후 busy).
++ */
++
++var MIRROR_SHEETS = { '영상': true, '꿀팁': true };
++var MIRROR_MAX_ROWS_PER_CALL = 500;
++
++function doGet() {
++  return ContentService.createTextOutput('YouTube 장부 미러 — POST 전용').setMimeType(ContentService.MimeType.TEXT);
++}
++
++function doPost(e) {
++  var out;
++  try {
++    out = mirrorHandle_(e);
++  } catch (err) {
++    out = { ok: false, error: (err && err.mirrorCode) || 'internal', detail: String((err && err.message) || err).slice(0, 300) };
++  }
++  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
++}
++
++function mirrorFail_(code, msg) {
++  var err = new Error(msg || code);
++  err.mirrorCode = code;
++  return err;
++}
++
++function mirrorHandle_(e) {
++  var want = PropertiesService.getScriptProperties().getProperty('MIRROR_TOKEN');
++  if (!want) throw mirrorFail_('not_configured', '스크립트 속성 MIRROR_TOKEN 이 비어 있습니다');
++
++  var body;
++  try {
++    body = JSON.parse((e && e.postData && e.postData.contents) || '');
++  } catch (x) {
++    throw mirrorFail_('bad_request', 'JSON 본문이 아닙니다');
++  }
++  if (!body || typeof body !== 'object') throw mirrorFail_('bad_request', 'JSON 본문이 아닙니다');
++  if (typeof body.token !== 'string' || body.token !== want) throw mirrorFail_('auth', '토큰 불일치');
++
++  var ss = SpreadsheetApp.getActiveSpreadsheet();
++  if (body.op === 'ping') {
++    var counts = {};
++    Object.keys(MIRROR_SHEETS).forEach(function (name) {
++      var sh = ss.getSheetByName(name);
++      counts[name] = sh ? Math.max(sh.getLastRow() - 1, 0) : 0;
++    });
++    return { ok: true, counts: counts };
++  }
++
++  if (body.op !== 'reset' && body.op !== 'upsert') throw mirrorFail_('bad_request', '알 수 없는 op: ' + body.op);
++  if (!MIRROR_SHEETS[body.sheet]) throw mirrorFail_('bad_request', '허용되지 않은 탭: ' + body.sheet);
++  var headers = body.headers;
++  if (!Array.isArray(headers) || headers.length < 2 || headers[0] !== 'record_id') throw mirrorFail_('bad_request', 'headers 형식 오류');
++
++  var lock = LockService.getScriptLock();
++  if (!lock.tryLock(30000)) throw mirrorFail_('busy', '다른 요청 처리 중');
++  try {
++    var sh = ss.getSheetByName(body.sheet) || ss.insertSheet(body.sheet);
++    if (body.op === 'reset') {
++      sh.clear();
++      mirrorWriteHeaders_(sh, headers);
++      return { ok: true, sheet: body.sheet, total: 0 };
++    }
++    var rows = body.rows;
++    if (!Array.isArray(rows) || rows.length > MIRROR_MAX_ROWS_PER_CALL) throw mirrorFail_('bad_request', 'rows 형식 오류 또는 ' + MIRROR_MAX_ROWS_PER_CALL + '행 초과');
++    var r = mirrorUpsert_(sh, headers, rows);
++    r.ok = true;
++    r.sheet = body.sheet;
++    r.total = Math.max(sh.getLastRow() - 1, 0);
++    return r;
++  } finally {
++    lock.releaseLock();
++  }
++}
++
++function mirrorWriteHeaders_(sh, headers) {
++  var n = headers.length;
++  sh.getRange(1, 1, sh.getMaxRows(), 1).setNumberFormat('@');   // record_id 는 언제나 글자
++  sh.getRange(1, 1, 1, n).setValues([headers]).setFontWeight('bold');
++  sh.setFrozenRows(1);
++  sh.getRange(1, 1, sh.getMaxRows(), n).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
++}
++
++function mirrorSafe_(v) {
++  if (v === null || v === undefined) return '';
++  if (typeof v === 'string' && /^[=+\-@]/.test(v)) return "'" + v;
++  return v;
++}
++
++function mirrorUpsert_(sh, headers, rows) {
++  var n = headers.length;
++  var last = sh.getLastRow();
++  if (last === 0) {
++    mirrorWriteHeaders_(sh, headers);
++    last = 1;
++  } else {
++    var have = sh.getRange(1, 1, 1, n).getValues()[0];
++    for (var i = 0; i < n; i++) {
++      if (String(have[i]) !== String(headers[i])) throw mirrorFail_('headers_mismatch', (i + 1) + '열 머리글 "' + have[i] + '" ≠ "' + headers[i] + '"');
++    }
++  }
++
++  var pos = {};
++  if (last > 1) {
++    var ids = sh.getRange(2, 1, last - 1, 1).getValues();
++    for (var j = 0; j < ids.length; j++) pos[String(ids[j][0])] = j + 2;
++  }
++
++  var appends = [], appendIdx = {}, updated = 0;
++  for (var k = 0; k < rows.length; k++) {
++    var row = rows[k];
++    if (!Array.isArray(row) || row.length !== n || !row[0]) throw mirrorFail_('bad_request', (k + 1) + '번째 행 형식 오류');
++    var id = String(row[0]);
++    var vals = row.map(mirrorSafe_);
++    if (pos[id]) {
++      sh.getRange(pos[id], 1, 1, n).setValues([vals]);
++      updated++;
++    } else if (appendIdx[id] !== undefined) {
++      appends[appendIdx[id]] = vals;          // 같은 요청 안에 같은 id 가 두 번 오면 뒤의 것
++    } else {
++      appendIdx[id] = appends.length;
++      appends.push(vals);
++    }
++  }
++  if (appends.length) {
++    var need = last + appends.length - sh.getMaxRows();
++    if (need > 0) sh.insertRowsAfter(sh.getMaxRows(), need);   // 새 탭은 1,000행 — 넘치면 늘린다
++    var target = sh.getRange(last + 1, 1, appends.length, n);
++    sh.getRange(last + 1, 1, appends.length, 1).setNumberFormat('@');
++    target.setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
++    target.setValues(appends);
++  }
++  return { inserted: appends.length, updated: updated };
++}
+diff --git a/kakao_ingest.py b/kakao_ingest.py
+index 5d16c29..5be32ad 100644
+--- a/kakao_ingest.py
++++ b/kakao_ingest.py
+@@ -2,9 +2,9 @@
+ """
+ 카카오톡 '나와의 채팅' CSV → 장부 tips 인제스트 (v2.8 → v4.0: 노션「AI 꿀팁」대신 data/library.db 의 tips 테이블)
+ 
+-    /usr/bin/python3 kakao_ingest.py                 # dry-run (기본). 생성될 행을 표로만 출력
+-    /usr/bin/python3 kakao_ingest.py --apply --limit=3
+-    /usr/bin/python3 kakao_ingest.py --apply
++    /opt/homebrew/bin/python3 kakao_ingest.py                 # dry-run (기본). 생성될 행을 표로만 출력
++    /opt/homebrew/bin/python3 kakao_ingest.py --apply --limit=3
++    /opt/homebrew/bin/python3 kakao_ingest.py --apply
+     옵션: --csv=<경로>  (기본: KAKAO_EXPORT_DIR 의 최신 KakaoTalk_Chat_안진훈_*.csv — NFC 비교)
+           --since=YYYY-MM-DD  (기본: 2026-03-01 — DB 시작 시점. 그 이전 카톡 링크는 AI 자료가 아님)
+           --if-new   스케줄러용. 최신 CSV 의 mtime 이 .kakao_state.json 에 기록된 값과 같으면 장부 조회 없이 즉시 종료
+@@ -26,7 +26,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ sys.path.insert(0, os.path.join(SCRIPT_DIR, 'lib'))
+ 
+ from kakao_parse import parse_links, guess_meta, url_key, nfc
+-import tips_notion as tn          # .env 읽기(tn.ENV)만 쓴다. 노션 호출 없음 (노션 코드 정리는 지시서 3)
++from env_util import load_env     # .env 읽기 (v4.0 3단계: 노션 래퍼 tips_notion 의존 제거)
+ import library_db as ldb
+ 
+ DEFAULT_SINCE = '2026-03-01'
+@@ -61,7 +61,7 @@ def log(m): print(m, flush=True)
+ 
+ def latest_csv():
+     """KAKAO_EXPORT_DIR 에서 '나와의 채팅' CSV 중 mtime 최신. macOS 파일명은 NFD 라 NFC 로 맞춰 비교한다."""
+-    d = os.path.expanduser(tn.ENV.get('KAKAO_EXPORT_DIR', '~/Downloads'))
++    d = os.path.expanduser(load_env().get('KAKAO_EXPORT_DIR', '~/Downloads'))
+     files = [f for f in glob.glob(os.path.join(d, 'KakaoTalk_Chat_*.csv'))
+              if nfc(os.path.basename(f)).startswith(CSV_PREFIX)]
+     files.sort(key=os.path.getmtime)
+@@ -138,7 +138,7 @@ def main():
+         emit_result(dry_run=True, csv=csv_name, created=0, candidates=len(plan), db_total=len(rows))
+         return
+ 
+-    # 노션 tips_notion.build_properties 와 같은 기본값: 제목이 비면 URL, 카테고리 '기타', 상태 '미확인', 중요도 '중'
++    # 노션 시절(v3.x)과 같은 기본값: 제목이 비면 URL, 카테고리 '기타', 상태 '미확인', 중요도 '중'
+     dt = datetime.now(timezone.utc)
+     now = dt.strftime('%Y-%m-%dT%H:%M:%S.') + f'{dt.microsecond // 1000:03d}Z'   # scheduler 와 같은 ISO 형식
+     vals = []
+diff --git a/lib/env_util.py b/lib/env_util.py
+new file mode 100644
+index 0000000..1fe8602
+--- /dev/null
++++ b/lib/env_util.py
+@@ -0,0 +1,26 @@
++#!/usr/bin/env python3
++"""
++레포 루트 .env 읽기 — 네트워크 없음, 의존성 없음 (v4.0 3단계).
++
++kakao_ingest.py 가 노션 래퍼(lib/tips_notion.py)를 .env 읽기용으로만 import 하던 것을 대신한다.
++형식: KEY=VALUE 한 줄씩. '#' 주석·빈 줄 무시. 값 양끝의 따옴표(" ')는 벗긴다 (tips_notion.load_env 와 같은 규칙).
++"""
++import os
++
++REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++ENV_PATH = os.path.join(REPO_ROOT, '.env')
++
++
++def load_env(path=None):
++    env = {}
++    p = path or ENV_PATH
++    if not os.path.exists(p):
++        return env
++    with open(p, encoding='utf-8') as f:
++        for line in f.read().split('\n'):
++            line = line.strip()
++            if not line or line.startswith('#') or '=' not in line:
++                continue
++            k, _, v = line.partition('=')
++            env[k.strip()] = v.strip().strip('"').strip("'")
++    return env
+diff --git a/lib/kakao_parse.py b/lib/kakao_parse.py
+index 39e348a..3602ce1 100644
+--- a/lib/kakao_parse.py
++++ b/lib/kakao_parse.py
+@@ -26,7 +26,7 @@ STRIP_PARAMS = {
+     'pli', 'usp', 'gclid', 'igshid',
+ }
+ 
+-# 카테고리 select 옵션 (§2-2 검증 출력 기준 — Notion에 없는 값을 넣으면 400)
++# 카테고리 값 목록 (v3.x 노션 select 옵션 그대로 — 장부 tips.category·Obsidian 노트·시트에 같은 값을 쓴다)
+ CATEGORIES = ['프롬프트', '개발툴', '기타', '모델/LLM', '뉴스/트렌드', '지식관리', '사업/마케팅']
+ 
+ _URL_RE = re.compile(r'https?://[^\s"<>\)\]\'`]+')
+diff --git a/lib/library.js b/lib/library.js
+index d75fb29..d2c3727 100644
+--- a/lib/library.js
++++ b/lib/library.js
+@@ -34,7 +34,7 @@ function schemaVersion() {
+ 
+ function openLibrary(dbPath = DB_PATH) {
+   if (!fs.existsSync(dbPath)) {
+-    throw new Error(`장부 파일 없음: ${path.relative(REPO_ROOT, dbPath) || dbPath} — scripts/notion_to_sqlite.py 로 만든 data/library.db 가 있어야 합니다`);
++    throw new Error(`장부 파일 없음: ${path.relative(REPO_ROOT, dbPath) || dbPath} — 원본 장부다. 새로 만들지 말고 백업(data/library.db.bak.*)에서 복원할 것`);
+   }
+   const { DatabaseSync } = loadSqlite();
+   const db = new DatabaseSync(dbPath);
+diff --git a/lib/library_db.py b/lib/library_db.py
+index 4a59c65..4fc0758 100644
+--- a/lib/library_db.py
++++ b/lib/library_db.py
+@@ -38,7 +38,7 @@ def open_existing(path=None, readonly=False):
+     sqlite3.connect 의 기본 timeout 5초 = busy_timeout 5초 (Node 쪽 lib/library.js 와 같은 값)."""
+     path = path or DB_PATH
+     if not os.path.exists(path):
+-        raise FileNotFoundError(f'장부 파일 없음: {path} — scripts/notion_to_sqlite.py 로 만든 data/library.db 가 있어야 합니다')
++        raise FileNotFoundError(f'장부 파일 없음: {path} — 원본 장부다. 새로 만들지 말고 백업(data/library.db.bak.*)에서 복원할 것')
+     conn = open_db(path, readonly=readonly)
+     uv = conn.execute('PRAGMA user_version').fetchone()[0]
+     if uv != SCHEMA_VERSION:
+diff --git a/lib/tips_notion.py b/lib/tips_notion.py
+index 67b5e76..b2f7eb7 100644
+--- a/lib/tips_notion.py
++++ b/lib/tips_notion.py
+@@ -2,6 +2,9 @@
+ """
+ Notion「AI 꿀팁」DB 전용 조회/생성 래퍼
+ 
++※ v4.0 3단계부터 보관용이다. 앱 코드는 import 하지 않는다 — scripts/notion_to_sqlite.py(보관) 만 쓴다.
++  노션을 해지할 때 scripts/notion_to_sqlite.py·.env 의 NOTION_* 와 함께 지운다. .env 읽기는 lib/env_util.py.
++
+ 속성 타입 (2026-09-06 §2-2 검증 출력 — 추측 금지, 바뀌면 이 표부터 갱신):
+     제목     title
+     URL      url
+diff --git a/scheduler.js b/scheduler.js
+index 426b354..683ff1f 100644
+--- a/scheduler.js
++++ b/scheduler.js
+@@ -129,6 +129,32 @@ function runKakaoIngest(python3) {
+   });
+ }
+ 
++// ── (v4.0 3단계) 장부 → 구글 시트 미러 (보기 전용, 변경분만) ──
++// sheet_mirror.py 실행. .env 에 SHEET_MIRROR_URL 이 없으면 Python 쪽이 skipped 로 즉시 끝난다.
++// 실패해도 reject 하지 않는다 — 시트는 보기용 사본이라 Obsidian 동기화를 막으면 안 된다. 실패분은 다음 실행이 다시 보낸다.
++function runSheetMirror(python3) {
++  return new Promise((resolve) => {
++    const { execFile } = require('child_process');
++    const script = path.join(__dirname, 'sheet_mirror.py');
++    if (!fs.existsSync(script)) { log('ℹ️  sheet_mirror.py 없음 — 건너뜀'); return resolve(null); }
++    execFile(python3, [script], { cwd: __dirname, timeout: 10 * 60 * 1000 },
++      (err, stdout, stderr) => {
++        let r = null;
++        const line = String(stdout || '').split('\n').find(l => l.startsWith('RESULT_JSON:'));
++        if (line) { try { r = JSON.parse(line.slice('RESULT_JSON:'.length)); } catch (e) { log(`⚠️ 시트 미러 결과 파싱 오류: ${e.message}`); } }
++        if (err) {
++          log(`⚠️ 시트 미러 오류 (exit ${err.code}${r && r.error ? `, ${r.error}` : ''}): ${String(stderr || '').slice(-300)}`);
++          if (!r) r = { error: 'exit_' + err.code, videos_sent: 0, tips_sent: 0 };
++        } else if (r && r.skipped) {
++          log(`ℹ️  시트 미러 건너뜀: ${r.skipped}`);
++        } else if (r) {
++          log(`📗 시트 미러: 영상 ${r.videos_sent}건 · 꿀팁 ${r.tips_sent}건${r.full ? ' (전체 다시 쓰기)' : ''}`);
++        }
++        resolve(r);
++      });
++  });
++}
++
+ // ══════════════════════════════════
+ // 이메일 알림 전송 (Gmail SMTP over TLS)
+ // ══════════════════════════════════
+@@ -1289,7 +1315,13 @@ async function main() {
+   const kakao = await runKakaoIngest(python3);
+   const kakaoCreated = (kakao && kakao.created) || 0;
+ 
+-  // ── Obsidian 동기화 (항상 실행 - 노션+Obsidian 결과 합쳐서 1개 메시지 전송) ──
++  // ── (v4.0 3단계) 장부 → 구글 시트 미러 (설정 전이면 skipped) ──
++  log('\n📗 구글 시트 미러...');
++  const mirror = await runSheetMirror(python3);
++  const mirrorSent = mirror && !mirror.skipped ? (mirror.videos_sent || 0) + (mirror.tips_sent || 0) : 0;
++  const mirrorFailed = !!(mirror && mirror.error);
++
++  // ── Obsidian 동기화 (항상 실행 - 장부·카톡·시트·Obsidian 결과 합쳐서 1개 메시지 전송) ──
+   log('\n🔄 Obsidian 동기화 시작...');
+   const { execFile } = require('child_process');
+   const syncScript = path.join(__dirname, 'sync_obsidian.py');
+@@ -1314,8 +1346,16 @@ async function main() {
+           `  • 장부 신규: ${kakaoCreated}건 (총 ${kakao.db_total}건)`,
+           ...(Array.isArray(kakao.titles) ? kakao.titles.slice(0, 5).map(t => `    - ${t}`) : []),
+         ] : [];
++        const mirrorSection = (mirrorSent > 0 || mirrorFailed) ? [
++          ``,
++          `━━━━━━━━━━━━━━━━━━━━━━`,
++          `📗 구글 시트 미러`,
++          ...(mirrorSent > 0 ? [`  • 보냄: 영상 ${mirror.videos_sent || 0}건 · 꿀팁 ${mirror.tips_sent || 0}건${mirror.full ? ' (전체)' : ''}`] : []),
++          ...(mirrorFailed ? [`  • ⚠️ 실패 (${mirror.error}) — ${mirror.error === 'auth' ? '토큰·웹앱 배포 확인 필요' : '다음 실행에 다시 보냄'}`] : []),
++        ] : [];
+         const obsSection = [
+           ...kakaoSection,
++          ...mirrorSection,
+           ``,
+           `━━━━━━━━━━━━━━━━━━━━━━`,
+           `📓 Obsidian AI LLM Wiki`,
+@@ -1327,7 +1367,7 @@ async function main() {
+         ].join('\n');
+         log(`✅ Obsidian 동기화 완료! 추가: ${r.added}개 (꿀팁 ${tipsAdded})`);
+ 
+-        const hasNewOrUpdated = totalSaved > 0 || kakaoCreated > 0 || (r.added && r.added > 0) || (r.tags_updated && r.tags_updated > 0);
++        const hasNewOrUpdated = totalSaved > 0 || kakaoCreated > 0 || (r.added && r.added > 0) || (r.tags_updated && r.tags_updated > 0) || mirrorFailed;
+         if (hasNewOrUpdated) {
+           await sendTelegram(msg + obsSection);
+         } else {
+@@ -1355,7 +1395,7 @@ if (require.main === module) {
+   });
+ } else {
+   module.exports = {
+-    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary,
++    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror,
+     _setLibDb: (db) => { libDb = db; },   // 테스트 전용 (scripts/test_scheduler_guards.js)
+   };
+ }
+diff --git a/scripts/fake_gas_server.js b/scripts/fake_gas_server.js
+new file mode 100644
+index 0000000..200b616
+--- /dev/null
++++ b/scripts/fake_gas_server.js
+@@ -0,0 +1,139 @@
++#!/usr/bin/env node
++// 테스트 전용 — gas/sheet_mirror.gs 를 실제 코드 그대로 vm 에 올리고, 구글 시트·Apps Script 를 흉내 낸다.
++// scripts/test_sheet_mirror.py 가 띄운다. 네트워크는 127.0.0.1 만. 실제 구글에는 아무 요청도 하지 않는다.
++//
++//   POST /exec        → doPost 실행 → 302 /echo/<n> (Apps Script 웹앱과 같은 방식)
++//   GET  /echo/<n>    → 결과 JSON
++//   POST /__ctl       → { queue:[{status}|{html:true}|{busy:true}], token, setCell:{sheet,row,col,value}, deleteRow:{sheet,row} }
++//   GET  /__state     → { sheets:{탭:[[…],…]}, formulas:[…], log:[op…], posts:n }
++'use strict';
++const http = require('http');
++const fs = require('fs');
++const path = require('path');
++const vm = require('vm');
++
++const GS = fs.readFileSync(path.join(__dirname, '..', 'gas', 'sheet_mirror.gs'), 'utf8');
++const MAX_ROWS_INIT = Number(process.env.FAKE_GAS_MAXROWS || 1000);   // 실제 새 탭은 1,000행
++
++let token = process.env.FAKE_GAS_TOKEN || 'test-token';
++let queue = [];
++const results = [];
++const opLog = [];
++const formulas = [];
++let posts = 0;
++
++class Range {
++  constructor(sh, r, c, nr, nc) { Object.assign(this, { sh, r, c, nr, nc }); }
++  _check() {
++    if (this.r < 1 || this.c < 1 || this.r + this.nr - 1 > this.sh.maxRows) {
++      throw new Error(`범위가 시트 밖: ${this.r}+${this.nr} > ${this.sh.maxRows}`);
++    }
++  }
++  getValues() {
++    this._check();
++    const out = [];
++    for (let i = 0; i < this.nr; i++) {
++      const row = this.sh.data[this.r - 1 + i] || [];
++      const vals = [];
++      for (let j = 0; j < this.nc; j++) vals.push(row[this.c - 1 + j] ?? '');
++      out.push(vals);
++    }
++    return out;
++  }
++  setValues(v) {
++    this._check();
++    if (v.length !== this.nr || v.some(r => r.length !== this.nc)) throw new Error('setValues 크기 불일치');
++    for (let i = 0; i < this.nr; i++) {
++      const ri = this.r - 1 + i;
++      this.sh.data[ri] = this.sh.data[ri] || [];
++      for (let j = 0; j < this.nc; j++) {
++        let x = v[i][j];
++        if (typeof x === 'string' && x.startsWith("'")) x = x.slice(1);          // 시트처럼: 앞의 ' 는 '글자로' 표시
++        else if (typeof x === 'string' && /^[=+\-@]/.test(x)) formulas.push(x);   // 수식으로 해석됐을 값
++        this.sh.data[ri][this.c - 1 + j] = x;
++      }
++    }
++    return this;
++  }
++  setNumberFormat() { return this; }
++  setFontWeight() { return this; }
++  setWrapStrategy() { return this; }
++}
++
++class Sheet {
++  constructor(name) { this.name = name; this.data = []; this.maxRows = MAX_ROWS_INIT; }
++  getLastRow() {
++    for (let i = this.data.length - 1; i >= 0; i--) {
++      if ((this.data[i] || []).some(x => x !== '' && x !== undefined && x !== null)) return i + 1;
++    }
++    return 0;
++  }
++  getMaxRows() { return this.maxRows; }
++  insertRowsAfter(after, n) { this.maxRows += n; return this; }
++  getRange(r, c, nr = 1, nc = 1) { return new Range(this, r, c, nr, nc); }
++  clear() { this.data = []; return this; }
++  setFrozenRows() { return this; }
++}
++
++const sheets = new Map();
++const ctx = {
++  ContentService: {
++    MimeType: { TEXT: 'text', JSON: 'json' },
++    createTextOutput(s) { return { content: s, setMimeType() { return this; } }; },
++  },
++  PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k === 'MIRROR_TOKEN' ? token : null) }) },
++  LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
++  SpreadsheetApp: {
++    WrapStrategy: { CLIP: 'CLIP' },
++    getActiveSpreadsheet: () => ({
++      getSheetByName: (n) => sheets.get(n) || null,
++      insertSheet: (n) => { const s = new Sheet(n); sheets.set(n, s); return s; },
++    }),
++  },
++  JSON, String, Array, Object, Math, Error,
++};
++vm.createContext(ctx);
++vm.runInContext(GS, ctx, { filename: 'sheet_mirror.gs' });
++
++function readBody(req) {
++  return new Promise((resolve) => { let b = ''; req.on('data', c => b += c); req.on('end', () => resolve(b)); });
++}
++
++const server = http.createServer(async (req, res) => {
++  const body = await readBody(req);
++  if (req.method === 'POST' && req.url === '/__ctl') {
++    const c = JSON.parse(body || '{}');
++    if (c.queue) queue = c.queue.slice();
++    if (c.token !== undefined) token = c.token;
++    if (c.setCell) { const s = sheets.get(c.setCell.sheet); s.data[c.setCell.row - 1][c.setCell.col - 1] = c.setCell.value; }
++    if (c.deleteRow) { const s = sheets.get(c.deleteRow.sheet); s.data.splice(c.deleteRow.row - 1, 1); }
++    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"ok":true}'); return;
++  }
++  if (req.method === 'GET' && req.url === '/__state') {
++    const out = {};
++    for (const [n, s] of sheets) out[n] = s.data.slice(0, s.getLastRow()).map(r => r.slice());
++    res.writeHead(200, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ sheets: out, formulas, log: opLog, posts }));
++    return;
++  }
++  if (req.method === 'POST' && req.url.startsWith('/exec')) {
++    posts++;
++    const inj = queue.shift();
++    if (inj && inj.status) { res.writeHead(inj.status, { 'Content-Type': 'text/plain' }); res.end('err'); return; }
++    if (inj && inj.html) { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<!DOCTYPE html><html>로그인</html>'); return; }
++    let out;
++    if (inj && inj.busy) out = JSON.stringify({ ok: false, error: 'busy' });
++    else {
++      try { const p = JSON.parse(body); opLog.push(p.op + (p.sheet ? ':' + p.sheet : '') + (p.rows ? ':' + p.rows.length : '')); } catch { opLog.push('?'); }
++      out = ctx.doPost({ postData: { contents: body } }).content;
++    }
++    results.push(out);
++    res.writeHead(302, { Location: `/echo/${results.length - 1}` }); res.end(); return;
++  }
++  if (req.method === 'GET' && req.url.startsWith('/echo/')) {
++    const n = Number(req.url.slice('/echo/'.length));
++    res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(results[n]); return;
++  }
++  res.writeHead(404); res.end('no');
++});
++server.listen(0, '127.0.0.1', () => { console.log('PORT ' + server.address().port); });
+diff --git a/scripts/notion_to_sqlite.py b/scripts/notion_to_sqlite.py
+index 0f4a663..68bb9d2 100644
+--- a/scripts/notion_to_sqlite.py
++++ b/scripts/notion_to_sqlite.py
+@@ -2,6 +2,9 @@
+ """
+ v4.0 1단계 — 노션 → SQLite 적재 (노션 읽기 전용)
+ 
++※ v4.0 3단계부터 보관용이다. 앱(스케줄러·카톡·동기화·시트 미러)은 이 파일도 lib/tips_notion.py 도 import 하지 않는다.
++  쓰는 곳은 --verify(장부 ↔ Vault 대조) 정도. 노션을 해지할 때 lib/tips_notion.py·.env 의 NOTION_* 와 함께 지운다.
++
+   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py                    # dry-run: 노션을 읽고 보고만 한다. 파일을 쓰지 않는다
+   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply            # data/library.db 생성 (이미 있으면 거부)
+   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply --replace  # 기존 파일을 data/library.db.bak.<시각> 으로 옮기고 새로 만든다
+@@ -36,7 +39,7 @@ sys.path.insert(0, REPO_ROOT)
+ sys.path.insert(0, os.path.join(REPO_ROOT, 'lib'))
+ 
+ import tips_notion as tn                       # noqa: E402  HTTP·인증 오류 처리 원본
+-import sync_obsidian as so                     # noqa: E402  VAULT 경로·block_to_md·Vault 스캔 재사용
++import sync_obsidian as so                     # noqa: E402  VAULT 경로·Vault 스캔 재사용
+ from kakao_parse import url_key                # noqa: E402
+ import library_db as ldb                       # noqa: E402
+ 
+@@ -56,6 +59,36 @@ def nfc(s):
+     return unicodedata.normalize('NFC', s or '')
+ 
+ 
++# ── 노션 rich_text·블록 → 마크다운 (v4.0 3단계: sync_obsidian.py 에서 옮겨 옴 — 이제 이 스크립트만 쓴다) ──
++def rich_to_md(rt_list):
++    out = ''
++    for rt in rt_list or []:
++        t = rt.get('text', {}).get('content', '')
++        a = rt.get('annotations', {})
++        if a.get('bold'):   t = f'**{t}**'
++        if a.get('italic'): t = f'*{t}*'
++        if a.get('code'):   t = f'`{t}`'
++        out += t
++    return out
++
++
++def block_to_md(block):
++    btype = block.get('type', '')
++    b = block.get(btype, {})
++    text = rich_to_md(b.get('rich_text', []))
++    mapping = {
++        'heading_1': f'# {text}',
++        'heading_2': f'## {text}',
++        'heading_3': f'### {text}',
++        'paragraph': text or '',
++        'bulleted_list_item': f'- {text}',
++        'numbered_list_item': f'1. {text}',
++        'quote': f'> {text}',
++        'divider': '---',
++    }
++    return mapping.get(btype, text)
++
++
+ def plain(rt):
+     return nfc(''.join((t.get('plain_text') if t.get('plain_text') is not None
+                         else t.get('text', {}).get('content', '')) for t in (rt or [])))
+@@ -110,7 +143,7 @@ def blocks_body_md(page_id):
+     time.sleep(RATE_SLEEP)
+     idx = next((i for i, b in enumerate(blocks) if b.get('type') == 'divider'), None)
+     body = blocks[idx + 1:] if idx is not None else [b for b in blocks if b.get('type') != 'image']
+-    return nfc('\n'.join(so.block_to_md(b) for b in body)).strip()
++    return nfc('\n'.join(block_to_md(b) for b in body)).strip()
+ 
+ 
+ def video_row(page, stats):
+@@ -155,7 +188,7 @@ def video_row(page, stats):
+ def tip_row(page):
+     r = tn.page_to_row(page)
+     try:
+-        body = nfc('\n'.join(so.block_to_md(b) for b in tn.get_blocks(page['id']))).strip()
++        body = nfc('\n'.join(block_to_md(b) for b in tn.get_blocks(page['id']))).strip()
+     finally:
+         time.sleep(RATE_SLEEP)
+     return {
+diff --git a/scripts/test_build_wiki_index.py b/scripts/test_build_wiki_index.py
+new file mode 100644
+index 0000000..6634bc3
+--- /dev/null
++++ b/scripts/test_build_wiki_index.py
+@@ -0,0 +1,125 @@
++#!/usr/bin/env python3
++"""build_obsidian_wiki.py (내용 같으면 안 쓰기) + build_search_index.py (프론트매터 한정) 회귀 테스트 — v4.0 3단계.
++임시 Vault 만 쓴다. 네트워크 0회(임베딩 호출 없음 — collect_notes 만 부른다).
++
++    /opt/homebrew/bin/python3 scripts/test_build_wiki_index.py
++
++지키는 것:
++  1) 두 번째 재구성은 노트를 하나도 다시 쓰지 않는다 (mtime 그대로) — 2026-10-11 Vault 전체 mtime 3,193개 변경의 재발 방지
++  2) 바뀐 노트 하나만 다시 쓴다
++  3) 검색 인덱스는 맨 앞 프론트매터의 notion_id 만 노트로 센다 (본문 예시의 'notion_id: …' 는 노트가 아니다)
++"""
++import os, shutil, sys, tempfile, time
++from contextlib import redirect_stdout
++import io
++
++REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.insert(0, REPO)
++import urllib.request
++calls = []
++def _no_net(*a, **k):
++    calls.append(a[0] if a else k)
++    raise RuntimeError('네트워크 요청 금지 (테스트)')
++urllib.request.urlopen = _no_net
++
++import build_obsidian_wiki as bow   # noqa: E402
++import build_search_index as bsi    # noqa: E402
++bsi.urlopen = _no_net
++
++results = []
++def check(name, cond, detail=''):
++    results.append(bool(cond))
++    print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f'  — {detail}' if detail and not cond else ''), flush=True)
++
++
++def note(title, nid, topic, body_extra=''):
++    return (f'---\ntitle: "{title}"\nchannel: "채널가"\ntags: ["{topic}"]\nupload_date: 2026-09-01\nview_count: 10\n'
++            f'subscriber_count: 20\nvideo_url: https://www.youtube.com/watch?v={nid[-11:]}\nthumbnail: null\nstatus: 완료\n'
++            f'notion_id: {nid}\n---\n\n\n**▶ 영상 보기: **https://www.youtube.com/watch?v={nid[-11:]}\n---\n'
++            f'## 영상 개요\nClaude Code 와 Gemini 를 비교한다. {body_extra}\n\n## 핵심 내용\n- 하나\n')
++
++
++tmp = tempfile.mkdtemp(prefix='wiki-build-test-')
++V = os.path.join(tmp, 'vault')
++try:
++    os.makedirs(os.path.join(V, 'AI Claude'))
++    os.makedirs(os.path.join(V, 'AI 꿀팁'))
++    files = {
++        'AI Claude/채널가_영상 하나_20260901.md': note('영상 하나', 'aaaaaaaa-0000-0000-0000-00000000001a', 'AI Claude'),
++        'AI Claude/채널가_영상 둘_20260902.md': note('영상 둘', 'aaaaaaaa-0000-0000-0000-00000000002b', 'AI Claude'),
++        # 프론트매터 없이 본문에 예시만 있는 문서 — 노트가 아니다
++        'AI Claude/메모.md': '# 메모\n\n```yaml\nnotion_id: bbbbbbbb-0000-0000-0000-000000000099\ntitle: "가짜"\n```\n',
++        # 프론트매터는 있으나 notion_id 는 본문 예시에만 — 노트가 아니다
++        'AI Claude/설명.md': '---\ntitle: "설명"\n---\n\n```\nnotion_id: cccccccc-0000-0000-0000-000000000098\n```\n',
++        'AI 꿀팁/2026-09-02_팁.md': '---\ntitle: "팁"\nlink_url: https://github.com/a/b\ncategory: 개발툴\nkeywords: ["Claude"]\nnotion_id: tip-0001\n---\n\n메모\n',
++    }
++    for rel, text in files.items():
++        with open(os.path.join(V, rel), 'w', encoding='utf-8') as fh:
++            fh.write(text)
++
++    bow.VAULT = V
++    bow.MOC_DIR = os.path.join(V, '_MOC')
++    bsi.VAULT = V
++
++    def rebuild():
++        bow.WRITE_STATS.update(written=0, same=0)
++        with redirect_stdout(io.StringIO()):
++            fs = bow.get_all_files()
++            bow.build_moc_files(fs)
++            bow.add_keyword_links(fs)
++            bow.build_keyword_hubs(fs)
++            fs = bow.get_all_files()
++            bow.build_keyword_index(fs)
++            bow.lint_wiki(fs)
++            bow.build_schema(fs)
++        return dict(bow.WRITE_STATS)
++
++    note_paths = [os.path.join(V, r) for r in files]
++
++    def mtimes():
++        return {p: os.stat(p).st_mtime_ns for p in note_paths}
++
++    print('▶ 1. 첫 재구성 — 관련 항목이 붙는다')
++    s1 = rebuild()
++    body = open(note_paths[0], encoding='utf-8').read()
++    check('첫 재구성은 노트에 🔗 관련 항목을 쓴다', '## 🔗 관련 항목' in body and '[[AI Claude MOC]]' in body and s1['written'] > 0, s1)
++
++    print('▶ 2. 두 번째 재구성 — 노트를 다시 쓰지 않는다')
++    old = time.time() - 3600
++    for p in note_paths:
++        os.utime(p, (old, old))
++    m0 = mtimes()
++    s2 = rebuild()
++    m1 = mtimes()
++    check('노트 mtime 전부 그대로', m0 == m1, [os.path.relpath(p, V) for p in note_paths if m0[p] != m1[p]])
++    check('내용 같아 건너뜀 > 0', s2['same'] >= len(note_paths), s2)
++    check('다시 쓴 것은 시각이 박힌 lint.md·schema.md 정도 (≤ 2)', s2['written'] <= 2, s2)
++    check('두 번째 결과 파일 내용 = 첫 번째', open(note_paths[0], encoding='utf-8').read() == body)
++    memo = open(os.path.join(V, 'AI Claude/메모.md'), encoding='utf-8').read()
++    check('프론트매터 없는 파일도 관련 항목이 한 벌만 (쌓이지 않음)', memo.count('## 🔗 관련 항목') == 1, memo.count('## 🔗 관련 항목'))
++
++    print('▶ 3. 바뀐 노트 하나만')
++    p = note_paths[1]
++    txt = open(p, encoding='utf-8').read().replace('## 핵심 내용\n- 하나', '## 핵심 내용\n- 하나\n- Cursor 도 다룬다')
++    with open(p, 'w', encoding='utf-8') as fh:
++        fh.write(txt)
++    os.utime(p, (old, old))
++    m0 = mtimes()
++    rebuild()
++    m1 = mtimes()
++    changed = [os.path.relpath(x, V) for x in note_paths if m0[x] != m1[x]]
++    check('바뀐 노트 1개만 다시 씀', changed == ['AI Claude/채널가_영상 둘_20260902.md'], changed)
++
++    print('▶ 4. 검색 인덱스 — 프론트매터 한정')
++    notes = bsi.collect_notes()
++    ids = sorted(n['id'] for n in notes)
++    check('노트 = 영상 2 + 꿀팁 1 (본문 예시 2개는 제외)', ids == ['aaaaaaaa-0000-0000-0000-00000000001a', 'aaaaaaaa-0000-0000-0000-00000000002b', 'tip-0001'], ids)
++    n1 = next(n for n in notes if n['id'].endswith('1a'))
++    check('제목·태그·조회수는 프론트매터 값', n1['title'] == '영상 하나' and n1['tags'] == ['AI Claude'] and n1['view_count'] == 10, n1)
++    check('네트워크 요청 0건', not calls, calls[:2])
++finally:
++    shutil.rmtree(tmp, ignore_errors=True)
++
++ok = sum(results)
++print(f'\n{ok}/{len(results)} PASS')
++sys.exit(0 if ok == len(results) else 1)
+diff --git a/scripts/test_kakao_ingest.py b/scripts/test_kakao_ingest.py
+index 976452e..e5bc0ff 100644
+--- a/scripts/test_kakao_ingest.py
++++ b/scripts/test_kakao_ingest.py
+@@ -8,7 +8,7 @@
+   2) 중복 판정은 장부 tips 의 url_key — 같은 CSV 를 두 번 돌리면 두 번째는 0건 (2026-09-06 중복 15건 재발 방지)
+   3) dry-run 은 장부·상태 파일을 쓰지 않는다
+   4) 신규 행은 노션 시절과 같은 기본값·형식으로 들어간다
+-  5) 노션·외부 HTTP 요청을 하나도 만들지 않는다
++  5) 노션·외부 HTTP 요청을 하나도 만들지 않는다 (v4.0 3단계: 노션 래퍼 lib/tips_notion.py 를 import 하지도 않는다)
+ """
+ import io, json, os, sqlite3, sys, tempfile
+ from contextlib import redirect_stdout
+@@ -22,8 +22,6 @@ def _no_net(*a, **k):
+     calls.append(a[0] if a else k)
+     raise RuntimeError('네트워크 요청 금지 (테스트)')
+ urllib.request.urlopen = _no_net
+-import tips_notion
+-tips_notion.urlopen = _no_net
+ import library_db as ldb
+ import kakao_ingest as ki
+ 
+@@ -115,6 +113,7 @@ def main():
+     check('중간 실패 시 exit 1 · 남은 행 0 (총 1 그대로)', code == 1 and len(tips(ldb.DB_PATH)) == 1, (code, rj))
+ 
+     check('네트워크 요청 0건', not calls, calls[:3])
++    check('노션 래퍼(tips_notion)를 import 하지 않음', 'tips_notion' not in sys.modules)
+     ok = all(results)
+     print(f'\n{sum(results)}/{len(results)} PASS')
+     return 0 if ok else 1
+diff --git a/scripts/test_scheduler_guards.js b/scripts/test_scheduler_guards.js
+index 28e5c97..37d7874 100644
+--- a/scripts/test_scheduler_guards.js
++++ b/scripts/test_scheduler_guards.js
+@@ -9,6 +9,7 @@
+ //   2) YouTube 조회는 일시 오류만 재시도하고 401/403 은 즉시 던진다
+ //   3) 채널 구독자 수는 50개씩 묶어 순차 조회한다
+ //   4) 장부 쓰기(저장·주제 추가·통계 갱신)는 같은 video_id 를 덮어쓰지 않고, 네트워크 요청을 하나도 만들지 않는다
++//   5) (v4.0 3단계) 시트 미러 훅은 실패해도 reject 하지 않는다 — 오류를 결과로 돌려줄 뿐 Obsidian 동기화를 막지 않는다
+ 
+ const https = require('https');
+ const fs = require('fs');
+@@ -64,7 +65,8 @@ if (!fs.readFileSync(SCHEDULER, 'utf8').includes('require.main === module')) {
+   out('중단: scheduler.js 에 `require.main === module` 가드가 없다. 가드를 먼저 넣어야 이 테스트를 돌릴 수 있다.');
+   process.exit(2);
+ }
+-const { ytFetch, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, _setLibDb } = require(SCHEDULER);
++const sched = require(SCHEDULER);
++const { ytFetch, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, _setLibDb } = sched;
+ const library = require(path.join(__dirname, '..', 'lib', 'library'));
+ const { DatabaseSync } = library.loadSqlite();   // ExperimentalWarning 한 줄을 삼키는 로더
+ 
+@@ -93,6 +95,12 @@ const SEED = [
+   { id: 'aaaa-2', vid: 'AAAAAAAAAA2', title: '두 번째 영상', topics: [] },
+   { id: 'aaaa-3', vid: null, title: 'video_id 없는 영상' },
+ ];
++// 가짜 인터프리터: 인자를 무시하고 주어진 셸 명령만 실행 (runSheetMirror 가 python3 대신 부른다)
++function fakeInterpreter(body) {
++  const p = path.join(TMP, `fake-py-${++dbSeq}.sh`);
++  fs.writeFileSync(p, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
++  return p;
++}
+ const count = (p) => { const d = new DatabaseSync(p); const n = d.prepare('SELECT COUNT(*) n FROM videos').get().n; d.close(); return n; };
+ 
+ async function expectThrow(fn) {
+@@ -223,6 +231,21 @@ const cases = [
+       await expectThrow(() => library.addTopic(db, 'no-such-id', 'AI Claude'));
+     } finally { db.close(); }
+   }],
++  ['runSheetMirror: 미러가 exit 2(auth) 여도 reject 없이 결과를 돌려준다', async () => {
++    const fake = fakeInterpreter('echo \'RESULT_JSON:{"error":"auth","videos_sent":0,"tips_sent":0}\'; exit 2');
++    const r = await sched.runSheetMirror(fake);
++    assert(r && r.error === 'auth', '결과가 다르다: ' + JSON.stringify(r));
++  }],
++  ['runSheetMirror: 출력 없이 죽어도 reject 없이 exit 코드를 오류로 돌려준다', async () => {
++    const fake = fakeInterpreter('exit 3');
++    const r = await sched.runSheetMirror(fake);
++    assert(r && r.error === 'exit_3', '결과가 다르다: ' + JSON.stringify(r));
++  }],
++  ['runSheetMirror: skipped(설정 전)는 오류가 아니다', async () => {
++    const fake = fakeInterpreter('echo \'RESULT_JSON:{"skipped":"not_configured","videos_sent":0,"tips_sent":0,"error":""}\'');
++    const r = await sched.runSheetMirror(fake);
++    assert(r && r.skipped === 'not_configured' && !r.error, '결과가 다르다: ' + JSON.stringify(r));
++  }],
+   ['updateStats: 업로드일을 안 주면 기존 날짜를 지킨다', async () => {
+     const db = library.openLibrary(makeLibrary(SEED));
+     try {
+diff --git a/scripts/test_sheet_mirror.py b/scripts/test_sheet_mirror.py
+new file mode 100644
+index 0000000..6bcd8f9
+--- /dev/null
++++ b/scripts/test_sheet_mirror.py
+@@ -0,0 +1,272 @@
++#!/usr/bin/env python3
++"""sheet_mirror.py + gas/sheet_mirror.gs 회귀 테스트 (v4.0 3단계). 실제 구글·실제 장부·.env 를 건드리지 않는다.
++
++    /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py
++
++받는 쪽은 scripts/fake_gas_server.js — gas/sheet_mirror.gs 원본을 그대로 node vm 에 올리고 시트를 흉내 낸다(127.0.0.1).
++node 는 FAKE_GAS_NODE 환경변수 → /opt/homebrew/bin/node → PATH 의 node 순으로 찾는다.
++
++지키는 것:
++  1) URL 미설정이면 아무 요청 없이 skipped (설치 전 스케줄러 안전)
++  2) 처음엔 두 탭을 비우고 전부 보낸다. 두 번째 실행은 요청 0
++  3) 장부에서 바뀐 행만 보내고, 시트에서는 제자리 덮어쓰기(중복 행 없음)
++  4) 401/403·토큰 불일치·HTML 응답은 재시도 없이 즉시 중단 (exit 2)
++  5) 5xx·busy 는 2·4·8초 지수 백오프, 4회 초과면 exit 1 — 워터마크는 그대로(다음 실행에 다시 보냄)
++  6) 중간 실패 후 다시 돌리면 빠짐·중복 없이 맞춰진다
++  7) '='로 시작하는 글자는 수식이 되지 않는다
++  8) 장부는 meta 의 sheet_* 키 말고는 바뀌지 않는다. 토큰은 출력에 나오지 않는다
++"""
++import hashlib, io, json, os, shutil, sqlite3, subprocess, sys, tempfile, time
++from contextlib import redirect_stdout
++from urllib.request import urlopen, Request
++
++REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.insert(0, REPO)
++sys.path.insert(0, os.path.join(REPO, 'lib'))
++import library_db as ldb   # noqa: E402
++import sheet_mirror as sm  # noqa: E402
++
++TOKEN = 'tok-' + 'x' * 20
++results = []
++
++
++def check(name, cond, detail=''):
++    results.append(bool(cond))
++    print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f'  — {detail}' if detail and not cond else ''), flush=True)
++
++
++def find_node():
++    for c in (os.environ.get('FAKE_GAS_NODE'), '/opt/homebrew/bin/node', shutil.which('node')):
++        if c and os.path.exists(c):
++            return c
++    raise SystemExit('node 를 찾지 못했습니다')
++
++
++tmp = tempfile.mkdtemp(prefix='sheet-mirror-test-')
++DB = os.path.join(tmp, 'data', 'library.db')
++ldb.DB_PATH = DB
++proc = subprocess.Popen([find_node(), os.path.join(REPO, 'scripts', 'fake_gas_server.js')],
++                        stdout=subprocess.PIPE, text=True, env={**os.environ, 'FAKE_GAS_TOKEN': TOKEN, 'FAKE_GAS_MAXROWS': '120'})   # 120행 탭 — 넘치면 행을 늘리는지
++port = int(proc.stdout.readline().split()[1])
++BASE = f'http://127.0.0.1:{port}'
++sm.ALLOWED_URL_PREFIXES = (BASE + '/exec',)
++ENV = {'SHEET_MIRROR_URL': BASE + '/exec', 'SHEET_MIRROR_TOKEN': TOKEN}
++sm.load_env = lambda: dict(ENV)
++sleeps = []
++sm.time.sleep = lambda s: sleeps.append(s)
++
++
++def ctl(**kw):
++    urlopen(Request(BASE + '/__ctl', data=json.dumps(kw).encode(), method='POST',
++                    headers={'Content-Type': 'application/json'})).read()
++
++
++def state():
++    return json.loads(urlopen(BASE + '/__state').read())
++
++
++def run(*argv):
++    sleeps.clear()
++    buf = io.StringIO()
++    with redirect_stdout(buf):
++        code = sm.main(list(argv))
++    out = buf.getvalue()
++    rj = next((json.loads(l[len('RESULT_JSON:'):]) for l in out.splitlines() if l.startswith('RESULT_JSON:')), None)
++    return code, out, rj
++
++
++def ts(n):
++    return f'2026-10-{n:02d}T00:00:00.000Z'
++
++
++def make_db():
++    os.makedirs(os.path.dirname(DB), exist_ok=True)
++    c = ldb.open_db(DB); ldb.apply_schema(c)
++    with c:
++        for i in range(450):
++            c.execute('INSERT INTO videos (record_id, video_id, title, channel, topics, upload_date, view_count, subscriber_count, '
++                      'video_url, thumbnail_url, status, summary, summary_src, created_at, updated_at) '
++                      "VALUES (?,?,?,?,?,?,?,?,?,?,'완료',?,'property',?,?)",
++                      (f'rec-{i:04d}', f'vid{i:08d}', '=1+1' if i == 7 else f'영상 {i}', '채널가', json.dumps(['AI 자동화', 'AI Claude'], ensure_ascii=False),
++                       '2026-09-01', 1000 + i, 5000, f'https://www.youtube.com/watch?v=vid{i:08d}', None,
++                       f'## 영상 개요\n요약 {i}', ts(1), ts(1)))
++        for i in range(3):
++            c.execute('INSERT INTO tips (record_id, title, url, url_key, source, tags, category, status, importance, saved_date, memo, created_at, updated_at) '
++                      "VALUES (?,?,?,?,?,?,'개발툴','미확인','중','2026-09-02','',?,?)",
++                      (f'tip-{i}', f'팁 {i}', f'https://github.com/a/{i}', f'https://github.com/a/{i}', 'github.com', '["Claude"]', ts(2), ts(2)))
++    c.close()
++
++
++def db_conn():
++    c = sqlite3.connect(DB); c.row_factory = sqlite3.Row; return c
++
++
++def content_hash():
++    c = db_conn()
++    h = hashlib.sha256()
++    for t in ('videos', 'tips', 'videos_dup'):
++        for r in c.execute(f'SELECT * FROM {t} ORDER BY record_id'):
++            h.update(repr(tuple(r)).encode())
++    for r in c.execute("SELECT * FROM meta WHERE key NOT LIKE 'sheet\\_%' ESCAPE '\\' ORDER BY key"):
++        h.update(repr(tuple(r)).encode())
++    c.close()
++    return h.hexdigest()
++
++
++def meta(key):
++    c = db_conn(); r = c.execute('SELECT value FROM meta WHERE key=?', (key,)).fetchone(); c.close()
++    return r[0] if r else None
++
++
++try:
++    print('▶ 1. 설정 전·잘못된 설정')
++    ENV['SHEET_MIRROR_URL'] = ''
++    code, out, rj = run()
++    check('URL 없음 → exit 0 · skipped', code == 0 and rj and rj['skipped'] == 'not_configured')
++    check('URL 없음 → 장부를 열지도 않음(파일 없어도 됨)', not os.path.exists(DB))
++    code, out, rj = run('--dry-run')
++    check('URL 없음 + --dry-run → 장부가 없으면 exit 1 (만들지 않음)', code == 1 and rj['error'] == 'library' and not os.path.exists(DB))
++    ENV['SHEET_MIRROR_URL'] = 'https://evil.example.com/exec'
++    code, out, rj = run()
++    check('script.google.com 아닌 URL → exit 2 · 보내지 않음', code == 2 and rj['error'] == 'bad_url' and state()['posts'] == 0)
++    ENV['SHEET_MIRROR_URL'] = BASE + '/exec'
++    code, out, rj = run()
++    check('장부 없음 → exit 1 · 만들지 않음', code == 1 and rj['error'] == 'library' and not os.path.exists(DB))
++
++    make_db()
++
++    print('▶ 2. dry-run')
++    ENV['SHEET_MIRROR_URL'] = ''; ENV['SHEET_MIRROR_TOKEN'] = ''
++    code, out, rj = run('--dry-run')
++    check('URL·토큰 설정 전에도 --dry-run 은 건수를 센다 (전체 · 요청 0)', code == 0 and rj['videos_sent'] == 450 and rj['tips_sent'] == 3 and rj['full'] is True and state()['posts'] == 0, rj)
++    ENV['SHEET_MIRROR_URL'] = BASE + '/exec'; ENV['SHEET_MIRROR_TOKEN'] = TOKEN
++    code, out, rj = run('--dry-run')
++    check('dry-run → 영상 450 · 꿀팁 3 · full', code == 0 and rj['videos_sent'] == 450 and rj['tips_sent'] == 3 and rj['full'] is True)
++    check('dry-run → 요청 0 · meta 무변경', state()['posts'] == 0 and meta('sheet_target') is None)
++
++    print('▶ 3. 첫 실행 (전체)')
++    code, out, rj = run()
++    st = state()
++    check('exit 0 · 영상 450 · 꿀팁 3', code == 0 and rj['videos_sent'] == 450 and rj['tips_sent'] == 3, json.dumps(rj, ensure_ascii=False))
++    check('요청 = reset 2 + upsert 3(200·200·50) + 1', st['log'] == ['reset:영상', 'upsert:영상:200', 'upsert:영상:200', 'upsert:영상:50', 'reset:꿀팁', 'upsert:꿀팁:3'], st['log'])
++    check('시트 행 수 = 머리글 + 450 / + 3', len(st['sheets']['영상']) == 451 and len(st['sheets']['꿀팁']) == 4)
++    check('머리글 = VIDEO_HEADERS', st['sheets']['영상'][0] == sm.VIDEO_HEADERS)
++    row = next((r for r in st['sheets']['영상'] if r[0] == 'rec-0003'), [None] * 11)
++    check('행 내용: 주제 쉼표 결합 · 숫자 · KST 시각', row[4] == 'AI 자동화, AI Claude' and row[5] == 1003 and row[9] == '2026-10-01 09:00', row)
++    check("'=1+1' 제목은 글자로 들어감(수식 0)", st['formulas'] == [] and next((r for r in st['sheets']['영상'] if r[0] == 'rec-0007'), [None] * 11)[3] == '=1+1')
++    check('워터마크·대상 기록', meta('sheet_wm_videos') == ts(1) and meta('sheet_wm_tips') == ts(2) and meta('sheet_target') == sm.url_hash(BASE + '/exec'))
++    check('토큰이 출력에 없음', TOKEN not in out)
++
++    print('▶ 4. 변경 없음')
++    p0 = state()['posts']
++    code, out, rj = run()
++    check('두 번째 실행 → 0 · 0 · 요청 0', code == 0 and rj['videos_sent'] == 0 and rj['tips_sent'] == 0 and state()['posts'] == p0)
++
++    print('▶ 5. 변경분만')
++    c = db_conn()
++    with c:
++        c.execute("UPDATE videos SET topics=?, view_count=99999, updated_at=? WHERE record_id='rec-0010'", (json.dumps(['AI 자동화', 'AI 에이전트'], ensure_ascii=False), ts(5)))
++        c.execute("INSERT INTO tips (record_id,title,url,url_key,source,tags,category,status,importance,saved_date,memo,created_at,updated_at) "
++                  "VALUES ('tip-new','새 팁','https://x.com/1','https://x.com/1','x.com','[]','기타','미확인','중','2026-10-05','메모',?,?)", (ts(5), ts(5)))
++    c.close()
++    code, out, rj = run()
++    st = state()
++    r10 = [r for r in st['sheets']['영상'] if r[0] == 'rec-0010']
++    check('영상 1 · 꿀팁 1 만 보냄', code == 0 and rj['videos_sent'] == 1 and rj['tips_sent'] == 1 and rj['full'] is False)
++    check('바뀐 영상은 제자리 덮어쓰기 (행 수 그대로, 중복 없음)', len(st['sheets']['영상']) == 451 and len(r10) == 1 and r10[0][5] == 99999 and r10[0][4] == 'AI 자동화, AI 에이전트')
++    check('새 꿀팁은 아래에 추가', len(st['sheets']['꿀팁']) == 5 and st['sheets']['꿀팁'][-1][0] == 'tip-new')
++    check('워터마크 올라감', meta('sheet_wm_videos') == ts(5) and meta('sheet_wm_tips') == ts(5))
++
++    print('▶ 6. 일시 오류 — 지수 백오프')
++    c = db_conn()
++    with c: c.execute("UPDATE videos SET view_count=1, updated_at=? WHERE record_id='rec-0011'", (ts(6),))
++    c.close()
++    ctl(queue=[{'status': 500}, {'busy': True}])
++    code, out, rj = run()
++    check('500 → busy → 성공: exit 0 · 대기 [2, 4]', code == 0 and sleeps == [2, 4] and rj['videos_sent'] == 1, (code, sleeps))
++    c = db_conn()
++    with c: c.execute("UPDATE videos SET view_count=2, updated_at=? WHERE record_id='rec-0012'", (ts(7),))
++    c.close()
++    ctl(queue=[{'status': 503}] * 4)
++    p0 = state()['posts']
++    code, out, rj = run()
++    check('503 ×4 → exit 1 · transient · 대기 [2, 4, 8] · 시도 4', code == 1 and rj['error'] == 'transient' and sleeps == [2, 4, 8] and state()['posts'] - p0 == 4, (code, sleeps))
++    check('실패 → 워터마크 그대로', meta('sheet_wm_videos') == ts(6))
++    code, out, rj = run()
++    check('다음 실행이 다시 보냄', code == 0 and rj['videos_sent'] == 1 and meta('sheet_wm_videos') == ts(7))
++
++    print('▶ 7. 인증 오류 — 재시도 없음')
++    c = db_conn()
++    with c: c.execute("UPDATE videos SET view_count=3, updated_at=? WHERE record_id='rec-0013'", (ts(8),))
++    c.close()
++    for label, inj in (('HTTP 403', {'status': 403}), ('HTTP 401', {'status': 401}), ('HTML(로그인 화면)', {'html': True}), ('HTTP 404', {'status': 404})):
++        ctl(queue=[inj])
++        p0 = state()['posts']
++        code, out, rj = run()
++        check(f'{label} → exit 2 · auth · 시도 1 · 대기 없음', code == 2 and rj['error'] == 'auth' and state()['posts'] - p0 == 1 and sleeps == [], (code, rj, sleeps))
++    ctl(token='other-token')
++    p0 = state()['posts']
++    code, out, rj = run()
++    check('토큰 불일치 → exit 2 · 시도 1', code == 2 and rj['error'] == 'auth' and state()['posts'] - p0 == 1)
++    check('인증 오류 내내 워터마크 그대로', meta('sheet_wm_videos') == ts(7))
++    ctl(token=TOKEN)
++    code, out, rj = run()
++    check('토큰 복구 후 다시 보냄', code == 0 and rj['videos_sent'] == 1)
++
++    print('▶ 8. 전체 다시 쓰기 중 실패 → 복구')
++    ctl(queue=[{}, {}, {'status': 403}])   # reset·첫 묶음 성공, 둘째 묶음 403
++    code, out, rj = run('--full')
++    st = state()
++    check('--full 도중 403 → exit 2 · 영상 200 만 보냄', code == 2 and rj['videos_sent'] == 200, rj)
++    check('이 시점 시트는 반쪽(200행)', len(st['sheets']['영상']) == 201)
++    check('끊긴 전체 쓰기 → 대상 표시 지워짐(다음 실행 전체)', meta('sheet_target') is None)
++    code, out, rj = run()
++    st = state()
++    check('다음 실행이 다시 전체(reset 포함)로 맞춤 — 영상 450 · 중복 0',
++          code == 0 and rj['full'] is True and len(st['sheets']['영상']) == 451 and len({r[0] for r in st['sheets']['영상'][1:]}) == 450, rj)
++    check('꿀팁도 4행으로 맞춤', len(st['sheets']['꿀팁']) == 5)
++
++    print('▶ 9. 대조 (--check) · 머리글 어긋남 · 주소 변경')
++    code, out, rj = run('--check')
++    check('--check → match true', code == 0 and rj['match'] is True and rj['db'] == {'영상': 450, '꿀팁': 4}, rj)
++    ctl(deleteRow={'sheet': '영상', 'row': 10})
++    code, out, rj = run('--check')
++    check('시트 행을 지우면 match false', code == 0 and rj['match'] is False and rj['sheet']['영상'] == 449)
++    ctl(setCell={'sheet': '꿀팁', 'row': 1, 'col': 3, 'value': '이름바꿈'})
++    c = db_conn()
++    with c: c.execute("UPDATE tips SET memo='m', updated_at=? WHERE record_id='tip-0'", (ts(9),))
++    c.close()
++    code, out, rj = run()
++    check('머리글이 다르면 쓰지 않음 → exit 1 · other', code == 1 and rj['error'] == 'other', rj)
++    check('그때 꿀팁 워터마크 그대로', meta('sheet_wm_tips') == ts(5))
++    ENV['SHEET_MIRROR_URL'] = BASE + '/exec?v=2'
++    sm.ALLOWED_URL_PREFIXES = (BASE + '/exec',)
++    code, out, rj = run()
++    st = state()
++    check('주소가 바뀌면 자동 전체 → 머리글·행 수 복구', code == 0 and rj['full'] is True and st['sheets']['꿀팁'][0] == sm.TIP_HEADERS
++          and len(st['sheets']['영상']) == 451 and len(st['sheets']['꿀팁']) == 5, rj)
++    code, out, rj = run('--check')
++    check('복구 후 --check match true', rj['match'] is True)
++
++    print('▶ 10. 장부 보존')
++    c = db_conn()
++    keys = sorted(r[0] for r in c.execute('SELECT key FROM meta'))
++    c.close()
++    check('meta 키 = sheet_* 만', keys == ['sheet_last_ok', 'sheet_target', 'sheet_wm_tips', 'sheet_wm_videos'], keys)
++
++    print('▶ 11. 미러만 돌렸을 때 장부 해시')
++    shutil.copy(DB, DB + '.before')
++    h1 = content_hash()
++    c = db_conn()
++    with c: c.execute("UPDATE videos SET view_count=4, updated_at=? WHERE record_id='rec-0020'", (ts(10),))
++    c.close()
++    h2 = content_hash()
++    run(); run('--check'); run('--dry-run')
++    check('미러 실행 3종 뒤 장부 내용 해시 그대로', content_hash() == h2 and h1 != h2)
++finally:
++    proc.kill()
++    shutil.rmtree(tmp, ignore_errors=True)
++
++ok = sum(results)
++print(f'\n{ok}/{len(results)} PASS')
++sys.exit(0 if ok == len(results) else 1)
+diff --git a/server.js b/server.js
+index 0f1c90b..5e01cb9 100644
+--- a/server.js
++++ b/server.js
+@@ -1,4 +1,4 @@
+-// ===== YouTube AI 요약기 백엔드 서버 (보안 강화판, v4.0: 노션 프록시 제거) =====
++// ===== YouTube AI 요약기 백엔드 서버 (보안 강화판, v4.0: 노션 프록시·Obsidian 동기화 트리거 제거) =====
+ // 실행 방법: node server.js
+ 
+ const http = require('http');
+@@ -144,65 +144,6 @@ const server = http.createServer((req, res) => {
+     return;
+   }
+ 
+-  // ── Obsidian 동기화 트리거 ──
+-  if (parsedUrl.pathname === '/api/sync-obsidian' && req.method === 'POST') {
+-    let body = '';
+-    req.on('data', chunk => body += chunk);
+-    req.on('end', () => {
+-      let notionMsg = '';
+-      try {
+-        const parsed = JSON.parse(body || '{}');
+-        notionMsg = parsed.notionMsg || '';
+-      } catch(e) {}
+-
+-      res.writeHead(200, CORS);
+-      res.end(JSON.stringify({ ok: true, message: 'Obsidian 동기화 시작' }));
+-
+-      const { execFile } = require('child_process');
+-      const python3 = '/opt/homebrew/bin/python3';
+-      const syncScript = require('path').join(__dirname, 'sync_obsidian.py');
+-      execFile(python3, [syncScript], { cwd: __dirname }, async (err, stdout) => {
+-        if (err) {
+-          console.log(`❌ Obsidian 동기화 오류: ${err.message}`);
+-          // 오류 시 최소한 notionMsg라도 전송
+-          if (notionMsg && process.env.TELEGRAM_ENABLED === 'true') {
+-            const text = encodeURIComponent(notionMsg);
+-            const token = process.env.TELEGRAM_BOT_TOKEN;
+-            const chatId = process.env.TELEGRAM_CHAT_ID;
+-            require('https').get(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${text}`);
+-          }
+-          return;
+-        }
+-        // RESULT_JSON 파싱 후 텔레그램 전송 (v97: Notion + 구분선 + Obsidian을 1개 메시지로 통합)
+-        const jsonLine = (stdout || '').split('\n').find(l => l.startsWith('RESULT_JSON:'));
+-        if (jsonLine && process.env.TELEGRAM_ENABLED === 'true') {
+-          try {
+-            const r = JSON.parse(jsonLine.replace('RESULT_JSON:', ''));
+-            const obsLines = [
+-              `📓 Obsidian AI LLM Wiki`,
+-              `  • 신규 추가: ${r.added}개`,
+-              ...(r.tags_updated > 0 ? [`  • tags 갱신: ${r.tags_updated}개`] : []),
+-              `  • Wiki 재구성: ${r.rebuilt ? '✅ 완료' : '⏭ 생략'}`,
+-              `  • 소요시간: ${r.elapsed}초`,
+-            ];
+-            const obsMsg = obsLines.join('\n');
+-            const combined = notionMsg
+-              ? `${notionMsg}\n━━━━━━━━━━━━━━━━━━━━━━\n${obsMsg}`
+-              : obsMsg;
+-            const text = encodeURIComponent(combined);
+-            const token = process.env.TELEGRAM_BOT_TOKEN;
+-            const chatId = process.env.TELEGRAM_CHAT_ID;
+-            require('https').get(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${text}`);
+-            console.log(`✅ Obsidian 동기화 완료 — 추가: ${r.added}개`);
+-          } catch(e) {
+-            console.log(`⚠️ Obsidian 결과 파싱 오류: ${e.message}`);
+-          }
+-        }
+-      });
+-    });
+-    return;
+-  }
+-
+   // ── AI 영상목록 마스터 인제스트 (SSE 스트리밍) ──
+   if (parsedUrl.pathname === '/api/master-ingest' && req.method === 'POST') {
+     res.writeHead(200, {
+diff --git a/sheet_mirror.py b/sheet_mirror.py
+new file mode 100644
+index 0000000..d599f81
+--- /dev/null
++++ b/sheet_mirror.py
+@@ -0,0 +1,284 @@
++#!/usr/bin/env python3
++"""
++v4.0 3단계 — 장부(data/library.db) → 구글 시트 미러 (보기 전용, 단방향)
++
++    /opt/homebrew/bin/python3 sheet_mirror.py             # 변경분만 보낸다 (스케줄러가 매 실행 끝에 부른다)
++    /opt/homebrew/bin/python3 sheet_mirror.py --dry-run   # 보낼 건수만 센다. 네트워크·장부 쓰기 0 (URL 설정 전에도 된다)
++    /opt/homebrew/bin/python3 sheet_mirror.py --full      # 두 탭을 비우고 전부 다시 보낸다 (열이 바뀌었거나 시트가 어긋났을 때)
++    /opt/homebrew/bin/python3 sheet_mirror.py --check     # 시트 행 수 ↔ 장부 행 수 대조 (읽기만)
++
++받는 쪽: gas/sheet_mirror.gs (구글 시트에 붙인 Apps Script 웹앱). 설치 순서는 그 파일 머리 주석.
++.env: SHEET_MIRROR_URL (웹앱 URL, https://script.google.com/macros/s/…/exec) · SHEET_MIRROR_TOKEN (gas 스크립트 속성 MIRROR_TOKEN 과 같은 값)
++      URL 이 없으면 아무것도 하지 않고 skipped 로 끝난다 (설치 전에도 스케줄러가 안전하게 부를 수 있게).
++
++변경분 판정 — 별도 outbox 테이블 대신 updated_at 워터마크 (스키마 무변경):
++  · 장부 meta 의 sheet_wm_videos·sheet_wm_tips = 마지막으로 시트에 다 보낸 행들의 최대 updated_at.
++  · 다음 실행은 updated_at > 워터마크 인 행만 보낸다. 장부 쓰기(insertVideo·addTopic·updateStats·kakao_ingest)는 모두 updated_at 을 새로 찍는다.
++  · 워터마크는 그 탭의 묶음을 **전부** 보낸 뒤에만 올린다. 중간에 실패하면 다음 실행이 같은 행을 다시 보낸다(덮어쓰기라 무해).
++  · 시트 주소가 바뀌면(meta sheet_target ≠ URL 해시) 자동으로 --full.
++  · 장부에서 행을 지우는 일은 앱에 없다. 손으로 지웠다면 --full 로 맞춘다.
++
++안전 (CLAUDE.md 1순위):
++  · 401/403·토큰 불일치·웹앱 미설정·HTML 응답(로그인 화면 = 액세스 권한 설정 오류) → 재시도 없이 즉시 중단, exit 2.
++  · 429·5xx·네트워크 오류·busy → 지수 백오프 2·4·8초, 최대 4회 시도 후 중단, exit 1.
++  · 토큰은 본문으로만 보낸다(URL·로그에 남기지 않는다). URL 은 script.google.com 만 허용.
++  · 장부는 meta 의 sheet_* 키 말고는 쓰지 않는다.
++
++마지막 줄은 RESULT_JSON:{...} (scheduler.js 가 파싱). exit 0 = 성공 또는 skipped.
++"""
++import hashlib, json, os, ssl, sys, time
++from datetime import datetime, timedelta, timezone
++from urllib.request import urlopen, Request
++from urllib.error import HTTPError, URLError
++
++SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
++sys.path.insert(0, os.path.join(SCRIPT_DIR, 'lib'))
++import library_db as ldb          # noqa: E402
++from env_util import load_env     # noqa: E402
++
++ALLOWED_URL_PREFIXES = ('https://script.google.com/macros/s/',)
++CHUNK = 200                 # 요청 1회 행 수 (gas 상한 500)
++MAX_ATTEMPTS = 4            # 일시 오류 재시도 포함 총 시도 (대기 2·4·8초)
++TIMEOUT = 120
++CELL_MAX = 45000            # 구글 시트 셀 한도 50,000자 — 여유를 두고 자른다 (현재 요약 최대 약 3,300자)
++KST = timezone(timedelta(hours=9))
++
++VIDEO_HEADERS = ['record_id', '업로드일', '채널', '제목', '주제', '조회수', '구독자', 'URL', '요약', '저장', '수정']
++TIP_HEADERS = ['record_id', '저장일', '제목', 'URL', '출처', '카테고리', '태그', '중요도', '상태', '메모', '본문', '저장', '수정']
++TABS = (  # (장부 테이블, 시트 탭, 머리글, 워터마크 키)
++    ('videos', '영상', VIDEO_HEADERS, 'sheet_wm_videos'),
++    ('tips', '꿀팁', TIP_HEADERS, 'sheet_wm_tips'),
++)
++
++
++class AuthError(RuntimeError):
++    """재시도 금지 — 즉시 중단 (exit 2)"""
++
++
++class TransientError(RuntimeError):
++    """재시도 초과 (exit 1)"""
++
++
++def log(m=''):
++    print(m, flush=True)
++
++
++def emit(**kw):
++    print('RESULT_JSON:' + json.dumps(kw, ensure_ascii=False), flush=True)
++
++
++def _list(s):
++    try:
++        v = json.loads(s or '[]')
++        return ', '.join(str(x) for x in v if x) if isinstance(v, list) else ''
++    except Exception:
++        return ''
++
++
++def _kst(iso):
++    """'2026-10-11T08:15:00.000Z' → '2026-10-11 17:15' (KST). 못 읽으면 원문"""
++    if not iso:
++        return ''
++    try:
++        dt = datetime.fromisoformat(iso.replace('Z', '+00:00'))
++        if dt.tzinfo is None:
++            dt = dt.replace(tzinfo=timezone.utc)
++        return dt.astimezone(KST).strftime('%Y-%m-%d %H:%M')
++    except Exception:
++        return iso
++
++
++def _cell(s):
++    s = s or ''
++    return s if len(s) <= CELL_MAX else s[:CELL_MAX] + ' …(잘림)'
++
++
++def video_row(r):
++    return [r['record_id'], r['upload_date'] or '', r['channel'], r['title'], _list(r['topics']),
++            r['view_count'] if r['view_count'] is not None else '',
++            r['subscriber_count'] if r['subscriber_count'] is not None else '',
++            r['video_url'] or '', _cell(r['summary']), _kst(r['created_at']), _kst(r['updated_at'])]
++
++
++def tip_row(r):
++    return [r['record_id'], r['saved_date'] or '', r['title'], r['url'], r['source'], r['category'], _list(r['tags']),
++            r['importance'], r['status'], _cell(r['memo']), _cell(r['body_md']), _kst(r['created_at']), _kst(r['updated_at'])]
++
++
++ROW_FN = {'videos': video_row, 'tips': tip_row}
++
++
++def url_hash(url):
++    return hashlib.sha256(url.encode('utf-8')).hexdigest()[:16]
++
++
++# ── HTTP ──
++def post(url, payload):
++    """gas 웹앱에 POST. Apps Script 는 302 로 결과 주소를 돌려주고 urllib 이 GET 으로 따라간다(본문은 다시 보내지 않는다)."""
++    data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
++    ctx = ssl.create_default_context()
++    for attempt in range(1, MAX_ATTEMPTS + 1):
++        wait = 2 ** attempt
++        try:
++            req = Request(url, data=data, method='POST', headers={'Content-Type': 'application/json; charset=utf-8'})
++            with urlopen(req, context=ctx, timeout=TIMEOUT) as res:
++                raw = res.read().decode('utf-8', 'replace')
++        except HTTPError as e:
++            if e.code in (401, 403):
++                raise AuthError(f'HTTP {e.code} — 웹앱 권한 거부. 연쇄 요청 중단')
++            if e.code == 429 or e.code >= 500:
++                if attempt == MAX_ATTEMPTS:
++                    raise TransientError(f'HTTP {e.code} 재시도 {MAX_ATTEMPTS}회 초과')
++                log(f'  ⏸ HTTP {e.code} — {wait}초 대기 후 재시도 ({attempt}/{MAX_ATTEMPTS})')
++                time.sleep(wait)
++                continue
++            raise AuthError(f'HTTP {e.code} — 웹앱 주소·배포 확인 필요 (재시도 안 함)')
++        except (URLError, TimeoutError, ConnectionError, OSError) as e:
++            if attempt == MAX_ATTEMPTS:
++                raise TransientError(f'네트워크 오류 재시도 {MAX_ATTEMPTS}회 초과: {e}')
++            log(f'  ⏸ 네트워크 오류 ({e}) — {wait}초 대기 후 재시도 ({attempt}/{MAX_ATTEMPTS})')
++            time.sleep(wait)
++            continue
++
++        try:
++            res_json = json.loads(raw)
++        except ValueError:
++            # 로그인 화면 HTML 등 — 웹앱 액세스 권한이 '모든 사용자'가 아니거나 URL 이 틀렸다
++            raise AuthError('웹앱 응답이 JSON 이 아님 — 배포의 액세스 권한(모든 사용자)·URL 확인. 앞부분: '
++                            + raw[:80].replace('\n', ' '))
++        if not isinstance(res_json, dict):
++            raise AuthError('웹앱 응답 형식 오류')
++        if res_json.get('ok'):
++            return res_json
++        err = res_json.get('error') or 'unknown'
++        if err in ('auth', 'not_configured'):
++            raise AuthError(f'웹앱 거부: {err} — 토큰(.env SHEET_MIRROR_TOKEN ↔ 스크립트 속성 MIRROR_TOKEN) 확인')
++        if err == 'busy':
++            if attempt == MAX_ATTEMPTS:
++                raise TransientError(f'웹앱 busy 재시도 {MAX_ATTEMPTS}회 초과')
++            log(f'  ⏸ 웹앱 busy — {wait}초 대기 후 재시도 ({attempt}/{MAX_ATTEMPTS})')
++            time.sleep(wait)
++            continue
++        raise RuntimeError(f'웹앱 오류: {err} {res_json.get("detail", "")}'.strip())
++    raise TransientError('재시도 초과')
++
++
++# ── 본체 ──
++def meta_get(conn, key):
++    row = conn.execute('SELECT value FROM meta WHERE key = ?', (key,)).fetchone()
++    return row[0] if row else None
++
++
++def collect(conn, table, wm):
++    rows = [dict(r) for r in conn.execute(
++        f'SELECT * FROM {table} WHERE updated_at > ? ORDER BY created_at, record_id', (wm or '',))]
++    return rows, (max(r['updated_at'] for r in rows) if rows else wm)
++
++
++def main(argv=None):
++    argv = sys.argv[1:] if argv is None else argv
++    dry = '--dry-run' in argv
++    force_full = '--full' in argv
++    check = '--check' in argv
++    t0 = time.time()
++    env = load_env()
++    url = env.get('SHEET_MIRROR_URL', '')
++    token = env.get('SHEET_MIRROR_TOKEN', '')
++
++    if not url and not dry:
++        log('ℹ️  SHEET_MIRROR_URL 미설정 — 시트 미러 건너뜀')
++        emit(skipped='not_configured', videos_sent=0, tips_sent=0, error='')
++        return 0
++    # (설치 전에도 --dry-run 은 보낼 건수를 센다 — 네트워크 0)
++    if url and not url.startswith(ALLOWED_URL_PREFIXES):
++        log('❌ SHEET_MIRROR_URL 이 Apps Script 웹앱 주소가 아님 — 보내지 않음')
++        emit(skipped='', videos_sent=0, tips_sent=0, error='bad_url')
++        return 2
++    if not token and not dry:
++        log('❌ SHEET_MIRROR_TOKEN 미설정 — 보내지 않음')
++        emit(skipped='', videos_sent=0, tips_sent=0, error='no_token')
++        return 2
++
++    try:
++        conn = ldb.open_existing(readonly=dry or check)
++    except Exception as e:
++        log(f'❌ 장부 열기 실패: {e}')
++        emit(skipped='', videos_sent=0, tips_sent=0, error='library')
++        return 1
++
++    try:
++        if check:
++            db = {tab: conn.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0] for table, tab, _, _ in TABS}
++            try:
++                res = post(url, {'token': token, 'op': 'ping'})
++            except AuthError as e:
++                log(f'❌ {e}'); emit(check=True, error='auth'); return 2
++            except Exception as e:
++                log(f'❌ {e}'); emit(check=True, error='transient'); return 1
++            sheet = res.get('counts', {})
++            match = all(sheet.get(tab) == n for tab, n in db.items())
++            for tab, n in db.items():
++                log(f'  {tab}: 장부 {n:,} · 시트 {sheet.get(tab, 0):,} {"✅" if sheet.get(tab) == n else "❌"}')
++            emit(check=True, db=db, sheet=sheet, match=match, error='')
++            return 0
++
++        target = url_hash(url) if url else None
++        full = force_full or target is None or meta_get(conn, 'sheet_target') != target
++        plan = []
++        for table, tab, headers, wm_key in TABS:
++            wm = None if full else meta_get(conn, wm_key)
++            rows, new_wm = collect(conn, table, wm)
++            plan.append((table, tab, headers, wm_key, rows, new_wm))
++        n_v, n_t = len(plan[0][4]), len(plan[1][4])
++        log(f'📗 시트 미러{" (전체 다시 쓰기)" if full else ""}: 보낼 영상 {n_v:,} · 꿀팁 {n_t:,}')
++
++        if dry:
++            emit(dry_run=True, full=full, videos_sent=n_v, tips_sent=n_t, skipped='', error='')
++            return 0
++
++        sent = {'videos': 0, 'tips': 0}
++        if full:
++            # 전체 다시 쓰기가 중간에 끊기면 다음 실행도 전체여야 한다 — 끝날 때까지 대상 표시를 지워 둔다
++            with conn:
++                conn.execute("DELETE FROM meta WHERE key = 'sheet_target'")
++        try:
++            for table, tab, headers, wm_key, rows, new_wm in plan:
++                if full:
++                    post(url, {'token': token, 'op': 'reset', 'sheet': tab, 'headers': headers})
++                for i in range(0, len(rows), CHUNK):
++                    part = [ROW_FN[table](r) for r in rows[i:i + CHUNK]]
++                    res = post(url, {'token': token, 'op': 'upsert', 'sheet': tab, 'headers': headers, 'rows': part})
++                    sent[table] += len(part)
++                    log(f'  {tab} [{min(i + CHUNK, len(rows))}/{len(rows)}] 추가 {res.get("inserted", 0)} · 갱신 {res.get("updated", 0)} · 시트 {res.get("total", "?")}행')
++                # 이 탭의 묶음을 전부 보냈다 → 워터마크 올림 (한 탭씩 따로 확정)
++                with conn:
++                    if new_wm:
++                        conn.execute('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', (wm_key, new_wm))
++                    if full and table == TABS[-1][0]:
++                        conn.execute('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', ('sheet_target', target))
++            with conn:
++                conn.execute('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)',
++                             ('sheet_last_ok', datetime.now(timezone.utc).isoformat(timespec='seconds')))
++        except AuthError as e:
++            log(f'❌ 시트 미러 중단 (재시도 안 함): {e}')
++            emit(full=full, videos_sent=sent['videos'], tips_sent=sent['tips'], skipped='', error='auth')
++            return 2
++        except TransientError as e:
++            log(f'❌ 시트 미러 실패 (다음 실행에 다시 보냄): {e}')
++            emit(full=full, videos_sent=sent['videos'], tips_sent=sent['tips'], skipped='', error='transient')
++            return 1
++        except Exception as e:
++            log(f'❌ 시트 미러 실패: {e}')
++            emit(full=full, videos_sent=sent['videos'], tips_sent=sent['tips'], skipped='', error='other')
++            return 1
++
++        el = round(time.time() - t0, 1)
++        log(f'✅ 시트 미러 완료 — 영상 {sent["videos"]:,} · 꿀팁 {sent["tips"]:,} ({el}초)')
++        emit(full=full, videos_sent=sent['videos'], tips_sent=sent['tips'], skipped='', error='', elapsed=el)
++        return 0
++    finally:
++        conn.close()
++
++
++if __name__ == '__main__':
++    sys.exit(main())
+diff --git a/sync_obsidian.py b/sync_obsidian.py
+index d5095a9..ffa1940 100644
+--- a/sync_obsidian.py
++++ b/sync_obsidian.py
+@@ -191,35 +191,6 @@ def sync_existing_tags(videos, dry_run=False):
+         log(f'  ✅ 변경 없음 (모두 최신 상태)\n')
+     return updated
+ 
+-# ── 노션 rich_text·블록 → 마크다운 ──
+-# 이 파일은 더 이상 쓰지 않는다. scripts/notion_to_sqlite.py(노션 적재, 전환 후 은퇴)가 import 해서 남겨 둔다 — 지시서 3 에서 함께 정리.
+-def rich_to_md(rt_list):
+-    out = ''
+-    for rt in rt_list or []:
+-        t = rt.get('text', {}).get('content', '')
+-        a = rt.get('annotations', {})
+-        if a.get('bold'):   t = f'**{t}**'
+-        if a.get('italic'): t = f'*{t}*'
+-        if a.get('code'):   t = f'`{t}`'
+-        out += t
+-    return out
+-
+-def block_to_md(block):
+-    btype = block.get('type', '')
+-    b = block.get(btype, {})
+-    text = rich_to_md(b.get('rich_text', []))
+-    mapping = {
+-        'heading_1': f'# {text}',
+-        'heading_2': f'## {text}',
+-        'heading_3': f'### {text}',
+-        'paragraph': text or '',
+-        'bulleted_list_item': f'- {text}',
+-        'numbered_list_item': f'1. {text}',
+-        'quote': f'> {text}',
+-        'divider': '---',
+-    }
+-    return mapping.get(btype, text)
+-
+ # ── 영상 노트 내용 ──
+ # 노션 시절 노트(본문 블록 → 마크다운)와 같은 모양: 빈 줄(썸네일 자리) · '▶ 영상 보기' · 구분선 · 요약.
+ def _q(s):
+diff --git a/wiki_lan_server.js b/wiki_lan_server.js
+index 4ffac74..3bc2150 100644
+--- a/wiki_lan_server.js
++++ b/wiki_lan_server.js
+@@ -1,8 +1,8 @@
+ // ===== LLM Wiki 집 안 전용 검색 서버 (읽기 전용, v3.2) =====
+ // 가족이 같은 집 네트워크에서 http://<맥이름>.local:3100/wiki 로 접속한다.
+ //
+-// server.js(3000)와 분리한 이유: 저쪽에는 Notion 쓰기 프록시·마스터 인제스트·Obsidian 동기화
+-// 엔드포인트가 있다. server.js 를 0.0.0.0 으로 열면 그 전부가 집 네트워크에 노출된다.
++// server.js(3000)와 분리한 이유: 저쪽에는 마스터 인제스트(스케줄러 실행)·/api/config(키 노출)
++// 엔드포인트가 있다(v4.0 에서 노션 프록시·Obsidian 동기화 트리거는 제거). server.js 를 0.0.0.0 으로 열면 그 전부가 집 네트워크에 노출된다.
+ // 이 서버는 아래 라우트만 응답하고 그 외는 전부 404 다. 여기에 쓰기 엔드포인트를 추가하지 말 것.
+ //
+ // 안전장치 — 하나도 완화하지 말 것:

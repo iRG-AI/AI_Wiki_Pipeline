@@ -38,7 +38,7 @@ def open_existing(path=None, readonly=False):
     sqlite3.connect 의 기본 timeout 5초 = busy_timeout 5초 (Node 쪽 lib/library.js 와 같은 값)."""
     path = path or DB_PATH
     if not os.path.exists(path):
-        raise FileNotFoundError(f'장부 파일 없음: {path} — scripts/notion_to_sqlite.py 로 만든 data/library.db 가 있어야 합니다')
+        raise FileNotFoundError(f'장부 파일 없음: {path} — 원본 장부다. 새로 만들지 말고 백업(data/library.db.bak.*)에서 복원할 것')
     conn = open_db(path, readonly=readonly)
     uv = conn.execute('PRAGMA user_version').fetchone()[0]
     if uv != SCHEMA_VERSION:

@@ -14,7 +14,26 @@ def nfc(s):
     """macOS NFD 파일명을 NFC로 정규화 (한글 깨짐 방지)"""
     return unicodedata.normalize('NFC', s) if s else s
 
-# ── 노션 유효 태그 목록 (이것만 MOC 생성 + 폴더 사용) ──
+# ── 내용이 같으면 쓰지 않는다 (v4.0 3단계) ──
+# 저장 0건 실행마다(하루 최대 4회) sync_obsidian --rebuild 가 이 빌더를 부르는데, 예전에는 노트 전부를
+# 비교 없이 다시 써서 Vault 전체 mtime 이 바뀌었다(2026-10-11 실측 3,193개). 내용은 같았다.
+WRITE_STATS = {'written': 0, 'same': 0}
+
+def write_if_changed(path, text):
+    """text 와 파일 내용이 다를 때만 쓴다. 썼으면 True."""
+    try:
+        with open(path, encoding='utf-8') as fh:
+            if fh.read() == text:
+                WRITE_STATS['same'] += 1
+                return False
+    except FileNotFoundError:
+        pass
+    with open(path, 'w', encoding='utf-8') as fh:
+        fh.write(text)
+    WRITE_STATS['written'] += 1
+    return True
+
+# ── 유효 태그 = 재생목록 주제 목록 (이것만 MOC 생성 + 폴더 사용. 이름의 NOTION 은 v3.x 흔적) ──
 # 새 태그 추가 시 여기에도 반드시 추가할 것
 VALID_NOTION_TAGS = {
     'AI Antigravity', 'AI Claude', 'AI Codex', 'AI Gemini', 'AI Gemma',
@@ -136,7 +155,7 @@ def build_moc_files(files):
                 lines.append(f"- [[{f['filename']}|{f['title']}]] {date}\n")
 
         moc_path = os.path.join(MOC_DIR, nfc(f"{playlist} MOC.md"))
-        open(moc_path, 'w', encoding='utf-8').write(unicodedata.normalize('NFC', ''.join(lines)))
+        write_if_changed(moc_path, unicodedata.normalize('NFC', ''.join(lines)))
         print(f"  ✅ {playlist} MOC.md ({len(pfiles)}개)")
 
     # ── 채널별 MOC ──
@@ -156,7 +175,7 @@ def build_moc_files(files):
             channel_lines.append(f"- ... 외 {len(cfiles)-5}개\n")
         channel_lines.append('\n')
 
-    open(os.path.join(MOC_DIR, '채널별 목차.md'), 'w', encoding='utf-8').write(nfc(''.join(channel_lines)))
+    write_if_changed(os.path.join(MOC_DIR, '채널별 목차.md'), nfc(''.join(channel_lines)))
     print(f"  ✅ 채널별 목차.md ({len(channel_map)}개 채널)")
 
     # ── 전체 인덱스 (카탈로그) ──
@@ -200,7 +219,7 @@ def build_moc_files(files):
             index_lines.append(f"- *... 외 {len(pfiles)-3}개 → [[{playlist} MOC]]*\n")
         index_lines.append('\n')
 
-    open(os.path.join(VAULT, '🗂 전체 인덱스.md'), 'w', encoding='utf-8').write(nfc(''.join(index_lines)))
+    write_if_changed(os.path.join(VAULT, '🗂 전체 인덱스.md'), nfc(''.join(index_lines)))
     print(f"  ✅ 🗂 전체 인덱스.md (카탈로그 + 한 줄 요약)")
 
 # ══════════════════════════════════════════════
@@ -212,7 +231,10 @@ def add_keyword_links(files):
     updated = 0
     for f in files:
         content = f['content']
-        fm_end = content.find('\n---\n', 4) + 5
+        # 프론트매터가 없는 파일은 fm_end = 0 (예전에는 find 가 '🔗 관련 항목' 앞의 --- 를 잡아 재구성마다 그 절이 한 벌씩 쌓였다)
+        fm_end = content.find('\n---\n', 4) + 5 if content.startswith('---\n') else 0
+        if fm_end < 5:
+            fm_end = 0
         frontmatter = content[:fm_end]
         body = content[fm_end:]
 
@@ -242,10 +264,10 @@ def add_keyword_links(files):
 
         related = f'\n\n---\n## 🔗 관련 항목\n\n**재생목록**: {moc_links}{kw_section}\n'
 
-        open(f['path'], 'w', encoding='utf-8').write(nfc(frontmatter + new_body + related))
-        updated += 1
+        if write_if_changed(f['path'], nfc(frontmatter + new_body + related)):
+            updated += 1
 
-    print(f"  ✅ {updated}개 파일 MOC + 키워드 링크 삽입 완료")
+    print(f"  ✅ MOC + 키워드 링크 — 바뀐 파일 {updated}개 / 그대로 {len(files) - updated}개")
 
 # ══════════════════════════════════════════════
 # 2.5단계: 키워드별 허브 파일 생성 (독립 노드 해소용)
@@ -270,7 +292,7 @@ def build_keyword_hubs(files):
             date = str(f['upload_date'])[:10] if f['upload_date'] else ''
             lines.append(f"- [[{f['filename']}|{f['title']}]] `{f['channel']}` {date}\n")
         hub_path = os.path.join(MOC_DIR, nfc(f'{alias}.md'))
-        open(hub_path, 'w', encoding='utf-8').write(nfc(''.join(lines)))
+        write_if_changed(hub_path, nfc(''.join(lines)))
         created += 1
     print(f"  ✅ 키워드 허브 {created}개 생성 (독립 노드 해소)")
 
@@ -299,7 +321,7 @@ def build_keyword_index(files):
             lines.append(f"- [[{f['filename']}|{f['title']}]]\n")
         lines.append('\n')
 
-    open(os.path.join(MOC_DIR, '키워드 인덱스.md'), 'w', encoding='utf-8').write(nfc(''.join(lines)))
+    write_if_changed(os.path.join(MOC_DIR, '키워드 인덱스.md'), nfc(''.join(lines)))
     print(f"  ✅ 키워드 인덱스.md ({len(kw_map)}개 키워드)")
 
 # ══════════════════════════════════════════════
@@ -348,7 +370,7 @@ def lint_wiki(files):
     lint_lines = [f'# 🔍 Wiki Lint 결과\n\n> 마지막 실행: {now}\n\n']
     for issue in issues:
         lint_lines.append(f'{issue}\n')
-    open(os.path.join(MOC_DIR, 'lint.md'), 'w', encoding='utf-8').write(nfc(''.join(lint_lines)))
+    write_if_changed(os.path.join(MOC_DIR, 'lint.md'), nfc(''.join(lint_lines)))
 
     # 콘솔 출력
     problem_count = sum(1 for i in issues if i.startswith('⚠️'))
@@ -412,11 +434,11 @@ def build_schema(files):
     lines.append('`Obsidian` `옵시디언` `Notion` `노션`\n\n---\n\n')
 
     lines.append('## 🔄 워크플로우\n\n')
-    lines.append('### 자동 파이프라인\n```\nYouTube → Gemini 요약 → Notion 저장\n→ sync_obsidian.py → .md 생성 → build_obsidian_wiki.py\n→ MOC + 키워드 링크 + lint + schema 재생성 → log.md 기록\n```\n\n')
+    lines.append('### 자동 파이프라인\n```\nYouTube → Gemini 요약 → 로컬 장부(data/library.db) 저장\n→ sync_obsidian.py → .md 생성 → build_obsidian_wiki.py\n→ MOC + 키워드 링크 + lint + schema 재생성 → log.md 기록\n```\n\n')
     lines.append('### 수동 명령어\n```bash\npython3 sync_obsidian.py --rebuild   # 전체 재구성\npython3 build_obsidian_wiki.py       # MOC/링크/schema 재구성\npython3 sync_obsidian.py --dry-run   # 장부↔Vault 할 일만 세기 (쓰기 없음)\ngrep "^## \\[" log.md | tail -10      # 최근 10개 변경 이력\n```\n\n')
     lines.append('*이 파일은 `build_obsidian_wiki.py` 실행 시 자동으로 재생성됩니다.*\n')
 
-    open(os.path.join(VAULT, 'schema.md'), 'w', encoding='utf-8').write(nfc(''.join(lines)))
+    write_if_changed(os.path.join(VAULT, 'schema.md'), nfc(''.join(lines)))
     print(f'  ✅ schema.md 자동 재생성 완료 (태그 {len(all_tags)}개, 폴더 {len(folders)}개)')
 
 # ── 메인 실행 ──
@@ -450,6 +472,8 @@ if __name__ == '__main__':
     # ── schema.md 자동 재생성 ──
     print('\n📐 schema.md 업데이트 중...')
     build_schema(files)
+
+    print(f"\n📝 파일 쓰기 — 바뀜 {WRITE_STATS['written']}개 / 내용 같아 건너뜀 {WRITE_STATS['same']}개")
 
     # ── log.md 기록 (직접 실행 시에만) ──
     try:

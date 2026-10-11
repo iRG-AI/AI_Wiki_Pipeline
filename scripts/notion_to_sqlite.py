@@ -2,6 +2,9 @@
 """
 v4.0 1단계 — 노션 → SQLite 적재 (노션 읽기 전용)
 
+※ v4.0 3단계부터 보관용이다. 앱(스케줄러·카톡·동기화·시트 미러)은 이 파일도 lib/tips_notion.py 도 import 하지 않는다.
+  쓰는 곳은 --verify(장부 ↔ Vault 대조) 정도. 노션을 해지할 때 lib/tips_notion.py·.env 의 NOTION_* 와 함께 지운다.
+
   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py                    # dry-run: 노션을 읽고 보고만 한다. 파일을 쓰지 않는다
   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply            # data/library.db 생성 (이미 있으면 거부)
   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply --replace  # 기존 파일을 data/library.db.bak.<시각> 으로 옮기고 새로 만든다
@@ -36,7 +39,7 @@ sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.join(REPO_ROOT, 'lib'))
 
 import tips_notion as tn                       # noqa: E402  HTTP·인증 오류 처리 원본
-import sync_obsidian as so                     # noqa: E402  VAULT 경로·block_to_md·Vault 스캔 재사용
+import sync_obsidian as so                     # noqa: E402  VAULT 경로·Vault 스캔 재사용
 from kakao_parse import url_key                # noqa: E402
 import library_db as ldb                       # noqa: E402
 
@@ -54,6 +57,36 @@ def log(msg=''):
 
 def nfc(s):
     return unicodedata.normalize('NFC', s or '')
+
+
+# ── 노션 rich_text·블록 → 마크다운 (v4.0 3단계: sync_obsidian.py 에서 옮겨 옴 — 이제 이 스크립트만 쓴다) ──
+def rich_to_md(rt_list):
+    out = ''
+    for rt in rt_list or []:
+        t = rt.get('text', {}).get('content', '')
+        a = rt.get('annotations', {})
+        if a.get('bold'):   t = f'**{t}**'
+        if a.get('italic'): t = f'*{t}*'
+        if a.get('code'):   t = f'`{t}`'
+        out += t
+    return out
+
+
+def block_to_md(block):
+    btype = block.get('type', '')
+    b = block.get(btype, {})
+    text = rich_to_md(b.get('rich_text', []))
+    mapping = {
+        'heading_1': f'# {text}',
+        'heading_2': f'## {text}',
+        'heading_3': f'### {text}',
+        'paragraph': text or '',
+        'bulleted_list_item': f'- {text}',
+        'numbered_list_item': f'1. {text}',
+        'quote': f'> {text}',
+        'divider': '---',
+    }
+    return mapping.get(btype, text)
 
 
 def plain(rt):
@@ -110,7 +143,7 @@ def blocks_body_md(page_id):
     time.sleep(RATE_SLEEP)
     idx = next((i for i, b in enumerate(blocks) if b.get('type') == 'divider'), None)
     body = blocks[idx + 1:] if idx is not None else [b for b in blocks if b.get('type') != 'image']
-    return nfc('\n'.join(so.block_to_md(b) for b in body)).strip()
+    return nfc('\n'.join(block_to_md(b) for b in body)).strip()
 
 
 def video_row(page, stats):
@@ -155,7 +188,7 @@ def video_row(page, stats):
 def tip_row(page):
     r = tn.page_to_row(page)
     try:
-        body = nfc('\n'.join(so.block_to_md(b) for b in tn.get_blocks(page['id']))).strip()
+        body = nfc('\n'.join(block_to_md(b) for b in tn.get_blocks(page['id']))).strip()
     finally:
         time.sleep(RATE_SLEEP)
     return {

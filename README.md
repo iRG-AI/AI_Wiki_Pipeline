@@ -1,11 +1,13 @@
-# 🎬 YouTube + 📎 카카오톡 → Notion → Obsidian LLM Wiki
+# 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v3.2.1** (2026-10-05)
+**현재 버전: v4.0** (2026-10-12)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
-각각 **Notion DB**(영상 DB ·「AI 꿀팁」DB)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
+맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
+장부 내용은 **구글 시트**에 보기용 사본(미러)으로 자동 복사됩니다.
 
-> v3.0부터 지식 소스가 **YouTube 영상 + 카카오톡 링크** 두 갈래가 되었습니다. Notion 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 완전히 공유합니다.
+> v4.0 에서 노션을 뺐습니다. 원본 = 장부(`data/library.db`), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없습니다.
+> v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
 ---
 
@@ -21,18 +23,20 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 
 - 🎥 **YouTube 재생목록 자동 수집** — YouTube Data API v3로 재생목록 영상 전체 조회
 - 🤖 **Gemini AI 자동 요약** — 영상 제목·설명·태그 기반 4섹션 보고서 자동 생성
-- 📝 **Notion DB 자동 저장** — 요약 결과를 Notion 데이터베이스에 구조화하여 저장
-- 🔄 **스마트 중복 방지** — Notion 전체 캐시 로드 후 메모리에서 즉시 중복 체크
-- 📊 **통계 자동 업데이트** — 조회수·구독자수 15% 이상 변화 시만 Notion API 호출
-- 📎 **카카오톡 링크 자동 수집 (v3.0)** — '나와의 채팅' 내보내기 CSV에서 AI 자료 링크를 추출·정규화해 Notion「AI 꿀팁」DB에 신규만 적재 (DB 대조 기반 멱등성)
-- 📓 **Obsidian 자동 동기화** — 영상 DB +「AI 꿀팁」DB 신규 항목을 Obsidian 노트로 생성, LLM Wiki 자동 합성
-- 🔗 **Wiki 링크 자동 구성** — 재생목록별 MOC, 채널별 목차, 키워드 링크 자동 생성
-- 📱 **텔레그램 알림** — 노션 저장 결과 + Obsidian 동기화 결과 통합 전송
+- 🗄️ **로컬 장부 저장 (v4.0)** — 요약 결과를 맥의 SQLite 파일 `data/library.db` 에 저장 (외부 서비스 의존 없음)
+- 🔄 **스마트 중복 방지** — 장부 전량을 캐시로 읽어 메모리에서 즉시 중복 체크 ("전부 읽었거나, 던지거나")
+- 📊 **통계 자동 업데이트** — 조회수·구독자수 15% 이상 변화 시만 갱신
+- 📎 **카카오톡 링크 자동 수집 (v3.0)** — '나와의 채팅' 내보내기 CSV에서 AI 자료 링크를 추출·정규화해 장부 `tips` 에 신규만 적재 (장부 대조 기반 멱등성)
+- 📓 **Obsidian 자동 동기화** — 장부의 영상·꿀팁 신규 항목을 Obsidian 노트로 생성, LLM Wiki 자동 합성
+- 📗 **구글 시트 미러 (v4.0)** — 장부의 영상·꿀팁을 구글 시트 두 탭에 보기용으로 복사 (매 실행 끝에 변경분만)
+- 🔗 **Wiki 링크 자동 구성** — 재생목록별 MOC, 채널별 목차, 키워드 링크 자동 생성 (내용이 같으면 파일을 다시 쓰지 않음)
+- 🔎 **Wiki 검색 (v3.2)** — 이 맥·집 안 다른 컴퓨터·Claude(MCP)에서 의미 검색 + AI 답변
+- 📱 **텔레그램 알림** — 장부 저장·카톡·시트·Obsidian 결과 통합 전송
 - ⏰ **launchd 자동 스케줄링** — Mac 로그인 시 서버 자동 시작, 6시간 간격 스케줄러 실행
 
 ---
 
-## 🏗️ 시스템 아키텍처 (v3.0)
+## 🏗️ 시스템 아키텍처 (v4.0)
 
 ### 전체 데이터 흐름
 
@@ -48,7 +52,7 @@ flowchart TD
     subgraph TRIGGER["⏰ 실행 트리거"]
         SCHED["launchd · com.irichgreen.ytsummarizer\n00 / 06 / 12 / 18시 → scheduler.js"]
         WEBUI["웹 UI localhost:3000\nserver.js (SSE)"]
-        WIKI_SCHED["launchd · com.irichgreen.wiki-ingest\n매일 03:00 → wiki_ingest.py --full"]
+        WIKI_SCHED["launchd · com.irichgreen.wiki-ingest\n매일 17:30 → wiki_ingest.py (증분)"]
     end
 
     SCHED --> ENTRY
@@ -56,45 +60,51 @@ flowchart TD
 
     subgraph YT["🎬 ① YouTube 인제스트 (scheduler.js, Node)"]
         ENTRY["processMasterIngest()"]
-        FETCH["영상 메타 조회 (Data API v3)\n+ Notion 캐시 · 중복 체크"]
+        FETCH["영상 메타 조회 (Data API v3)\n+ 장부 캐시 · 중복 체크"]
         GEMINI["lib/classifier.js\nGemini 2.5 Flash · thinkingBudget 0\n4섹션 요약 + 토픽 1~5개"]
-        NSAVE["saveToNotionWithTopics()"]
+        LSAVE["saveToLibrary()\nlib/library.js (node:sqlite)"]
         YSAVE["lib/youtube_oauth.js\nplaylistItems.insert (50유닛)"]
-        ENTRY --> FETCH --> GEMINI --> NSAVE --> YSAVE
+        ENTRY --> FETCH --> GEMINI --> LSAVE --> YSAVE
     end
     MASTER -->|Data API v3| FETCH
 
-    subgraph KK["📎 ② 카카오톡 인제스트 (kakao_ingest.py, Python) — v3.0"]
+    subgraph KK["📎 ② 카카오톡 인제스트 (kakao_ingest.py, Python)"]
         KFIND["최신 CSV 탐지\n.kakao_state.json (mtime) 으로\n이미 본 CSV 는 즉시 종료"]
         KPARSE["lib/kakao_parse.py\nURL 추출 · 트래킹 파라미터 제거\n· 정규화 키 · 제목/카테고리 추정"]
-        KDEDUP["lib/tips_notion.py\n「AI 꿀팁」DB 전량 조회\nURL 키 대조 → 신규만"]
-        KPUSH["POST /v1/pages\n350ms 간격 · 401/403 즉시 종료"]
-        KFIND --> KPARSE --> KDEDUP --> KPUSH
+        KDEDUP["장부 tips 전량\nurl_key 대조 → 신규만\n한 트랜잭션"]
+        KFIND --> KPARSE --> KDEDUP
     end
     CSV --> KFIND
     SCHED -->|"YouTube 완료 후\n--apply --if-new"| KFIND
 
-    NSAVE --> NOTION_V[("📋 Notion 영상 DB\nNOTION_DB_ID")]
-    KPUSH --> NOTION_T[("📋 Notion「AI 꿀팁」DB\nNOTION_TIPS_DB_ID")]
+    LSAVE --> LIB[("🗄️ 로컬 장부 data/library.db\nvideos · tips · videos_dup · meta")]
+    KDEDUP --> LIB
     YSAVE -->|"quota 여유"| YT_PL[("📺 YouTube 토픽 재생목록 33개")]
     YSAVE -->|"quota 초과·실패"| PENDING[("⏳ pending_playlist_adds.json\n(dead-letter 격리 · 연속실패 10회 차단)")]
     PENDING -->|"다음 실행 시 소진"| YT_PL
 
-    subgraph OBS["📓 ③ Obsidian LLM Wiki (Python, 두 소스 공유)"]
-        SYNC["sync_obsidian.py"]
-        SYNC_V["sync_new_pages()\n영상 노트 → <토픽>/*.md\nvideo_url · tags"]
-        SYNC_T["sync_tips() — v3.0\n꿀팁 노트 → AI 꿀팁/*.md\nlink_url · keywords · category"]
-        ORPHAN["quarantine_orphans()\n영상 노트만 · 3중 안전장치\n→ _trash/"]
-        WIKI_INGEST["wiki_ingest.py\nGemini · 엔티티/개념 추출\n(230 RPD 상한)"]
-        BUILD["build_obsidian_wiki.py\nMOC 재구성 · 키워드 허브 27개\n_MOC/AI 꿀팁 MOC.md 포함"]
-        VAULT[("📁 Obsidian Vault\nAI LLM Wiki/")]
-        SYNC --> SYNC_V --> ORPHAN --> SYNC_T --> BUILD --> WIKI_INGEST --> VAULT
+    subgraph MIR["📗 ③ 구글 시트 미러 (sheet_mirror.py → Apps Script 웹앱)"]
+        SM["updated_at 워터마크 이후 행만\n200행씩 POST · 토큰은 본문\n401/403 즉시 중단 · 5xx 백오프"]
+        GS[("구글 시트\n탭 '영상' · '꿀팁' (보기 전용)")]
+        SM --> GS
     end
-    NOTION_V -->|"영상 처리 완료 후 1회"| SYNC
-    NOTION_T --> SYNC_T
+    LIB --> SM
+
+    subgraph OBS["📓 ④ Obsidian LLM Wiki (Python, 두 소스 공유)"]
+        SYNC["sync_obsidian.py (장부 읽기 전용)"]
+        SYNC_V["영상 노트 → <토픽>/*.md\nvideo_url · tags · notion_id(=record_id)"]
+        SYNC_T["sync_tips()\n꿀팁 노트 → AI 꿀팁/*.md\nlink_url · keywords · category"]
+        ORPHAN["quarantine_orphans()\n영상 노트만 · 3중 안전장치\n→ _trash/"]
+        BUILD["build_obsidian_wiki.py\nMOC 재구성 · 키워드 허브\n내용 같으면 안 씀"]
+        WIKI_INGEST["wiki_ingest.py\nGemini · 엔티티/개념 추출"]
+        IDX["build_search_index.py\n임베딩 인덱스 증분"]
+        VAULT[("📁 Obsidian Vault\nAI LLM Wiki/")]
+        SYNC --> SYNC_V --> ORPHAN --> SYNC_T --> BUILD --> WIKI_INGEST --> IDX --> VAULT
+    end
+    LIB --> SYNC
     WIKI_SCHED --> WIKI_INGEST
 
-    VAULT --> TG["📱 Telegram 통합 알림 (1개 메시지)\nYouTube 결과 + 꿀팁 신규 + Obsidian 결과"]
+    VAULT --> TG["📱 Telegram 통합 알림 (1개 메시지)\nYouTube 결과 + 꿀팁 신규 + 시트 + Obsidian 결과"]
     YT_PL --> TG
 ```
 
@@ -102,15 +112,16 @@ flowchart TD
 
 | 순서 | 단계 | 실행 주체 | 입력 | 출력 | 아무 것도 없을 때 |
 |:--:|---|---|---|---|---|
-| 1 | YouTube 마스터 인제스트 | `scheduler.js` | 'AI 영상목록' 신규 영상 | Notion 영상 DB 행 + 토픽 재생목록 추가 | Notion 캐시 대조 후 0건 처리 |
+| 1 | YouTube 마스터 인제스트 | `scheduler.js` | 'AI 영상목록' 신규 영상 | 장부 `videos` 행 + 토픽 재생목록 추가 | 장부 캐시 대조 후 0건 처리 |
 | 2 | 대기 큐 소진 | `scheduler.js:flushPendingQueue()` | `pending_playlist_adds.json` | 재생목록 추가 (quota 한도 내) | 큐 비어 있으면 생략 |
-| 3 | 카톡 인제스트 (v3.0) | `kakao_ingest.py --apply --if-new` | `~/Downloads` 최신 CSV | Notion「AI 꿀팁」신규 행 | 같은 CSV(mtime)면 Notion 조회 없이 즉시 종료 |
-| 4 | 영상 노트 동기화 | `sync_obsidian.py:sync_new_pages()` | Notion 영상 DB | `VAULT/<토픽>/*.md` | 0건 |
-| 5 | 고아 격리 | `sync_obsidian.py:quarantine_orphans()` | Vault 영상 노트 vs Notion | `_trash/<ts>/` 이동 | 3중 안전장치 하나라도 걸리면 아무것도 안 함 |
-| 6 | 꿀팁 노트 동기화 (v3.0) | `sync_obsidian.py:sync_tips()` | Notion「AI 꿀팁」DB | `VAULT/AI 꿀팁/*.md` | 0건 |
-| 7 | MOC·키워드 재구성 | `build_obsidian_wiki.py` | Vault 전체 | `_MOC/*.md`, 노트 하단 관련 항목 | 4·5·6이 전부 0건이면 생략 |
-| 8 | Wiki 합성 | `wiki_ingest.py` | 미처리 노트 | `wiki/entities`, `wiki/concepts` | 신규 노트 없으면 생략 |
-| 9 | 알림 | `scheduler.js` | 1·3·4~8 결과 | Telegram 1개 메시지 | 변경 0이면 발송 생략 |
+| 3 | 카톡 인제스트 | `kakao_ingest.py --apply --if-new` | `~/Downloads` 최신 CSV | 장부 `tips` 신규 행 | 같은 CSV(mtime)면 장부 조회 없이 즉시 종료 |
+| 4 | 시트 미러 (v4.0) | `sheet_mirror.py` | 장부 중 `updated_at` > 워터마크 | 시트 '영상'·'꿀팁' 탭 덮어쓰기/추가 | 바뀐 행 0이면 요청 0. `.env` 미설정이면 건너뜀 |
+| 5 | 영상 노트 동기화 | `sync_obsidian.py` | 장부 `videos` | `VAULT/<토픽>/*.md` | 0건 |
+| 6 | 고아 격리 | `sync_obsidian.py:quarantine_orphans()` | Vault 영상 노트 vs 장부 | `_trash/<ts>/` 이동 | 3중 안전장치 하나라도 걸리면 아무것도 안 함 |
+| 7 | 꿀팁 노트 동기화 | `sync_obsidian.py:sync_tips()` | 장부 `tips` | `VAULT/AI 꿀팁/*.md` | 0건 |
+| 8 | MOC·키워드 재구성 | `build_obsidian_wiki.py` | Vault 전체 | `_MOC/*.md`, 노트 하단 관련 항목 | 내용이 같으면 파일을 쓰지 않음 (v4.0) |
+| 9 | Wiki 합성 | `wiki_ingest.py` | 미처리 노트 | `_wiki/entities`, `_wiki/concepts` | 신규 노트 없으면 생략 |
+| 10 | 알림 | `scheduler.js` | 1·3·4·5~9 결과 | Telegram 1개 메시지 | 변경 0이면 발송 생략 (시트 실패는 알림) |
 
 ### 두 소스의 격리 원칙
 
@@ -120,8 +131,8 @@ flowchart TD
 |---|---|---|
 | 폴더 | `<토픽명>/` (33개) | `AI 꿀팁/` (평면, 하위 폴더 없음) |
 | 원본 링크 키 | `video_url` | `link_url` — **`video_url` 절대 금지** |
-| 분류 키 | `tags: [..]` (Notion 주제와 동기화) | `keywords: [..]` + `category` — `tags` 없음 → 폴더명 MOC |
-| 고아 격리 대상 | ✅ | ❌ (`get_existing_vault_info()`가 폴더를 걷지 않음) |
+| 분류 키 | `tags: [..]` (장부 `topics` 와 동기화) | `keywords: [..]` + `category` — `tags` 없음 → 폴더명 MOC |
+| 고아 격리 대상 | ✅ | ❌ (보고만, `RESULT_JSON.tips_orphans`) |
 | 파일명 | `<채널>_<제목>_<날짜>.md` | `<저장일>_<제목>.md` (충돌 시 `_<id 끝 6자리>`) |
 | Wiki 합성 | ✅ 본문 요약 기반 | ✅ 제목·태그·메모 기반 (본문이 거의 없어 추출 품질은 낮음) |
 
@@ -131,45 +142,47 @@ flowchart TD
 
 ```
 Youtube_Notion_Grap/
-├── server.js                          # 웹 서버 + Notion API 프록시 + Obsidian 트리거
-├── scheduler.js                       # 자동 스케줄러 (6시간 간격, 마스터 인제스트 포함)
+├── server.js                          # 웹 서버 (127.0.0.1:3000) — UI · 마스터 인제스트 SSE · Wiki 검색
+├── scheduler.js                       # 자동 스케줄러 (6시간 간격) — YouTube → 장부 → 카톡 → 시트 → Obsidian → 알림
 ├── index.html                         # 웹 앱 UI (단일 파일)
 ├── package.json                       # Node.js CommonJS 설정
-├── playlists.json                     # 등록된 재생목록 목록
+├── playlists.json                     # 등록된 재생목록 목록 (gitignore)
 ├── .env                               # API 키 (gitignore — 절대 커밋 금지)
+├── data/library.db                    # (v4.0) 로컬 원본 장부 — SQLite (gitignore, 개인 요약 전체)
 ├── favicon.svg                        # 브라우저 탭 아이콘
-├── migrate_classify.js                # 기존 영상 일괄 재분류 스크립트 (v102)
-├── oauth_setup.js                     # YouTube OAuth refresh_token 1회 발급 도구 (v102)
-├── notion_to_obsidian.js              # Notion → Obsidian 일회성 마이그레이션
-├── wiki_lan_server.js                 # (v3.2) 집 안 전용 읽기 전용 Wiki 검색 서버 (포트 3100, 허용 대역 + 루프백만)
+├── oauth_setup.js                     # YouTube OAuth refresh_token 1회 발급 도구
+├── kakao_ingest.py                    # 카톡 CSV → 장부 tips (기본 dry-run, --apply / --if-new)
+├── sheet_mirror.py                    # (v4.0) 장부 → 구글 시트 미러 (변경분만, --dry-run / --full / --check)
+├── gas/sheet_mirror.gs                # (v4.0) 시트 쪽 Apps Script 웹앱 (받는 쪽, 설치 순서는 파일 머리 주석)
+├── sync_obsidian.py                   # 장부 → Obsidian 증분 동기화 (영상·꿀팁 노트, 고아 격리, --dry-run)
+├── build_obsidian_wiki.py             # MOC + 채널 목차 + 키워드 링크 빌더 (내용 같으면 안 씀)
+├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 위키 페이지 합성
+├── wiki_config.py                     # Wiki Ingest 공통 설정 및 Gemini 호출 유틸
+├── build_search_index.py              # 검색 인덱스(임베딩) 증분 빌드 (프론트매터의 notion_id 기준)
+├── wiki_lan_server.js                 # (v3.2) 집 안 전용 읽기 전용 Wiki 검색 서버 (포트 3100)
 ├── wiki.html                          # Wiki 검색 화면 (server.js·wiki_lan_server.js 공용)
 ├── wiki_mcp.js                        # Wiki 검색 stdio MCP (search_wiki, read_note)
-├── build_search_index.py              # 검색 인덱스(임베딩) 증분 빌드
-├── kakao_ingest.py                    # (v3.0) 카톡 CSV → Notion「AI 꿀팁」 (기본 dry-run, --apply / --if-new)
-├── sync_obsidian.py                   # Obsidian 증분 동기화 (영상 노트 + 꿀팁 노트, 고아 격리, 위키 인제스트 연동)
-├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 위키 페이지 합성 스크립트 (v111)
-├── wiki_config.py                     # Wiki Ingest 공통 설정 및 API 호출 유틸 (v111)
-├── build_obsidian_wiki.py             # MOC + 채널 목차 + 키워드 링크 빌더
-├── cleanup_duplicates.py              # 노션/Obsidian 중복 정리 도구
-├── com.irichgreen.server.plist        # launchd 서버 자동시작 설정
-├── com.irichgreen.ytsummarizer.plist  # launchd 스케줄러 설정
-├── com.irichgreen.wiki-ingest.plist   # launchd 일일 Wiki 인제스트 스케줄러 (v111)
-├── com.irichgreen.wiki-lan.plist      # (v3.2) launchd 집 안 전용 검색 서버 (상주, ThrottleInterval 60)
-├── install-server.sh                  # 서버 자동시작 설치 스크립트
-├── install-scheduler.sh               # 스케줄러 설치 스크립트
-├── install-wiki-ingest.sh             # 일일 Wiki 인제스트 스케줄러 설치 스크립트 (v111)
+├── com.irichgreen.*.plist             # launchd 원본 (server · ytsummarizer · wiki-ingest · wiki-lan)
+├── install-*.sh                       # launchd 설치 스크립트
 ├── lib/
-│   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert (v102)
-│   ├── wiki_search.js                 # Wiki 검색 코어 (임베딩 코사인 + 키워드 폴백 + Gemini 401/403 래치)
-│   ├── classifier.js                  # Gemini 기반 토픽 분류기 (v102)
-│   ├── kakao_parse.py                 # (v3.0) URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
-│   └── tips_notion.py                 # (v3.0) 「AI 꿀팁」DB 조회/생성 래퍼 (속성 타입 표 고정)
+│   ├── library.js                     # (v4.0) 장부 Node 헬퍼 (openLibrary·insertVideo·addTopic·updateStats)
+│   ├── library_db.py                  # (v4.0) 장부 Python 헬퍼 (open_existing — 없으면 만들지 않음)
+│   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 1)
+│   ├── env_util.py                    # (v4.0) .env 읽기 (의존성 없음)
+│   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
+│   ├── classifier.js                  # Gemini 기반 토픽 분류기
+│   ├── wiki_search.js                 # Wiki 검색 코어 (임베딩 코사인 + 키워드 폴백)
+│   ├── kakao_parse.py                 # URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
+│   └── tips_notion.py                 # (보관) 노션 래퍼 — notion_to_sqlite.py 만 쓴다. 노션 해지 때 삭제
 ├── scripts/
-│   ├── clean_pending_queue.js         # (v2.5) 대기 큐 중복 제거 + dead-letter 격리
-│   └── test_scheduler_guards.js       # (v3.2.1) 스케줄러 캐시·재시도·배치 조회 회귀 테스트 (네트워크 0회)
-├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md)
-├── CLAUDE.md                          # 구조·제약·안전장치 — 코드 질문은 여기부터
-└── README.md                          # 이 문서 (v3.0부터 README.html 은 만들지 않는다)
+│   ├── notion_to_sqlite.py            # (보관) v4.0 1단계 노션 → 장부 적재 · --verify (장부 ↔ Vault 대조)
+│   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
+│   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
+│   └── test_*.{js,py}                 # 회귀 테스트 6종 (네트워크 0회)
+├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
+├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
+├── CLAUDE.md                          # 구조·제약·안전장치 — 코드 질문은 여기부터 (AGENTS.md 는 같은 내용)
+└── README.md                          # 이 문서 (README.html 은 만들지 않는다)
 ```
 
 ---
@@ -178,12 +191,13 @@ Youtube_Notion_Grap/
 
 | 분류 | 기술 |
 |------|------|
-| **Runtime** | Node.js v25+, Python 3 |
-| **Backend** | Node.js HTTP 서버 (Notion API 프록시) |
+| **Runtime** | Node.js (데몬 `/opt/homebrew/bin/node`, `node:sqlite` 사용), Python 3 (`/opt/homebrew/bin/python3`) |
+| **Backend** | Node.js HTTP 서버 (`127.0.0.1` 전용) |
 | **Frontend** | Vanilla HTML/CSS/JavaScript (Single File) |
 | **AI 요약** | Google Gemini 2.5 Flash API |
-| **데이터 소스** | YouTube Data API v3 |
-| **저장소** | Notion Database API |
+| **데이터 소스** | YouTube Data API v3, 카카오톡 내보내기 CSV |
+| **저장소** | 로컬 SQLite (`data/library.db`) — v4.0 |
+| **보기용 사본** | 구글 시트 + Apps Script 웹앱 — v4.0 |
 | **Wiki** | Obsidian (로컬 마크다운 지식베이스) |
 | **알림** | Telegram Bot API, Gmail SMTP |
 | **스케줄링** | macOS launchd |
@@ -197,19 +211,20 @@ Youtube_Notion_Grap/
 ```env
 YOUTUBE_API_KEY=AIzaSy...
 GEMINI_API_KEY=AIzaSy...
-NOTION_TOKEN=ntn_...
-NOTION_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx        # YouTube 영상 DB
+GEMINI_API_KEYS=AIzaSy...,AIzaSy...                 # 무료 키 로테이션 (쉼표)
 
-# (v3.0) 카카오톡 →「AI 꿀팁」 — NOTION_DB_ID 와 반드시 다른 변수명. 섞으면 영상 파이프라인이 엉뚱한 DB에 쓴다
-NOTION_TIPS_DB_ID=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   # 「AI 꿀팁」DB (같은 NOTION_TOKEN 통합에 연결 필요)
 KAKAO_EXPORT_DIR=/Users/<사용자>/Downloads          # KakaoTalk_Chat_안진훈_*.csv 가 떨어지는 폴더
+
+# (v4.0) 구글 시트 미러 — 둘 다 없으면 미러를 건너뛴다 (설치 순서: gas/sheet_mirror.gs 머리 주석)
+SHEET_MIRROR_URL=https://script.google.com/macros/s/.../exec
+SHEET_MIRROR_TOKEN=<openssl rand -hex 24 로 만든 값 — Apps Script 스크립트 속성 MIRROR_TOKEN 과 같게>
 
 # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
 WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
 WIKI_LAN_ASK_DAILY_MAX=20                           # AI 답변 24시간 총량 (Gemini 무료 한도 보호)
 
-# (v3.2.1) 새로 만든 빈 Notion DB 로 처음 돌릴 때만 true. 평소에는 넣지 않는다 — 캐시 0건이면 저장 없이 중단하는 안전장치를 끈다
-# NOTION_CACHE_ALLOW_EMPTY=true
+# (v4.0) 새로 만든 빈 장부로 처음 돌릴 때만 true. 평소에는 넣지 않는다 — 장부 0건이면 저장 없이 중단하는 안전장치를 끈다
+# LIBRARY_ALLOW_EMPTY=true
 
 TELEGRAM_ENABLED=true
 TELEGRAM_BOT_TOKEN=1234567890:AAG...
@@ -220,12 +235,17 @@ EMAIL_FROM=your@gmail.com
 EMAIL_TO=recipient@email.com
 EMAIL_APP_PASS=xxxx xxxx xxxx xxxx
 
-# YouTube OAuth 2.0 (v102 — 토픽 재생목록 자동 추가용)
-# oauth_setup.js 실행 후 자동 기입됩니다
+# YouTube OAuth 2.0 — 토픽 재생목록 자동 추가용. oauth_setup.js 실행 후 자동 기입
 YOUTUBE_OAUTH_CLIENT_ID=...
 YOUTUBE_OAUTH_CLIENT_SECRET=...
 YOUTUBE_OAUTH_REFRESH_TOKEN=...
 YOUTUBE_MASTER_PLAYLIST_ID=PLxxxxxxxxxxxxxxxxxxxxxxxx
+YOUTUBE_PLAYLIST_SYNC=true
+
+# (보관) 노션 — scripts/notion_to_sqlite.py 만 읽는다. 앱은 쓰지 않는다. 노션 해지 때 함께 지운다
+NOTION_TOKEN=ntn_...
+NOTION_DB_ID=...
+NOTION_TIPS_DB_ID=...
 ```
 
 ---
@@ -233,10 +253,9 @@ YOUTUBE_MASTER_PLAYLIST_ID=PLxxxxxxxxxxxxxxxxxxxxxxxx
 ## 📦 설치 및 실행
 
 ### 1. 사전 요구사항
-- Node.js v18 이상, Python 3
-- YouTube Data API v3 키
-- Google Gemini API 키
-- Notion Integration 토큰 + 데이터베이스 ID
+- Node.js 22.5 이상 (`node:sqlite`), Python 3
+- YouTube Data API v3 키, Google Gemini API 키
+- 장부 `data/library.db` (원본 — 새로 만들지 않는다. 없으면 백업에서 복원)
 
 ### 2. 서버 및 스케줄러 실행
 ```bash
@@ -248,20 +267,32 @@ bash install-server.sh
 bash install-scheduler.sh
 ```
 
-### 3. 카카오톡 링크 인제스트 (v3.0)
+### 3. 카카오톡 링크 인제스트
 
 ```bash
 # 카카오톡 PC → '나와의 채팅' → 대화 내보내기 → ~/Downloads 에 CSV 저장 (월 1회 정도)
 # 이후는 스케줄러가 자동 처리한다. 수동으로 돌릴 때는 반드시 dry-run 부터.
-/usr/bin/python3 kakao_ingest.py                    # dry-run — 생성될 행을 표로만 출력
-/usr/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 생성 → Notion 육안 확인
-/usr/bin/python3 kakao_ingest.py --apply            # 전량
-/usr/bin/python3 lib/tips_notion.py                 # 「AI 꿀팁」DB 상태 (건수·카테고리 분포)
+/opt/homebrew/bin/python3 kakao_ingest.py                    # dry-run — 생성될 행을 표로만 출력
+/opt/homebrew/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 → 장부 확인
+/opt/homebrew/bin/python3 kakao_ingest.py --apply            # 전량
 ```
 
-> 인터프리터는 `/usr/bin/python3` 또는 `/opt/homebrew/bin/python3`. PATH 의 `python3`(python.org 3.11)는 루트 인증서가 없어 Notion 호출이 SSL 오류로 죽는다.
+### 4. 구글 시트 미러 (v4.0)
 
-### 4. Wiki 검색 (v3.2)
+1. 구글 시트를 하나 만들고 확장 프로그램 → Apps Script 에 `gas/sheet_mirror.gs` 를 붙여 넣는다.
+2. 맥에서 토큰을 만들어 `.env` 의 `SHEET_MIRROR_TOKEN` 과 Apps Script 스크립트 속성 `MIRROR_TOKEN` 에 같은 값을 넣는다.
+3. 웹 앱으로 배포(실행 계정 "나", 액세스 "모든 사용자") → URL 을 `.env` 의 `SHEET_MIRROR_URL` 에 넣는다.
+4. 첫 전송과 대조:
+
+```bash
+/opt/homebrew/bin/python3 sheet_mirror.py --dry-run   # 보낼 건수만 (네트워크 0)
+/opt/homebrew/bin/python3 sheet_mirror.py             # 처음엔 두 탭을 비우고 전부 보낸다 (약 3천 행, 요청 18회 = 탭 비우기 2 + 영상 15 + 꿀팁 1)
+/opt/homebrew/bin/python3 sheet_mirror.py --check     # 시트 행 수 = 장부 행 수 인지
+```
+
+> 시트는 보기 전용 사본이다. 시트를 고쳐도 장부로 돌아가지 않고, 다음 변경 때 덮어써진다. 열을 추가하지 말 것(머리글이 다르면 쓰기를 멈춘다 → `--full`).
+
+### 5. Wiki 검색 (v3.2)
 
 | 입구 | 프로세스 | 바인딩 | 용도 |
 |---|---|---|---|
@@ -274,46 +305,28 @@ bash install-scheduler.sh
 2. `cp com.irichgreen.wiki-lan.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.irichgreen.wiki-lan.plist`
 3. macOS 방화벽에서 `node` 수신 연결 허용 (관리자 권한 필요 — 사람이 직접)
 
-> 제약: 맥이 집에 켜져 있고 깨어 있을 때만 접속된다. 읽기 전용(검색·AI 답변)이며, Notion 쓰기·인제스트 실행 엔드포인트는 이 서버에 없다.
+> 제약: 맥이 집에 켜져 있고 깨어 있을 때만 접속된다. 읽기 전용(검색·AI 답변)이며, 인제스트 실행 엔드포인트는 이 서버에 없다.
 
 ---
 
 ## 📓 Obsidian LLM Wiki
 
-노션에 저장된 AI 영상 요약을 Obsidian 지식베이스로 자동 변환하며, `wiki_ingest.py`를 통해 지식 간의 관계를 분석하여 위키 페이지를 합성합니다. 자세한 구조는 [CLAUDE.md](CLAUDE.md)를 참조하세요.
+장부에 저장된 AI 영상 요약·꿀팁을 Obsidian 지식베이스로 자동 변환하며, `wiki_ingest.py`를 통해 지식 간의 관계를 분석하여 위키 페이지를 합성합니다. 자세한 구조는 [CLAUDE.md](CLAUDE.md)를 참조하세요.
 
 ---
 
-## 📊 Notion DB 컬럼 구조
+## 🗄️ 장부 구조 (`data/library.db`, v4.0)
 
-| 컬럼명 | 타입 | 설명 |
-|--------|------|------|
-| 영상 제목 | Title | YouTube 영상 제목 |
-| 요약 내용 | Rich Text | Gemini AI 생성 4섹션 보고서 |
-| 유튜브 채널 | Rich Text | 채널명 |
-| 업로드 일자 | Date | 실제 영상 업로드 날짜 |
-| 조회수 | Number | 최신 조회수 |
-| 구독자수 | Number | 채널 구독자수 |
-| 영상 URL | URL | YouTube 영상 링크 |
-| 썸네일 URL | URL | 영상 썸네일 이미지 |
-| 처리 상태 | Select | 완료 / 오류 |
-| 주제 | Multi-Select | 재생목록명 (NFC 정규화 적용) |
+스키마 원본은 `lib/library_schema.sql` 하나다(Python·Node 가 같은 파일을 실행). 문자열은 NFC, 목록은 JSON 배열 문자열, 시각은 ISO 8601 UTC.
 
-### 「AI 꿀팁」DB (v3.0) — `NOTION_TIPS_DB_ID`
+| 테이블 | 내용 | 시트 탭 |
+|---|---|---|
+| `videos` | 영상 1건 1행. `record_id`(노션에서 옮긴 행 = 노션 page id, 새 행 = uuid4 = Obsidian `notion_id`) · `video_id`(UNIQUE) · 제목 · 채널 · `topics` · 업로드일 · 조회수 · 구독자 · URL · `summary`(Gemini 요약 마크다운) | **영상** |
+| `tips` | 카톡 링크 1건 1행. 제목 · URL · `url_key`(중복 판정) · 출처(호스트) · `tags` · 카테고리 · 상태 · 중요도 · 저장일 · 메모 | **꿀팁** |
+| `videos_dup` | 1단계 적재 때 같은 video_id 로 겹친 노션 페이지 보관본 (지우지 않음) | — |
+| `meta` | `switched_at`(장부 원본 확정 시각) · `sheet_wm_videos`·`sheet_wm_tips`(시트에 보낸 마지막 `updated_at`) · `sheet_target` · `sheet_last_ok` | — |
 
-속성 타입은 `lib/tips_notion.py` 상단 주석이 원본이다. 추측해서 쓰면 400이 난다.
-
-| 컬럼명 | 타입 | 값 · 비고 |
-|--------|------|------|
-| 제목 | Title | 규칙 기반 추정 (`<레포명> (GitHub 레포)`, `노션 자료 (…)`). 슬러그에 한글이 없으면 `(제목 미확인)` |
-| URL | URL | 트래킹 파라미터(`utm_*`, `fbclid`, `pvs`, `source`…)를 제거한 원본 링크 |
-| 출처 | URL | **호스트만** 저장 (`github.com`, `xxx.notion.site`) |
-| 태그 | Rich Text | 쉼표 결합 문자열 (`ClaudeCode,GitHub`) — multi_select 가 아니다 |
-| 카테고리 | Select | 프롬프트 / 개발툴 / 기타 / 모델/LLM / 뉴스/트렌드 / 지식관리 / 사업/마케팅 |
-| 상태 | Select | 미확인 (생성 시 기본값) |
-| 중요도 | Select | 상 / 중 / 하 (생성 시 기본 `중`) |
-| 저장일 | Date | 카톡 메시지 날짜 |
-| 메모 | Rich Text | `원문 확인 필요` 등 추정 근거 |
+시트 열 — **영상**: record_id · 업로드일 · 채널 · 제목 · 주제 · 조회수 · 구독자 · URL · 요약 · 저장 · 수정 / **꿀팁**: record_id · 저장일 · 제목 · URL · 출처 · 카테고리 · 태그 · 중요도 · 상태 · 메모 · 본문 · 저장 · 수정 (저장·수정은 KST).
 
 ---
 
@@ -327,6 +340,7 @@ bash install-scheduler.sh
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.0** | 2026-10-12 | **노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러**: 원본을 노션에서 맥의 SQLite 장부 `data/library.db` 로 옮김(1단계 적재 · 2단계 쓰기/읽기 전환 · 3단계 정리, 단계마다 실데이터 판정). 파이프라인 노션 호출 0. 장부 → 구글 시트(탭 영상·꿀팁) 단방향 미러 `sheet_mirror.py` + Apps Script 웹앱 `gas/sheet_mirror.gs`(변경분만, 인증 오류 즉시 중단). 앱의 노션 코드 의존 제거, `/api/sync-obsidian` 제거, 재구성 시 내용 같은 파일 안 쓰기(Vault 전체 mtime 갱신 해소). 회귀 테스트 6종 |
 | **v3.2.1** | 2026-10-05 | **스케줄러 네트워크 안전장치 — 빈 캐시 중복 저장 차단**: Notion 캐시 첫 조회가 네트워크 오류로 실패하면 재시도 없이 빈 캐시로 진행해 재생목록 앞 15편을 다시 저장하던 결함 수정(08-12 이후 13회·중복 195건). 캐시는 "전부 읽었거나, 던지거나"로 바꾸고 실패한 실행은 영상 처리를 건너뜀(fail-closed), Notion 401/403 은 즉시 종료. YouTube 조회에 일시 오류 지수 백오프 재시도 추가(오류 한 번에 실행이 통째 실패하던 비율 28%). 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450회)에서 50개 배치 순차(9회)로 교체. 회귀 테스트 `scripts/test_scheduler_guards.js` 신설 |
 | **v3.2** | 2026-10-03 | **집 안 전용 Wiki 검색 서버**: 가족이 같은 네트워크의 다른 컴퓨터에서 `http://<맥이름>.local:3100/wiki`로 검색하도록 읽기 전용 서버 `wiki_lan_server.js` 신설. `server.js`(Notion 쓰기 프록시·인제스트 실행 포함)는 `127.0.0.1` 전용으로 유지하고 검색 경로만 분리 노출. 허용 대역(`WIKI_LAN_ALLOW_CIDR`) 밖 403, 미설정 시 루프백 전용(fail-closed), Host 검사, AI 답변 일일 총량으로 Gemini 무료 한도 보호. `launchd` `com.irichgreen.wiki-lan` 추가 |
 | **v3.1** | 2026-09-10 | **Wiki 인제스트 할당량 소모 구조 교정**: Gemini 429를 `quotaId`로 RPD/RPM 분기(분당 한도 한 번에 키를 하루치 폐기하던 손실 제거), 5xx·네트워크 오류 지수 백오프 추가(전체 오류의 24%가 재시도 없이 버려지던 자리), 무료 티어 일 경계를 태평양시로 교정. `--rebuild` 경로로 띄운 wiki_ingest 의 출력을 `wiki-ingest.log` 에 합류시켜 실행 경로 2개를 한 로그에서 판정 가능하게 함 |
@@ -347,6 +361,33 @@ bash install-scheduler.sh
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.0] — 2026-10-12 (🗄️ 노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러)
+
+**배경.** 2026-10-11 노션을 더 이상 쓰지 않기로 했다. 앱은 방안 A 로 옮긴다: 원본 = 맥의 SQLite 장부 `data/library.db`, 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 세 단계로 나눠 각 단계를 맥 실데이터로 판정한 뒤 넘어갔다.
+
+| 단계 | 내용 | 커밋 · 지시서 |
+|---|---|---|
+| 1 | 노션 두 DB → 장부 적재(노션 읽기 전용). 영상 페이지 3,189 → `videos` 2,986 · `videos_dup` 203 · `tips` 135. 같은 video_id 중복(빈 캐시 사고분)은 Obsidian 노트가 가리키는 페이지를 남기고 나머지는 보관 | `c1025dc` · `2026-10-11-v4-notion-to-sqlite.md` |
+| 2-a | 쓰기 전환 — `scheduler.js`(`lib/library.js`, `node:sqlite`)·`kakao_ingest.py` 가 노션 대신 장부에 쓴다. 장부가 없으면 만들지 않고 던진다(fail-closed) | `b9fa138` · `2026-10-11-v4-sqlite-switch-a.md` |
+| 2-b | 읽기 전환 — `sync_obsidian.py` 가 장부를 읽기 전용으로 읽어 노트를 만든다. 노션 프록시·브라우저 직접 처리 제거, 노션 전제 스크립트 5개 `legacy_scripts/` | `114d3cb` · `2026-10-11-v4-sqlite-switch-b.md` |
+| 3 | 구글 시트 미러, 앱의 노션 코드 정리, `/api/sync-obsidian` 제거, 재구성 시 같은 내용 안 쓰기, 문서 전면 갱신 | 이 커밋 · `2026-10-12-v4-sheet-mirror-cleanup.md` |
+
+**3단계 — 구글 시트 미러.**
+- `sheet_mirror.py`(보내는 쪽) + `gas/sheet_mirror.gs`(구글 시트에 붙인 Apps Script 웹앱, 받는 쪽). 탭 '영상'·'꿀팁', 1열 `record_id` 기준 있으면 제자리 덮어쓰기·없으면 추가.
+- 변경분 판정은 별도 outbox 테이블 대신 `updated_at` 워터마크(장부 `meta.sheet_wm_*`) — 스키마 무변경. 워터마크는 탭의 묶음을 전부 보낸 뒤에만 올린다(실패분은 다음 실행이 다시 보냄). 시트 주소가 바뀌거나 전체 다시 쓰기가 끊기면 다음 실행이 자동으로 전체.
+- 스케줄러가 카톡 인제스트 뒤·Obsidian 동기화 앞에 부른다. 실패해도 동기화를 막지 않고, 실패는 텔레그램에 한 줄로 알린다. `.env` 에 URL 이 없으면 건너뛴다.
+- 안전: 401/403·토큰 불일치·HTML 응답(웹앱 권한 오류)은 재시도 없이 즉시 중단, 429·5xx·busy 는 2·4·8초 지수 백오프 후 중단. 토큰은 본문으로만 보내고 URL 은 `script.google.com` 만 허용. `= + - @` 로 시작하는 글자는 수식이 되지 않게 `'` 를 붙인다(실데이터 238칸).
+
+**3단계 — 정리.**
+- `kakao_ingest.py` 가 노션 래퍼(`lib/tips_notion.py`)를 `.env` 읽기용으로 import 하던 것을 `lib/env_util.py` 로 교체(실제 `.env` 로 두 파서 결과 동일 확인). 노션 rich_text → 마크다운 변환(`block_to_md`)은 `sync_obsidian.py` 에서 `scripts/notion_to_sqlite.py` 로 옮김. 이제 앱은 노션 코드를 import 하지 않는다. `lib/tips_notion.py`·`notion_to_sqlite.py`·`.env` 의 `NOTION_*` 는 「Notion 데이터 이관」이 끝나 노션을 해지할 때 지운다.
+- `server.js` 의 `POST /api/sync-obsidian`(호출하는 화면이 없음) 제거.
+- `build_search_index.py` 가 `notion_id`·제목·태그를 맨 앞 프론트매터에서만 읽는다(`sync_obsidian.py` 와 같은 규칙). 실 Vault 3,121 노트 — 옛 코드와 결과 동일.
+- `build_obsidian_wiki.py` 가 내용이 같으면 파일을 쓰지 않는다. 저장 0건 실행마다(하루 최대 4회) Vault 전체 mtime 이 바뀌던 일(10-11 실측 3,193개)이 없어진다 — 실 Vault 사본으로 재구성 2회차 쓰기 0개. 같이 고친 잠복 결함: 프론트매터 없는 노트는 재구성마다 '🔗 관련 항목' 절이 한 벌씩 쌓였다(실 Vault 해당 파일 0개).
+
+**검증.** 회귀 테스트 6종 — `test_scheduler_guards.js` 19/19 · `test_notion_to_sqlite.py` 37/37 · `test_kakao_ingest.py` 18/18 · `test_sync_obsidian.py` 23/23 · `test_sheet_mirror.py` 45/45(가짜 Apps Script 서버가 `gas/sheet_mirror.gs` 원본을 그대로 실행) · `test_build_wiki_index.py` 10/10. 맥 네이티브(데몬 node v26.10.0 · Homebrew Python 3.14) 동일. 실데이터: 시트 행 영상 2,986 · 꿀팁 135, 최대 셀 3,253자, 요청 1회 최대 782KB.
+
+**확인하지 못한 것.** 구글 Workspace 관리 설정에 따라 웹앱 액세스 "모든 사용자"가 막혀 있을 수 있다(그때 응답이 로그인 화면 HTML → 미러가 auth 로 멈춘다). 실제 구글 시트로의 첫 전송은 설치 후 `--check` 로 판정한다.
 
 #### [v3.2.1] — 2026-10-05 (🛡️ 스케줄러 네트워크 안전장치)
 

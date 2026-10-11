@@ -89,6 +89,14 @@ def batch_embed(texts):
 
 SKIP_FILES = {'log.md', 'schema.md', '캔버스.md'}
 
+# 프론트매터(맨 앞 YAML 블록) 안의 키만 읽는다 — 본문 코드블록의 'notion_id: …' 예시를 노트로 오인하지 않게
+# (v4.0 3단계. sync_obsidian.py:FM_RE·scripts/notion_to_sqlite.py 와 같은 규칙)
+FM_RE = re.compile(r'\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)', re.S)
+
+def fm_text(content):
+    m = FM_RE.match(content or '')
+    return m.group(1) if m else ''
+
 def collect_notes():
     """Vault 순회 → 노트 메타 + 임베딩 텍스트 목록"""
     notes = []
@@ -102,15 +110,16 @@ def collect_notes():
                 content = nfc(open(fpath, encoding='utf-8', errors='ignore').read())
             except Exception:
                 continue
-            m = re.search(r'^notion_id:\s*(.+)$', content, re.MULTILINE)
+            head = fm_text(content)
+            m = re.search(r'^notion_id:\s*(.+)$', head, re.MULTILINE)
             if not m: continue
             nid = m.group(1).strip()
 
             def fm(key, default=''):
-                mm = re.search(rf'^{key}:\s*(.*)$', content, re.MULTILINE)
+                mm = re.search(rf'^{key}:\s*(.*)$', head, re.MULTILINE)
                 return mm.group(1).strip().strip('"') if mm else default
 
-            tags_m = re.search(r'^tags:\s*\[(.*)\]$', content, re.MULTILINE)
+            tags_m = re.search(r'^tags:\s*\[(.*)\]$', head, re.MULTILINE)
             tags = [t.strip().strip('"') for t in tags_m.group(1).split(',')] if tags_m and tags_m.group(1).strip() else []
 
             def section(name):

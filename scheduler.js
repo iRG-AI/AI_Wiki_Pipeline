@@ -129,6 +129,32 @@ function runKakaoIngest(python3) {
   });
 }
 
+// ── (v4.0 3단계) 장부 → 구글 시트 미러 (보기 전용, 변경분만) ──
+// sheet_mirror.py 실행. .env 에 SHEET_MIRROR_URL 이 없으면 Python 쪽이 skipped 로 즉시 끝난다.
+// 실패해도 reject 하지 않는다 — 시트는 보기용 사본이라 Obsidian 동기화를 막으면 안 된다. 실패분은 다음 실행이 다시 보낸다.
+function runSheetMirror(python3) {
+  return new Promise((resolve) => {
+    const { execFile } = require('child_process');
+    const script = path.join(__dirname, 'sheet_mirror.py');
+    if (!fs.existsSync(script)) { log('ℹ️  sheet_mirror.py 없음 — 건너뜀'); return resolve(null); }
+    execFile(python3, [script], { cwd: __dirname, timeout: 10 * 60 * 1000 },
+      (err, stdout, stderr) => {
+        let r = null;
+        const line = String(stdout || '').split('\n').find(l => l.startsWith('RESULT_JSON:'));
+        if (line) { try { r = JSON.parse(line.slice('RESULT_JSON:'.length)); } catch (e) { log(`⚠️ 시트 미러 결과 파싱 오류: ${e.message}`); } }
+        if (err) {
+          log(`⚠️ 시트 미러 오류 (exit ${err.code}${r && r.error ? `, ${r.error}` : ''}): ${String(stderr || '').slice(-300)}`);
+          if (!r) r = { error: 'exit_' + err.code, videos_sent: 0, tips_sent: 0 };
+        } else if (r && r.skipped) {
+          log(`ℹ️  시트 미러 건너뜀: ${r.skipped}`);
+        } else if (r) {
+          log(`📗 시트 미러: 영상 ${r.videos_sent}건 · 꿀팁 ${r.tips_sent}건${r.full ? ' (전체 다시 쓰기)' : ''}`);
+        }
+        resolve(r);
+      });
+  });
+}
+
 // ══════════════════════════════════
 // 이메일 알림 전송 (Gmail SMTP over TLS)
 // ══════════════════════════════════
@@ -1289,7 +1315,13 @@ async function main() {
   const kakao = await runKakaoIngest(python3);
   const kakaoCreated = (kakao && kakao.created) || 0;
 
-  // ── Obsidian 동기화 (항상 실행 - 노션+Obsidian 결과 합쳐서 1개 메시지 전송) ──
+  // ── (v4.0 3단계) 장부 → 구글 시트 미러 (설정 전이면 skipped) ──
+  log('\n📗 구글 시트 미러...');
+  const mirror = await runSheetMirror(python3);
+  const mirrorSent = mirror && !mirror.skipped ? (mirror.videos_sent || 0) + (mirror.tips_sent || 0) : 0;
+  const mirrorFailed = !!(mirror && mirror.error);
+
+  // ── Obsidian 동기화 (항상 실행 - 장부·카톡·시트·Obsidian 결과 합쳐서 1개 메시지 전송) ──
   log('\n🔄 Obsidian 동기화 시작...');
   const { execFile } = require('child_process');
   const syncScript = path.join(__dirname, 'sync_obsidian.py');
@@ -1314,8 +1346,16 @@ async function main() {
           `  • 장부 신규: ${kakaoCreated}건 (총 ${kakao.db_total}건)`,
           ...(Array.isArray(kakao.titles) ? kakao.titles.slice(0, 5).map(t => `    - ${t}`) : []),
         ] : [];
+        const mirrorSection = (mirrorSent > 0 || mirrorFailed) ? [
+          ``,
+          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `📗 구글 시트 미러`,
+          ...(mirrorSent > 0 ? [`  • 보냄: 영상 ${mirror.videos_sent || 0}건 · 꿀팁 ${mirror.tips_sent || 0}건${mirror.full ? ' (전체)' : ''}`] : []),
+          ...(mirrorFailed ? [`  • ⚠️ 실패 (${mirror.error}) — ${mirror.error === 'auth' ? '토큰·웹앱 배포 확인 필요' : '다음 실행에 다시 보냄'}`] : []),
+        ] : [];
         const obsSection = [
           ...kakaoSection,
+          ...mirrorSection,
           ``,
           `━━━━━━━━━━━━━━━━━━━━━━`,
           `📓 Obsidian AI LLM Wiki`,
@@ -1327,7 +1367,7 @@ async function main() {
         ].join('\n');
         log(`✅ Obsidian 동기화 완료! 추가: ${r.added}개 (꿀팁 ${tipsAdded})`);
 
-        const hasNewOrUpdated = totalSaved > 0 || kakaoCreated > 0 || (r.added && r.added > 0) || (r.tags_updated && r.tags_updated > 0);
+        const hasNewOrUpdated = totalSaved > 0 || kakaoCreated > 0 || (r.added && r.added > 0) || (r.tags_updated && r.tags_updated > 0) || mirrorFailed;
         if (hasNewOrUpdated) {
           await sendTelegram(msg + obsSection);
         } else {
@@ -1355,7 +1395,7 @@ if (require.main === module) {
   });
 } else {
   module.exports = {
-    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary,
+    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror,
     _setLibDb: (db) => { libDb = db; },   // 테스트 전용 (scripts/test_scheduler_guards.js)
   };
 }

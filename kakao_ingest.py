@@ -2,9 +2,9 @@
 """
 카카오톡 '나와의 채팅' CSV → 장부 tips 인제스트 (v2.8 → v4.0: 노션「AI 꿀팁」대신 data/library.db 의 tips 테이블)
 
-    /usr/bin/python3 kakao_ingest.py                 # dry-run (기본). 생성될 행을 표로만 출력
-    /usr/bin/python3 kakao_ingest.py --apply --limit=3
-    /usr/bin/python3 kakao_ingest.py --apply
+    /opt/homebrew/bin/python3 kakao_ingest.py                 # dry-run (기본). 생성될 행을 표로만 출력
+    /opt/homebrew/bin/python3 kakao_ingest.py --apply --limit=3
+    /opt/homebrew/bin/python3 kakao_ingest.py --apply
     옵션: --csv=<경로>  (기본: KAKAO_EXPORT_DIR 의 최신 KakaoTalk_Chat_안진훈_*.csv — NFC 비교)
           --since=YYYY-MM-DD  (기본: 2026-03-01 — DB 시작 시점. 그 이전 카톡 링크는 AI 자료가 아님)
           --if-new   스케줄러용. 최신 CSV 의 mtime 이 .kakao_state.json 에 기록된 값과 같으면 장부 조회 없이 즉시 종료
@@ -26,7 +26,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(SCRIPT_DIR, 'lib'))
 
 from kakao_parse import parse_links, guess_meta, url_key, nfc
-import tips_notion as tn          # .env 읽기(tn.ENV)만 쓴다. 노션 호출 없음 (노션 코드 정리는 지시서 3)
+from env_util import load_env     # .env 읽기 (v4.0 3단계: 노션 래퍼 tips_notion 의존 제거)
 import library_db as ldb
 
 DEFAULT_SINCE = '2026-03-01'
@@ -61,7 +61,7 @@ def log(m): print(m, flush=True)
 
 def latest_csv():
     """KAKAO_EXPORT_DIR 에서 '나와의 채팅' CSV 중 mtime 최신. macOS 파일명은 NFD 라 NFC 로 맞춰 비교한다."""
-    d = os.path.expanduser(tn.ENV.get('KAKAO_EXPORT_DIR', '~/Downloads'))
+    d = os.path.expanduser(load_env().get('KAKAO_EXPORT_DIR', '~/Downloads'))
     files = [f for f in glob.glob(os.path.join(d, 'KakaoTalk_Chat_*.csv'))
              if nfc(os.path.basename(f)).startswith(CSV_PREFIX)]
     files.sort(key=os.path.getmtime)
@@ -138,7 +138,7 @@ def main():
         emit_result(dry_run=True, csv=csv_name, created=0, candidates=len(plan), db_total=len(rows))
         return
 
-    # 노션 tips_notion.build_properties 와 같은 기본값: 제목이 비면 URL, 카테고리 '기타', 상태 '미확인', 중요도 '중'
+    # 노션 시절(v3.x)과 같은 기본값: 제목이 비면 URL, 카테고리 '기타', 상태 '미확인', 중요도 '중'
     dt = datetime.now(timezone.utc)
     now = dt.strftime('%Y-%m-%dT%H:%M:%S.') + f'{dt.microsecond // 1000:03d}Z'   # scheduler 와 같은 ISO 형식
     vals = []

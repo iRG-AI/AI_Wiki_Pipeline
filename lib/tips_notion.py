@@ -2,6 +2,9 @@
 """
 Notion「AI 꿀팁」DB 전용 조회/생성 래퍼
 
+※ v4.0 3단계부터 보관용이다. 앱 코드는 import 하지 않는다 — scripts/notion_to_sqlite.py(보관) 만 쓴다.
+  노션을 해지할 때 scripts/notion_to_sqlite.py·.env 의 NOTION_* 와 함께 지운다. .env 읽기는 lib/env_util.py.
+
 속성 타입 (2026-09-06 §2-2 검증 출력 — 추측 금지, 바뀌면 이 표부터 갱신):
     제목     title
     URL      url

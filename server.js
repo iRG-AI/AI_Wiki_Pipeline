@@ -1,4 +1,4 @@
-// ===== YouTube AI 요약기 백엔드 서버 (보안 강화판, v4.0: 노션 프록시 제거) =====
+// ===== YouTube AI 요약기 백엔드 서버 (보안 강화판, v4.0: 노션 프록시·Obsidian 동기화 트리거 제거) =====
 // 실행 방법: node server.js
 
 const http = require('http');
@@ -141,65 +141,6 @@ const server = http.createServer((req, res) => {
         chatId:   process.env.TELEGRAM_CHAT_ID   || '',
       },
     }));
-    return;
-  }
-
-  // ── Obsidian 동기화 트리거 ──
-  if (parsedUrl.pathname === '/api/sync-obsidian' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => {
-      let notionMsg = '';
-      try {
-        const parsed = JSON.parse(body || '{}');
-        notionMsg = parsed.notionMsg || '';
-      } catch(e) {}
-
-      res.writeHead(200, CORS);
-      res.end(JSON.stringify({ ok: true, message: 'Obsidian 동기화 시작' }));
-
-      const { execFile } = require('child_process');
-      const python3 = '/opt/homebrew/bin/python3';
-      const syncScript = require('path').join(__dirname, 'sync_obsidian.py');
-      execFile(python3, [syncScript], { cwd: __dirname }, async (err, stdout) => {
-        if (err) {
-          console.log(`❌ Obsidian 동기화 오류: ${err.message}`);
-          // 오류 시 최소한 notionMsg라도 전송
-          if (notionMsg && process.env.TELEGRAM_ENABLED === 'true') {
-            const text = encodeURIComponent(notionMsg);
-            const token = process.env.TELEGRAM_BOT_TOKEN;
-            const chatId = process.env.TELEGRAM_CHAT_ID;
-            require('https').get(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${text}`);
-          }
-          return;
-        }
-        // RESULT_JSON 파싱 후 텔레그램 전송 (v97: Notion + 구분선 + Obsidian을 1개 메시지로 통합)
-        const jsonLine = (stdout || '').split('\n').find(l => l.startsWith('RESULT_JSON:'));
-        if (jsonLine && process.env.TELEGRAM_ENABLED === 'true') {
-          try {
-            const r = JSON.parse(jsonLine.replace('RESULT_JSON:', ''));
-            const obsLines = [
-              `📓 Obsidian AI LLM Wiki`,
-              `  • 신규 추가: ${r.added}개`,
-              ...(r.tags_updated > 0 ? [`  • tags 갱신: ${r.tags_updated}개`] : []),
-              `  • Wiki 재구성: ${r.rebuilt ? '✅ 완료' : '⏭ 생략'}`,
-              `  • 소요시간: ${r.elapsed}초`,
-            ];
-            const obsMsg = obsLines.join('\n');
-            const combined = notionMsg
-              ? `${notionMsg}\n━━━━━━━━━━━━━━━━━━━━━━\n${obsMsg}`
-              : obsMsg;
-            const text = encodeURIComponent(combined);
-            const token = process.env.TELEGRAM_BOT_TOKEN;
-            const chatId = process.env.TELEGRAM_CHAT_ID;
-            require('https').get(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${text}`);
-            console.log(`✅ Obsidian 동기화 완료 — 추가: ${r.added}개`);
-          } catch(e) {
-            console.log(`⚠️ Obsidian 결과 파싱 오류: ${e.message}`);
-          }
-        }
-      });
-    });
     return;
   }
 

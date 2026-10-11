@@ -9,6 +9,7 @@
 //   2) YouTube 조회는 일시 오류만 재시도하고 401/403 은 즉시 던진다
 //   3) 채널 구독자 수는 50개씩 묶어 순차 조회한다
 //   4) 장부 쓰기(저장·주제 추가·통계 갱신)는 같은 video_id 를 덮어쓰지 않고, 네트워크 요청을 하나도 만들지 않는다
+//   5) (v4.0 3단계) 시트 미러 훅은 실패해도 reject 하지 않는다 — 오류를 결과로 돌려줄 뿐 Obsidian 동기화를 막지 않는다
 
 const https = require('https');
 const fs = require('fs');
@@ -64,7 +65,8 @@ if (!fs.readFileSync(SCHEDULER, 'utf8').includes('require.main === module')) {
   out('중단: scheduler.js 에 `require.main === module` 가드가 없다. 가드를 먼저 넣어야 이 테스트를 돌릴 수 있다.');
   process.exit(2);
 }
-const { ytFetch, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, _setLibDb } = require(SCHEDULER);
+const sched = require(SCHEDULER);
+const { ytFetch, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, _setLibDb } = sched;
 const library = require(path.join(__dirname, '..', 'lib', 'library'));
 const { DatabaseSync } = library.loadSqlite();   // ExperimentalWarning 한 줄을 삼키는 로더
 
@@ -93,6 +95,12 @@ const SEED = [
   { id: 'aaaa-2', vid: 'AAAAAAAAAA2', title: '두 번째 영상', topics: [] },
   { id: 'aaaa-3', vid: null, title: 'video_id 없는 영상' },
 ];
+// 가짜 인터프리터: 인자를 무시하고 주어진 셸 명령만 실행 (runSheetMirror 가 python3 대신 부른다)
+function fakeInterpreter(body) {
+  const p = path.join(TMP, `fake-py-${++dbSeq}.sh`);
+  fs.writeFileSync(p, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  return p;
+}
 const count = (p) => { const d = new DatabaseSync(p); const n = d.prepare('SELECT COUNT(*) n FROM videos').get().n; d.close(); return n; };
 
 async function expectThrow(fn) {
@@ -222,6 +230,21 @@ const cases = [
       assert(t === JSON.stringify(['AI Claude', 'AI 에이전트']), 'topics 가 다르다: ' + t);
       await expectThrow(() => library.addTopic(db, 'no-such-id', 'AI Claude'));
     } finally { db.close(); }
+  }],
+  ['runSheetMirror: 미러가 exit 2(auth) 여도 reject 없이 결과를 돌려준다', async () => {
+    const fake = fakeInterpreter('echo \'RESULT_JSON:{"error":"auth","videos_sent":0,"tips_sent":0}\'; exit 2');
+    const r = await sched.runSheetMirror(fake);
+    assert(r && r.error === 'auth', '결과가 다르다: ' + JSON.stringify(r));
+  }],
+  ['runSheetMirror: 출력 없이 죽어도 reject 없이 exit 코드를 오류로 돌려준다', async () => {
+    const fake = fakeInterpreter('exit 3');
+    const r = await sched.runSheetMirror(fake);
+    assert(r && r.error === 'exit_3', '결과가 다르다: ' + JSON.stringify(r));
+  }],
+  ['runSheetMirror: skipped(설정 전)는 오류가 아니다', async () => {
+    const fake = fakeInterpreter('echo \'RESULT_JSON:{"skipped":"not_configured","videos_sent":0,"tips_sent":0,"error":""}\'');
+    const r = await sched.runSheetMirror(fake);
+    assert(r && r.skipped === 'not_configured' && !r.error, '결과가 다르다: ' + JSON.stringify(r));
   }],
   ['updateStats: 업로드일을 안 주면 기존 날짜를 지킨다', async () => {
     const db = library.openLibrary(makeLibrary(SEED));

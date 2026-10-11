@@ -26,7 +26,7 @@ STRIP_PARAMS = {
     'pli', 'usp', 'gclid', 'igshid',
 }
 
-# 카테고리 select 옵션 (§2-2 검증 출력 기준 — Notion에 없는 값을 넣으면 400)
+# 카테고리 값 목록 (v3.x 노션 select 옵션 그대로 — 장부 tips.category·Obsidian 노트·시트에 같은 값을 쓴다)
 CATEGORIES = ['프롬프트', '개발툴', '기타', '모델/LLM', '뉴스/트렌드', '지식관리', '사업/마케팅']
 
 _URL_RE = re.compile(r'https?://[^\s"<>\)\]\'`]+')

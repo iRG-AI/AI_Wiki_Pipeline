@@ -8,7 +8,7 @@
   2) 중복 판정은 장부 tips 의 url_key — 같은 CSV 를 두 번 돌리면 두 번째는 0건 (2026-09-06 중복 15건 재발 방지)
   3) dry-run 은 장부·상태 파일을 쓰지 않는다
   4) 신규 행은 노션 시절과 같은 기본값·형식으로 들어간다
-  5) 노션·외부 HTTP 요청을 하나도 만들지 않는다
+  5) 노션·외부 HTTP 요청을 하나도 만들지 않는다 (v4.0 3단계: 노션 래퍼 lib/tips_notion.py 를 import 하지도 않는다)
 """
 import io, json, os, sqlite3, sys, tempfile
 from contextlib import redirect_stdout
@@ -22,8 +22,6 @@ def _no_net(*a, **k):
     calls.append(a[0] if a else k)
     raise RuntimeError('네트워크 요청 금지 (테스트)')
 urllib.request.urlopen = _no_net
-import tips_notion
-tips_notion.urlopen = _no_net
 import library_db as ldb
 import kakao_ingest as ki
 
@@ -115,6 +113,7 @@ def main():
     check('중간 실패 시 exit 1 · 남은 행 0 (총 1 그대로)', code == 1 and len(tips(ldb.DB_PATH)) == 1, (code, rj))
 
     check('네트워크 요청 0건', not calls, calls[:3])
+    check('노션 래퍼(tips_notion)를 import 하지 않음', 'tips_notion' not in sys.modules)
     ok = all(results)
     print(f'\n{sum(results)}/{len(results)} PASS')
     return 0 if ok else 1
