@@ -392,7 +392,7 @@ def build_schema(files):
 
     lines.append('## 📄 파일명 규칙\n\n```\n채널명_영상제목_날짜.md\n예) 오후다섯씨_Claude Code 완벽 가이드_20260315.md\n```\n- 특수문자 `/ \\ : * ? " < > | #` → `_` 치환, 최대 120자\n\n---\n\n')
 
-    lines.append('## 🏷️ YAML Frontmatter 형식\n\n```yaml\n---\ntitle: "영상 제목"\nchannel: "채널명"\ntags: ["AI 바이브코딩", "AI Claude"]\nupload_date: 2026-03-15\nview_count: 42000\nsubscriber_count: 141000\nvideo_url: https://youtube.com/watch?v=xxxxx\nstatus: 완료\nnotion_id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\n---\n```\n\n---\n\n')
+    lines.append('## 🏷️ YAML Frontmatter 형식\n\n```yaml\n---\ntitle: "영상 제목"\nchannel: "채널명"\ntags: ["AI 바이브코딩", "AI Claude"]\nupload_date: 2026-03-15\nview_count: 42000\nsubscriber_count: 141000\nvideo_url: https://youtube.com/watch?v=xxxxx\nstatus: 완료\nnotion_id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\n---\n```\n\n- `notion_id` 는 이름만 노션 시절 그대로다 — 값은 로컬 장부(data/library.db) record_id. 노션에서 옮긴 노트는 노션 page id, v4.0 이후 새 노트는 uuid4.\n- 동기화 스크립트는 맨 앞 프론트매터 안의 `notion_id`·`video_url` 만 센다 (이 예시 블록은 세지 않는다).\n\n---\n\n')
 
     lines.append(f'## 🏷️ 주제 태그 목록 (현재 {len(all_tags)}개)\n\n')
     lines.append('| 태그 | 영상 수 |\n|------|--------|\n')
@@ -413,7 +413,7 @@ def build_schema(files):
 
     lines.append('## 🔄 워크플로우\n\n')
     lines.append('### 자동 파이프라인\n```\nYouTube → Gemini 요약 → Notion 저장\n→ sync_obsidian.py → .md 생성 → build_obsidian_wiki.py\n→ MOC + 키워드 링크 + lint + schema 재생성 → log.md 기록\n```\n\n')
-    lines.append('### 수동 명령어\n```bash\npython3 sync_obsidian.py --rebuild   # 전체 재구성\npython3 build_obsidian_wiki.py       # MOC/링크/schema 재구성\npython3 cleanup_duplicates.py        # 중복 정리\ngrep "^## \\[" log.md | tail -10      # 최근 10개 변경 이력\n```\n\n')
+    lines.append('### 수동 명령어\n```bash\npython3 sync_obsidian.py --rebuild   # 전체 재구성\npython3 build_obsidian_wiki.py       # MOC/링크/schema 재구성\npython3 sync_obsidian.py --dry-run   # 장부↔Vault 할 일만 세기 (쓰기 없음)\ngrep "^## \\[" log.md | tail -10      # 최근 10개 변경 이력\n```\n\n')
     lines.append('*이 파일은 `build_obsidian_wiki.py` 실행 시 자동으로 재생성됩니다.*\n')
 
     open(os.path.join(VAULT, 'schema.md'), 'w', encoding='utf-8').write(nfc(''.join(lines)))

@@ -193,8 +193,9 @@ def main():
               all(meth == 'GET' or (meth == 'POST' and p.endswith('/query')) for meth, p in f.calls))
         check('영상 12 → videos 8 · dup 4', rj and rj['videos'] == 8 and rj['videos_dup'] == 4, rj)
         check('요약 대조 3/3 일치', rj and rj['summary_check']['match'] == 3, rj and rj['summary_check'])
-        check('본문에만 notion_id 가 있는 문서는 Vault id 에서 제외 (영상 1 · 꿀팁 0 없음)',
-              rj and rj['vault_missing'] == 0 and rj['tips_missing'] == 0 and rj['vault_ignored'] == 1, rj)
+        # v4.0 2단계: sync_obsidian.get_existing_vault_info 가 프론트매터만 보게 바뀌어 schema.md 는 처음부터 안 잡힌다 (vault_ignored 1 → 0)
+        check('본문에만 notion_id 가 있는 문서는 Vault id 에서 제외 (없음 0 · 제외 대상도 처음부터 안 잡힘)',
+              rj and rj['vault_missing'] == 0 and rj['tips_missing'] == 0 and rj['vault_ignored'] == 0, rj)
 
         print('▶ apply')
         code, out, rj = run(['--apply', '--summary-check=0'], Fake())

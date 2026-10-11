@@ -1,4 +1,4 @@
-// ===== YouTube → Notion AI 요약기 백엔드 서버 (보안 강화판) =====
+// ===== YouTube AI 요약기 백엔드 서버 (보안 강화판, v4.0: 노션 프록시 제거) =====
 // 실행 방법: node server.js
 
 const http = require('http');
@@ -31,15 +31,6 @@ const ALLOWED_ORIGINS = [
   'http://127.0.0.1:3000',
 ];
 
-// ── 허용된 Notion API 경로 패턴 (화이트리스트) ──
-const ALLOWED_NOTION_PATHS = [
-  /^\/v1\/pages$/,                          // 페이지 생성
-  /^\/v1\/pages\/[a-f0-9\-]{32,36}$/,       // 페이지 수정
-  /^\/v1\/databases\/[a-f0-9\-]{32,36}\/query$/, // DB 쿼리
-  /^\/v1\/users\/me$/,                      // 토큰 테스트
-  /^\/v1\/blocks\/[a-f0-9\-]{32,36}\/children$/, // 블록 append (v97: 100블록 초과 긴 요약문 저장)
-];
-
 // ── 요청 크기 제한 (5MB) ──
 const MAX_BODY_SIZE = 5 * 1024 * 1024;
 
@@ -69,23 +60,6 @@ setInterval(() => {
   }
 }, 60000);
 
-// ── 토큰 정리 함수 ──
-function cleanToken(token) {
-  if (!token) return '';
-  try { token = decodeURIComponent(token); } catch(e) {}
-  token = token.trim().replace(/[\r\n\t\x00-\x1F\x7F]/g, '');
-  token = token.replace(/^Bearer\s+/i, '');
-  return token;
-}
-
-// ── Notion 경로 유효성 검사 (인젝션 방지) ──
-function isValidNotionPath(notionPath) {
-  // 경로 순회 공격 차단
-  if (notionPath.includes('..') || notionPath.includes('//')) return false;
-  // 화이트리스트 패턴 확인
-  return ALLOWED_NOTION_PATHS.some(pattern => pattern.test(notionPath));
-}
-
 // ── playlists.json 입력값 검증 ──
 function validatePlaylists(data) {
   let parsed;
@@ -109,54 +83,11 @@ function getCorsHeaders(origin) {
   return {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': allowed,
-    'Access-Control-Allow-Methods': 'GET, POST, PATCH, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, x-notion-token',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
   };
-}
-
-// ── Notion API 호출 ──
-function callNotion(method, apiPath, token, body, callback) {
-  const cleanedToken = cleanToken(token);
-  // 로그에 토큰 노출 최소화 (앞 6자만)
-  console.log(`[Notion] ${method} ${apiPath} (token: ${cleanedToken.substring(0, 6)}...)`);
-
-  const options = {
-    hostname: 'api.notion.com',
-    port: 443,
-    path: apiPath,
-    method: method,
-    headers: {
-      'Authorization': `Bearer ${cleanedToken}`,
-      'Content-Type': 'application/json',
-      'Notion-Version': '2022-06-28',
-    }
-  };
-
-  const notionReq = https.request(options, (notionRes) => {
-    let data = '';
-    notionRes.on('data', chunk => data += chunk);
-    notionRes.on('end', () => {
-      console.log(`[Notion] 응답: ${notionRes.statusCode}`);
-      if (notionRes.statusCode !== 200) {
-        // 오류 시 민감 정보 제거 후 로그
-        try {
-          const parsed = JSON.parse(data);
-          console.log(`[Notion] 오류: ${parsed.message || parsed.code || notionRes.statusCode}`);
-        } catch(e) {}
-      }
-      callback(null, notionRes.statusCode, data);
-    });
-  });
-
-  notionReq.on('error', err => {
-    console.error('[Notion] 요청 오류:', err.message);
-    callback(err, null, null);
-  });
-
-  if (body) notionReq.write(body);
-  notionReq.end();
 }
 
 // ── 요청 본문 수집 (크기 제한 적용) ──
@@ -204,8 +135,6 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       ytKey:   process.env.YOUTUBE_API_KEY  || '',
       gmKey:   process.env.GEMINI_API_KEY   || '',
-      ntToken: process.env.NOTION_TOKEN     || '',
-      ntDb:    process.env.NOTION_DB_ID     || '',
       telegram: {
         enabled:  process.env.TELEGRAM_ENABLED === 'true',
         botToken: process.env.TELEGRAM_BOT_TOKEN || '',
@@ -457,7 +386,7 @@ const server = http.createServer((req, res) => {
         const subjectEncoded = `=?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`;
         const bodyBase64 = Buffer.from(msgBody || '').toString('base64');
         const msg = [
-          `From: YouTube Notion 요약기 <${from}>`,
+          `From: YouTube 요약기 <${from}>`,
           `To: ${to}`,
           `Subject: ${subjectEncoded}`,
           'MIME-Version: 1.0',
@@ -509,84 +438,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // ── Notion 토큰 테스트 ──
-  if (parsedUrl.pathname === '/test-notion' && req.method === 'GET') {
-    // 토큰은 헤더에서만 받음 (URL 파라미터 금지)
-    const rawToken = req.headers['x-notion-token'] || '';
-    const token = cleanToken(rawToken);
-
-    if (!token) {
-      res.writeHead(400, CORS);
-      res.end(JSON.stringify({ error: '토큰을 입력하세요.' }));
-      return;
-    }
-
-    callNotion('GET', '/v1/users/me', token, null, (err, status, data) => {
-      if (err) {
-        res.writeHead(500, CORS);
-        res.end(JSON.stringify({ status: '❌ 서버 오류', message: '연결 실패' }));
-        return;
-      }
-      const result = JSON.parse(data);
-      res.writeHead(status, CORS);
-      if (status === 200) {
-        res.end(JSON.stringify({
-          status: '✅ 토큰 유효',
-          type: result.type,
-          name: result.name || '(이름 없음)',
-        }));
-      } else {
-        res.end(JSON.stringify({
-          status: '❌ 토큰 오류',
-          statusCode: status,
-          message: result.message,
-          code: result.code,
-        }));
-      }
-    });
-    return;
-  }
-
-  // ── Notion API 프록시 ──
-  if (parsedUrl.pathname.startsWith('/notion-proxy') && req.method !== 'GET') {
-    const notionPath = parsedUrl.pathname.replace('/notion-proxy', '');
-
-    // 경로 유효성 검사 (인젝션 방지)
-    if (!isValidNotionPath(notionPath)) {
-      console.warn(`[보안] 허용되지 않은 Notion 경로 차단: ${notionPath} (IP: ${clientIp})`);
-      res.writeHead(403, CORS);
-      res.end(JSON.stringify({ error: '허용되지 않은 경로입니다.' }));
-      return;
-    }
-
-    const rawToken = req.headers['x-notion-token'] || '';
-    const token = cleanToken(rawToken);
-
-    if (!token) {
-      res.writeHead(401, CORS);
-      res.end(JSON.stringify({ error: '인증 토큰이 필요합니다.' }));
-      return;
-    }
-
-    collectBody(req, (err, body) => {
-      if (err) {
-        res.writeHead(413, CORS);
-        res.end(JSON.stringify({ error: err.message }));
-        return;
-      }
-      callNotion(req.method, notionPath, token, body || null, (err, status, data) => {
-        if (err) {
-          res.writeHead(500, CORS);
-          res.end(JSON.stringify({ error: '서버 오류' }));
-          return;
-        }
-        res.writeHead(status, CORS);
-        res.end(data);
-      });
-    });
-    return;
-  }
-
   // ── 재생목록 읽기 ──
   if (parsedUrl.pathname === '/playlists' && req.method === 'GET') {
     const filePath = path.join(__dirname, 'playlists.json');
@@ -628,7 +479,7 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log('');
   console.log('========================================');
-  console.log('  YouTube → Notion AI 요약기 (보안 강화)');
+  console.log('  YouTube AI 요약기 (보안 강화, v4.0 로컬 장부)');
   console.log('========================================');
   console.log(`  브라우저 접속: http://localhost:${PORT}`);
   console.log('  종료: Ctrl+C');

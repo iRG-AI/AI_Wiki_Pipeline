@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPCEtLSDrsLDqsr06IOuRpeq3vCDsgqzqsIHtmJUgLS0+CiAgPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNiIgZmlsbD0iIzFhMWEyZSIvPgogIAogIDwhLS0gWW91VHViZSDruajqsIQg7JuQ7ZiVIOuwsOqyvSAtLT4KICA8Y2lyY2xlIGN4PSIxMyIgY3k9IjE0IiByPSIxMCIgZmlsbD0iI0ZGMDAwMCIvPgogIAogIDwhLS0g7J6s7IOdIOuyhO2KvCAo7Z2w7IOJIOyCvOqwge2YlSkgLS0+CiAgPHBvbHlnb24gcG9pbnRzPSIxMCw5IDEwLDE5IDIwLDE0IiBmaWxsPSJ3aGl0ZSIvPgogIAogIDwhLS0gTm90aW9uIE4gKOyasOy4oSDtlZjri6gpIC0tPgogIDxyZWN0IHg9IjIwIiB5PSIyMCIgd2lkdGg9IjExIiBoZWlnaHQ9IjExIiByeD0iMiIgZmlsbD0iI2ZmZmZmZiIvPgogIDx0ZXh0IHg9IjI1LjUiIHk9IjI5IiBmb250LWZhbWlseT0iQXJpYWwgQmxhY2ssc2Fucy1zZXJpZiIgZm9udC1zaXplPSI5IiBmb250LXdlaWdodD0iOTAwIiBmaWxsPSIjMWExYTJlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5OPC90ZXh0PgogIAogIDwhLS0gQUkg67CY7Ked7J6EICjsoozsuKEg7IOB64uoKSAtLT4KICA8Y2lyY2xlIGN4PSI1IiBjeT0iNSIgcj0iMyIgZmlsbD0iIzBBRkZFRCIgb3BhY2l0eT0iMC45Ii8+CiAgPHRleHQgeD0iNSIgeT0iOC41IiBmb250LWZhbWlseT0iQXJpYWwsc2Fucy1zZXJpZiIgZm9udC1zaXplPSI1IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjMWExYTJlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5BSTwvdGV4dD4KPC9zdmc+">
-  <title>YouTube → Notion AI 요약기</title>
+  <title>YouTube AI 요약기</title>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <style>
     /* ===== 전역 변수 및 기본 스타일 ===== */
@@ -419,12 +419,12 @@
     <svg viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
   </div>
   <div class="header-text">
-    <h1>YouTube → Notion AI 요약기</h1>
-    <p>재생목록 동영상을 Gemini AI로 요약 → Notion 데이터베이스에 자동 저장</p>
+    <h1>YouTube AI 요약기</h1>
+    <p>AI 영상목록의 새 영상을 Gemini AI로 요약·분류 → 로컬 장부(SQLite)에 저장 → Obsidian 동기화</p>
   </div>
   <div class="header-badges">
     <span class="badge badge-gemini">✦ Gemini AI</span>
-    <span class="badge badge-notion">◆ Notion</span>
+    <span class="badge badge-notion">◆ 로컬 장부</span>
   </div>
 
   <!-- 테마 전환 + 설정 아이콘 -->
@@ -444,7 +444,7 @@
   <div class="alert alert-green" id="serverAlert">
     ✅ <div>
       <strong>로컬 서버 모드</strong> — 이 파일은 반드시 <code style="background:rgba(255,255,255,0.1);padding:1px 6px;border-radius:4px;color:#ffffff;">http://localhost:3000</code> 으로 접속해야 합니다.
-      직접 파일을 열면(file://) Notion 저장이 안 됩니다.
+      직접 파일을 열면(file://) 서버 기능(실행·재생목록 저장)이 동작하지 않습니다.
     </div>
   </div>
 
@@ -529,16 +529,17 @@
 
     <!-- 실행 버튼 -->
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-      <button class="btn btn-primary" id="startBtn" onclick="startAll()">
+      <!-- v4.0: 브라우저 직접 처리(노션 저장)는 폐지. 버튼은 다른 코드가 참조하므로 숨김으로 남긴다 -->
+      <button class="btn btn-primary" id="startBtn" onclick="startAll()" style="display:none;">
         <span id="btnTxt">▶ 선택 실행</span>
       </button>
       <button class="btn btn-ghost" id="stopBtn" onclick="stop()" disabled>■ 중지</button>
       <button class="btn" id="masterBtn" onclick="startMasterIngest()"
         style="background:linear-gradient(135deg,#7c3aed,#4f46e5);border:none;color:#fff;padding:10px 18px;border-radius:8px;font-weight:600;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px;"
-        title="AI 영상목록에 추가된 영상을 자동 분류 → Notion 저장 → YouTube 재생목록 추가">
+        title="AI 영상목록에 추가된 영상을 자동 분류 → 로컬 장부 저장 → YouTube 재생목록 추가">
         <span id="masterBtnTxt">🆕 AI 영상목록 처리</span>
       </button>
-      <span id="runStatusTxt" style="font-size:12px;color:var(--text-secondary);">선택된 재생목록을 순서대로 처리합니다</span>
+      <span id="runStatusTxt" style="font-size:12px;color:var(--text-secondary);">AI 영상목록의 새 영상을 요약·분류해 로컬 장부에 저장합니다 (재생목록 목록 = 분류 후보 토픽)</span>
     </div>
   </div>
 
@@ -611,7 +612,7 @@
       <!-- API 키 섹션 -->
       <div style="margin-bottom:24px;">
         <div style="font-size:13px;font-weight:600;color:var(--accent-yellow);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);">🔑 API 키 설정</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
           <div class="field-group">
             <label class="field-label">YouTube Data API v3 <span class="req">필수</span></label>
             <input type="password" class="field-input" id="ytKey" placeholder="AIzaSy..." oninput="save()">
@@ -621,32 +622,6 @@
             <label class="field-label">Gemini API 키 <span class="req">필수</span></label>
             <input type="password" class="field-input" id="gmKey" placeholder="AIzaSy..." oninput="save()">
             <div class="field-hint">aistudio.google.com에서 발급</div>
-          </div>
-          <div class="field-group">
-            <label class="field-label">Notion 토큰 <span class="req">필수</span></label>
-            <div style="display:flex;gap:8px;">
-              <input type="password" class="field-input" id="ntToken" placeholder="secret_... 또는 ntn_..." oninput="save()" style="flex:1;">
-              <button class="btn btn-outline" style="padding:10px 14px;font-size:12px;white-space:nowrap;" onclick="testNotion()">🔍 테스트</button>
-            </div>
-            <div id="notionTestResult" style="display:none;margin-top:6px;padding:8px 12px;border-radius:6px;font-size:12px;font-family:Space Mono,monospace;"></div>
-            <div class="field-hint">notion.so/profile/integrations에서 발급 — secret_ 또는 ntn_ 으로 시작</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Notion DB ID -->
-      <div style="margin-bottom:24px;">
-        <div style="font-size:13px;font-weight:600;color:var(--accent-yellow);margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--border);">◆ Notion 데이터베이스</div>
-        <div class="field-group">
-          <label class="field-label">Notion 데이터베이스 ID <span class="req">필수</span></label>
-          <input type="text" class="field-input" id="ntDb" placeholder="e234630943b040af88af1c428d54154f" oninput="save()">
-          <div class="field-hint">
-            현재 생성된 DB ID:
-            <strong style="color:var(--accent-yellow);cursor:pointer;"
-                    onclick="document.getElementById('ntDb').value='e234630943b040af88af1c428d54154f';save()">
-              e234630943b040af88af1c428d54154f
-            </strong>
-            (클릭하면 자동 입력)
           </div>
         </div>
       </div>
@@ -733,8 +708,6 @@
     localStorage.setItem('yt2notion', JSON.stringify({
       ytKey:        $('ytKey').value,
       gmKey:        $('gmKey').value,
-      ntToken:      $('ntToken').value,
-      ntDb:         $('ntDb').value,
       tgEnabled:    $('tgEnabled').checked,
       tgToken:      $('tgToken').value,
       tgChatId:     $('tgChatId').value,
@@ -753,8 +726,6 @@
         const cfg = await res.json();
         if (cfg.ytKey)   { $('ytKey').value   = cfg.ytKey;   }
         if (cfg.gmKey)   { $('gmKey').value   = cfg.gmKey;   }
-        if (cfg.ntToken) { $('ntToken').value = cfg.ntToken; }
-        if (cfg.ntDb)    { $('ntDb').value    = cfg.ntDb;    }
         if (cfg.telegram?.botToken) { $('tgToken').value  = cfg.telegram.botToken; }
         if (cfg.telegram?.chatId)   { $('tgChatId').value = cfg.telegram.chatId;   }
         if (cfg.telegram?.enabled)  { $('tgEnabled').checked = true; }
@@ -764,9 +735,6 @@
     const s = JSON.parse(localStorage.getItem('yt2notion') || '{}');
     if (!$('ytKey').value   && s.ytKey)   $('ytKey').value   = s.ytKey;
     if (!$('gmKey').value   && s.gmKey)   $('gmKey').value   = s.gmKey;
-    if (!$('ntToken').value && s.ntToken) $('ntToken').value = s.ntToken;
-    if (!$('ntDb').value    && s.ntDb)    $('ntDb').value    = s.ntDb;
-    if (!$('ntDb').value) $('ntDb').value = 'e234630943b040af88af1c428d54154f';
     if (s.tgToken    && !$('tgToken').value)  $('tgToken').value    = s.tgToken;
     if (s.tgChatId   && !$('tgChatId').value) $('tgChatId').value   = s.tgChatId;
     if (s.tgEnabled)  $('tgEnabled').checked  = true;
@@ -978,272 +946,6 @@
     return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '요약 불가';
   }
 
-  // ===== Notion DB 전체 캐시 로드 (실행 시작 시 1회) =====
-  // v97: 재시도 로직 추가. 캐시가 불완전하면 기존 영상을 "신규"로 오판해 중복 생성 위험 → 3회 연속 실패 시 실행 중단.
-  async function loadNotionCache(token, dbId) {
-    const cache = new Map();
-    let cursor = undefined;
-    let total = 0;
-    let retryCount = 0;
-    const MAX_RETRY = 3;
-    log('  📦 Notion DB 캐시 로딩 중...', 'info');
-    do {
-      const body = { page_size: 100 };
-      if (cursor) body.start_cursor = cursor;
-      const res = await fetch(`/notion-proxy/v1/databases/${dbId}/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-notion-token': token },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        retryCount++;
-        log(`  ⚠️ Notion API 오류 (status ${res.status}), 재시도 ${retryCount}/${MAX_RETRY}...`, 'warn');
-        if (retryCount >= MAX_RETRY) {
-          // 부분 캐시로 계속하면 중복 생성 위험 → 중단
-          throw new Error('Notion 캐시 로딩 실패 — 재시도 횟수 초과. 중복 저장 방지를 위해 실행을 중단합니다.');
-        }
-        await new Promise(r => setTimeout(r, 2000 * retryCount));
-        continue; // cursor 유지한 채 재시도
-      }
-      retryCount = 0; // 성공 시 재시도 카운터 초기화
-      const d = await res.json();
-      for (const page of (d.results || [])) {
-        const props = page.properties || {};
-        const title = props['영상 제목']?.title?.[0]?.text?.content || '';
-        const videoUrl = props['영상 URL']?.url || '';
-        const vidMatch = videoUrl.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-        const videoId = vidMatch ? vidMatch[1] : '';
-        const key = videoId || title;
-        if (!key) continue;
-        if (!cache.has(key)) {
-          const entry = {
-            pageId:           page.id,
-            title:            title,
-            topics:           (props['주제']?.multi_select || []).map(t => (t.name || '').normalize('NFC')),
-            savedViewCount:   props['조회수']?.number ?? null,
-            savedSubscribers: props['구독자수']?.number ?? null,
-            savedDate:        props['업로드 일자']?.date?.start ?? null,
-          };
-          cache.set(key, entry);
-          // videoId가 있으면 title로도 등록 (이중 보호)
-          if (videoId && title && !cache.has(title)) {
-            cache.set(title, entry);
-          }
-        }
-      }
-      total += d.results?.length || 0;
-      cursor = d.next_cursor;
-      log(`  📦 캐시 진행: ${total}개 로드됨...`, 'info');
-    } while (cursor);
-    log(`  ✓ Notion DB 캐시 완료: ${total}개 페이지 로드`, 'success');
-    return cache;
-  }
-
-  // ===== Notion DB에서 같은 영상 제목 존재 여부 확인 =====
-  // 반환값: null(없음) | { pageId, topics: ['재생목록A','재생목록B'] } (있음)
-  async function findDuplicate(title, token, dbId) {
-    const body = {
-      filter: { property: '영상 제목', title: { equals: title } },
-      page_size: 1
-    };
-    const res = await fetch(`/notion-proxy/v1/databases/${dbId}/query`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-notion-token': token },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) return null;
-    const d = await res.json();
-    if (!d.results || !d.results.length) return null;
-    const page = d.results[0];
-    const props = page.properties || {};
-    // 주제 목록
-    const topics = (props['주제']?.multi_select || []).map(t => (t.name || '').normalize('NFC'));
-    // 기존 조회수·구독자수
-    const savedViewCount   = props['조회수']?.number ?? null;
-    const savedSubscribers = props['구독자수']?.number ?? null;
-    const savedDate        = props['업로드 일자']?.date?.start ?? null;
-    return { pageId: page.id, topics, savedViewCount, savedSubscribers, savedDate };
-  }
-
-  // ===== 기존 Notion 페이지에 주제(재생목록) 추가 =====
-  async function addTopicToPage(pageId, newTopic, existingTopics, token) {
-    // NFC 정규화 — 레거시 NFD 자모 분해 태그가 신규 NFC와 별개로 등록되는 것을 차단
-    const nfcNew = (newTopic || '').normalize('NFC');
-    const nfcExisting = (existingTopics || []).map(t => (t || '').normalize('NFC'));
-    if (nfcExisting.includes(nfcNew)) return false;
-    const allTopics = [...new Set([...nfcExisting, nfcNew])];
-    const res = await fetch(`/notion-proxy/v1/pages/${pageId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-notion-token': token },
-      body: JSON.stringify({
-        properties: {
-          '주제': { multi_select: allTopics.map(t => ({ name: t })) }
-        }
-      }),
-    });
-    return res.ok;
-  }
-
-  // ===== 중복 영상 조회수·구독자수 업데이트 =====
-  async function updateStats(pageId, viewCount, subscriberCount, token, uploadDate) {
-    const props = {
-      '조회수':   { number: viewCount || 0 },
-      '구독자수': { number: subscriberCount || 0 },
-    };
-    if (uploadDate) props['업로드 일자'] = { date: { start: uploadDate } };
-    const res = await fetch(`/notion-proxy/v1/pages/${pageId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-notion-token': token },
-      body: JSON.stringify({ properties: props }),
-    });
-    return res.ok;
-  }
-
-  // ===== Notion 본문 블록 생성 (보고서 마크다운 파싱) =====
-  // ── **볼드** 마크다운 → Notion rich_text 변환 ──
-  function parseBoldRichText(text, maxLen = 1900) {
-    const parts = [];
-    const regex = /\*\*(.+?)\*\*/g;
-    let last = 0, m;
-    while ((m = regex.exec(text)) !== null) {
-      if (m.index > last) parts.push({ type: 'text', text: { content: text.slice(last, m.index) } });
-      parts.push({ type: 'text', text: { content: m[1] }, annotations: { bold: true } });
-      last = m.index + m[0].length;
-    }
-    if (last < text.length) parts.push({ type: 'text', text: { content: text.slice(last) } });
-    // 각 part를 maxLen으로 분할
-    const result = [];
-    for (const p of parts) {
-      const c = p.text.content;
-      for (let i = 0; i < c.length; i += maxLen) {
-        result.push({ ...p, text: { ...p.text, content: c.slice(i, i + maxLen) } });
-      }
-    }
-    return result.length ? result : [{ type: 'text', text: { content: '' } }];
-  }
-
-  function buildBlocks(summary, thumbUrl, v) {
-    const blocks = [];
-    const ytUrl = `https://www.youtube.com/watch?v=${v.videoId}`;
-
-    // 1. 썸네일 이미지
-    blocks.push({ object: 'block', type: 'image',
-      image: { type: 'external', external: { url: thumbUrl },
-        caption: [{ type: 'text', text: { content: v.title || '' } }] } });
-
-    // 2. 영상 링크
-    blocks.push({ object: 'block', type: 'paragraph',
-      paragraph: { rich_text: [
-        { type: 'text', text: { content: '▶ 영상 보기: ' }, annotations: { bold: true } },
-        { type: 'text', text: { content: ytUrl, link: { url: ytUrl } }, annotations: { color: 'blue' } }
-      ]}});
-
-    blocks.push({ object: 'block', type: 'divider', divider: {} });
-
-    // 3. 보고서 본문 파싱 (** 볼드 포함)
-    const lines = (summary || '').split('\n');
-    let paraLines = [];
-
-    const flushPara = () => {
-      const text = paraLines.join('\n').trim();
-      if (text) {
-        const richText = parseBoldRichText(text);
-        for (let i = 0; i < richText.length; i += 50) {
-          blocks.push({ object: 'block', type: 'paragraph',
-            paragraph: { rich_text: richText.slice(i, i + 50) } });
-        }
-      }
-      paraLines = [];
-    };
-
-    for (const line of lines) {
-      if (line.startsWith('## ')) {
-        flushPara();
-        blocks.push({ object: 'block', type: 'heading_2',
-          heading_2: { rich_text: parseBoldRichText(line.replace(/^## /, '')) } });
-      } else if (line.startsWith('# ')) {
-        flushPara();
-        blocks.push({ object: 'block', type: 'heading_1',
-          heading_1: { rich_text: parseBoldRichText(line.replace(/^# /, '')) } });
-      } else if (line.startsWith('- ') || line.startsWith('* ')) {
-        flushPara();
-        blocks.push({ object: 'block', type: 'bulleted_list_item',
-          bulleted_list_item: { rich_text: parseBoldRichText(line.replace(/^[-*] /, '')) } });
-      } else {
-        paraLines.push(line);
-      }
-    }
-    flushPara();
-    return blocks;
-  }
-
-  // ===== Notion 저장 (로컬 서버 프록시 경유) =====
-  // ── Notion rich_text 2000자 제한 분할 헬퍼 ──
-  function splitRichText(text, maxLen = 1900) {
-    const result = [];
-    for (let i = 0; i < (text || '').length; i += maxLen) {
-      result.push({ type: 'text', text: { content: text.slice(i, i + maxLen) } });
-    }
-    return result.length ? result : [{ type: 'text', text: { content: '' } }];
-  }
-
-  async function saveNotion(v, summary, token, dbId, playlistTitle) {
-    const date = v.publishedAt?.split('T')[0] || null;
-    // YouTube 고화질 썸네일 URL (maxresdefault → hqdefault 순서로 시도)
-    const thumbUrl = v.thumbnail
-      || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`;
-
-    const body = {
-      parent: { database_id: dbId },
-      // 페이지 커버 이미지로 썸네일 설정
-      cover: { type: 'external', external: { url: thumbUrl } },
-      properties: {
-        '영상 제목': { title: [{ text: { content: v.title || '' } }] },
-        '요약 내용': { rich_text: splitRichText(summary || '') },
-        '유튜브 채널': { rich_text: [{ text: { content: v.channelTitle || '' } }] },
-        '조회수': { number: v.viewCount || 0 },
-        '구독자수': { number: v.subscriberCount || 0 },
-        '영상 URL': { url: `https://www.youtube.com/watch?v=${v.videoId}` },
-        '처리 상태': { select: { name: '완료' } },
-        '주제': { multi_select: playlistTitle ? [{ name: playlistTitle.normalize('NFC') }] : [] },
-      },
-      // 페이지 본문 블록 생성 (보고서 형태로 파싱)
-      children: buildBlocks(summary, thumbUrl, v)
-    };
-
-    // 날짜가 있을 때만 추가
-    if (date) body.properties['업로드 일자'] = { date: { start: date } };
-    // 썸네일 URL 속성도 유지
-    if (thumbUrl) body.properties['썸네일 URL'] = { url: thumbUrl };
-
-    // Notion API: 페이지 생성 시 children 최대 100개 제한
-    const allBlocks = body.children;
-    body.children = allBlocks.slice(0, 100);
-
-    // ★ 로컬 서버의 프록시 엔드포인트 호출 ★
-    const res = await fetch('/notion-proxy/v1/pages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-notion-token': token },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const e = await res.json();
-      throw new Error(e.message || `Notion 오류 ${res.status}`);
-    }
-    const page = await res.json();
-
-    // 100개 초과 블록은 appendBlocks로 추가 저장
-    for (let i = 100; i < allBlocks.length; i += 100) {
-      const chunk = allBlocks.slice(i, i + 100);
-      await fetch(`/notion-proxy/v1/blocks/${page.id}/children`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-notion-token': token },
-        body: JSON.stringify({ children: chunk }),
-      });
-    }
-    return page;
-  }
-
   // ===== 숫자 포맷 =====
   function fmt(n) {
     if (n >= 10000000) return `${(n/10000000).toFixed(1)}천만`;
@@ -1304,156 +1006,6 @@
     doStop = true;
     log('⏹ 중지 요청. 현재 영상 처리 후 종료...', 'warn');
     $('stopBtn').disabled = true;
-  }
-
-  // ===== 재생목록 하나 처리 (최적화: 배치조회 + Notion캐시 + 딜레이 단축) =====
-  async function processPlaylist(plUrl, ytKey, gmKey, ntToken, ntDb, notionCache, sessionCache = new Map(), plName = '') {
-    const pid = listId(plUrl);
-    if (!pid) { log(`올바르지 않은 URL: ${plUrl}`, 'error'); return; }
-
-    log(`▶ 재생목록 조회 중... (ID: ${pid})`, 'info');
-    prog(0, 1, '재생목록 불러오는 중...');
-
-    // playlists.json의 name 사용 (이모지 깨짐 방지), 없으면 YouTube API 제목 사용
-    const playlistTitle = (plName || await getPlaylistTitle(pid, ytKey) || '').normalize('NFC');
-    log(`✓ 재생목록: "${playlistTitle}"`, 'success');
-
-    const videos = await getVideos(pid, ytKey);
-    log(`✓ 총 ${videos.length}개 동영상 발견`, 'success');
-
-    if (!videos.length) { log('재생목록이 비어있거나 비공개입니다.', 'error'); return; }
-
-    $('resSec').classList.add('visible');
-    let plSaved = 0, plSkip = 0, plError = 0;
-
-    // ── ① YouTube 상세 정보 배치 조회 (50개씩, API 횟수 대폭 감소) ──
-    log(`  🔄 YouTube 상세 정보 배치 조회 중...`, 'info');
-    const detailMap = await getBatchDetails(videos.map(v => v.videoId), ytKey);
-
-    // ── 채널 구독자수 병렬 조회 (채널별 1회) ──
-    const chCache = {};
-    const uniqueChannels = [...new Set(
-      videos.map(v => detailMap[v.videoId]?.realChannelId || v.channelId).filter(Boolean)
-    )];
-    log(`  🔄 채널 구독자수 병렬 조회 중... (${uniqueChannels.length}개)`, 'info');
-    await Promise.all(uniqueChannels.map(async chId => {
-      chCache[chId] = await getSubs(chId, ytKey);
-    }));
-
-    for (let i = 0; i < videos.length; i++) {
-      if (doStop) { log('⏹ 중지됨.', 'warn'); break; }
-
-      const v = videos[i];
-      prog(i + 1, videos.length, `"${v.title.slice(0,40)}..." 처리 중`);
-      log(`[${i+1}/${videos.length}] ${v.title}`, 'info');
-
-      try {
-        // ── 배치 조회 결과 적용 ──
-        const det = detailMap[v.videoId];
-        if (det) {
-          v.viewCount = det.viewCount;
-          v.description = det.description;
-          v.tags = det.tags;
-          if (det.realChannelTitle) v.channelTitle = det.realChannelTitle;
-          if (det.realChannelId)    v.channelId    = det.realChannelId;
-          if (det.realPublishedAt)  v.publishedAt  = det.realPublishedAt;
-        }
-        v.subscriberCount = chCache[v.channelId] || 0;
-
-        // ── ② 세션 캐시 먼저 확인 (videoId 우선, title fallback) ──
-        const sessionKey = v.videoId || v.title;
-        if (sessionCache.has(sessionKey)) {
-          log('  → ⏭ 세션 중복 — Skip', 'warn');
-          addRow(v, '-', 'skip', []);
-          plSkip++;
-          continue;
-        }
-
-        // ── ③ Notion 캐시에서 중복 체크 (videoId 우선, title fallback) ──
-        const dup = notionCache.get(v.videoId) || notionCache.get(v.title);
-        if (dup) {
-          // ← API 호출 전에 미리 체크 (불필요한 Notion API 호출 차단)
-          const needTopicAdd = !dup.topics.includes(playlistTitle);
-          const topicAdded = needTopicAdd
-            ? await addTopicToPage(dup.pageId, playlistTitle, dup.topics, ntToken)
-            : false;
-          if (topicAdded) dup.topics.push(playlistTitle);
-
-          const newViewCount   = v.viewCount || 0;
-          const newSubscribers = v.subscriberCount || 0;  // 숫자로 통일
-          const newDate        = v.publishedAt?.split('T')[0] || null;
-          // 조회수: savedView가 null/0이면 최초 채움, 그 외 15% 이상 변화 시만 업데이트
-          const savedView = dup.savedViewCount ?? null;
-          const viewChanged = newViewCount > 0 && (
-            savedView === null || savedView === 0
-              ? true
-              : Math.abs(newViewCount - savedView) / savedView >= 0.15
-          );
-          // 구독자수: 동일 로직
-          const savedSubs = dup.savedSubscribers ?? null;
-          const subsChanged = newSubscribers > 0 && (
-            savedSubs === null || savedSubs === 0
-              ? true
-              : Math.abs(newSubscribers - savedSubs) / savedSubs >= 0.15
-          );
-          const dateChanged = newDate && dup.savedDate && dup.savedDate !== newDate;
-
-          const updateInfo = [];
-          if (viewChanged || subsChanged || dateChanged) {
-            await updateStats(dup.pageId, newViewCount, newSubscribers, ntToken, dateChanged ? newDate : null);
-            dup.savedViewCount = newViewCount;
-            dup.savedSubscribers = newSubscribers;
-            if (dateChanged) dup.savedDate = newDate;
-            if (viewChanged) updateInfo.push(`조회수 ${fmt(savedView)}→${fmt(newViewCount)}`);
-            if (subsChanged) updateInfo.push(`구독자 ${fmt(savedSubs)}→${fmt(newSubscribers)}`);
-            if (dateChanged) updateInfo.push(`업로드일 → ${newDate}`);
-            log(`  → 🔄 통계 업데이트: ${updateInfo.join(' / ')}`, 'success');
-          }
-          if (topicAdded) {
-            updateInfo.push(`주제 추가: ${playlistTitle}`);
-            log(`  → ⏭ 중복 — 주제 "${playlistTitle}" 추가`, 'warn');
-          }
-          if (!viewChanged && !subsChanged && !dateChanged && !topicAdded) {
-            log(`  → ⏭ 중복 — 변경사항 없음, Skip`, 'warn');
-          }
-          addRow(v, '-', 'skip', updateInfo);
-          plSkip++;
-          continue; // ← Skip은 딜레이 없음
-        }
-
-        log('  → Gemini 요약 생성 중...', 'info');
-        const summary = await gemini(v, gmKey);
-        log(`  → 요약 완료 (${summary.length}자)`, 'success');
-
-        log('  → Notion에 저장 중...', 'info');
-        await saveNotion(v, summary, ntToken, ntDb, playlistTitle);
-        // 캐시에 등록 (videoId 우선, title fallback)
-        const cacheKey = v.videoId || v.title;
-        sessionCache.set(cacheKey, true);
-        notionCache.set(cacheKey, {
-          pageId: 'new', title: v.title, topics: [playlistTitle],
-          savedViewCount: v.viewCount, savedSubscribers: v.subscriberCount,
-          savedDate: v.publishedAt?.split('T')[0] || null,
-        });
-        log('  → 저장 완료 ✓', 'success');
-
-        addRow(v, summary, 'ok');
-        done.push({ ...v, summary });
-        plSaved++;
-
-        // ── ③ 신규 영상만 300ms 딜레이, Skip은 딜레이 없음 ──
-        if (i < videos.length - 1 && !doStop) {
-          await new Promise(r => setTimeout(r, 300));
-        }
-
-      } catch (e) {
-        log(`  → 오류: ${e.message}`, 'error');
-        addRow(v, `오류: ${e.message}`, 'error');
-        plError++;
-      }
-    }
-    prog(videos.length, videos.length, `"${playlistTitle}" 완료`);
-    return { name: playlistTitle, saved: plSaved, skip: plSkip, error: plError };
   }
 
   // ===== CSV 내보내기 =====
@@ -1651,9 +1203,8 @@
     const startBtn = $('startBtn');
     const statusTxt = $('runStatusTxt');
     if (startBtn) startBtn.disabled = sel === 0;
-    if (statusTxt) statusTxt.textContent = sel > 0
-      ? `선택된 ${sel}개 재생목록을 순서대로 처리합니다`
-      : '실행할 재생목록을 선택하세요';
+    // v4.0: 선택은 실행 대상이 아니다 (재생목록 목록 = 분류 후보 토픽). 안내 문구는 고정
+    if (statusTxt) statusTxt.textContent = 'AI 영상목록의 새 영상을 요약·분류해 로컬 장부에 저장합니다 (재생목록 목록 = 분류 후보 토픽)';
   }
 
   function renderPlaylists() {
@@ -1769,105 +1320,9 @@
     }
   }
 
+  // v4.0: 브라우저가 직접 요약해 노션에 저장하던 「선택 실행」은 폐지 (노션 탈퇴). 저장은 scheduler.js 가 로컬 장부에 한다.
   async function startAll() {
-    if (!playlists.length) { alert('재생목록을 먼저 등록하세요.'); return; }
-    syncChecked();
-    const selectedPlaylists = playlists.filter((_, i) => plChecked[i]);
-    if (!selectedPlaylists.length) { alert('실행할 재생목록을 선택하세요.'); return; }
-    const ytKey = $('ytKey').value.trim();
-    const gmKey = $('gmKey').value.trim();
-    const ntToken = $('ntToken').value.trim();
-    const ntDb = $('ntDb').value.trim();
-    if (!ytKey)   { alert('YouTube API 키를 입력하세요.'); return; }
-    if (!gmKey)   { alert('Gemini API 키를 입력하세요.'); return; }
-    if (!ntToken) { alert('Notion 토큰을 입력하세요.'); return; }
-    if (!ntDb)    { alert('Notion 데이터베이스 ID를 입력하세요.'); return; }
-
-    const startTime = Date.now();
-    running = true; doStop = false; done = [];
-    const sessionCache = new Map();
-    $('startBtn').disabled = true;
-    $('btnTxt').innerHTML = '<span class="spinner"></span> 처리 중...';
-    $('stopBtn').disabled = false;
-    $('progSec').classList.add('visible');
-    $('resSec').classList.add('visible');  // 결과 섹션 즉시 표시
-    $('progLog').innerHTML = '';
-    $('resTbl').innerHTML = '';
-    $('resStat').innerHTML = '총 <span>0</span>개 완료';
-
-    try {
-      // ── Notion DB 전체 캐시 로드 (API 호출 대폭 감소) ──
-      const notionCache = await loadNotionCache(ntToken, ntDb);
-      const plResults = [];
-      for (let pi = 0; pi < selectedPlaylists.length; pi++) {
-        if (doStop) { log('⏹ 중지됨.', 'warn'); break; }
-        const pl = selectedPlaylists[pi];
-        log(`\n━━━ [${pi+1}/${selectedPlaylists.length}] 재생목록: ${pl.name} ━━━`, 'info');
-        // 채널명 헤더 업데이트
-        const chEl = $('progChannel');
-        const chName = $('progChannelName');
-        chEl.style.display = 'block';
-        chName.textContent = `${pl.name}`;
-        const result = await processPlaylist(pl.url, ytKey, gmKey, ntToken, ntDb, notionCache, sessionCache, pl.name);
-        if (result) plResults.push(result);
-      }
-      const totalSaved = plResults.reduce((s,r) => s + r.saved, 0);
-      const totalSkip  = plResults.reduce((s,r) => s + r.skip,  0);
-      const totalError = plResults.reduce((s,r) => s + r.error, 0);
-      const elapsed = formatElapsed(Date.now() - startTime);
-      log(`\n🎉 전체 완료! 저장: ${totalSaved}개 / Skip: ${totalSkip}개 / 오류: ${totalError}개 / 소요시간: ${elapsed}`, 'success');
-      $('resStat').innerHTML = `총 <span>${totalSaved}</span>개 완료 <span style="font-size:12px;color:var(--text-secondary);font-weight:400;">⏱ ${elapsed}</span>`;
-
-      // ── 알림 전송 (v97: Obsidian 결과와 합쳐 텔레그램 1회 전송) ──
-      if (!doStop) {
-        const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
-        const lines = plResults.map(r =>
-          `• ${r.name}: 저장 ${r.saved}/ 스킵 ${r.skip}/ 오류 ${r.error}`
-        ).join('\n');
-        const notionMsg = [
-          `🎬 YouTube → Notion 요약 완료`,
-          `📅 ${now}`,
-          `⏱ 소요시간: ${elapsed}`,
-          ``,
-          lines,
-          ``,
-          `📊 합계: 저장 ${totalSaved}/ 스킵 ${totalSkip}/ 오류 ${totalError}`,
-        ].join('\n');
-
-        // 이메일은 즉시 전송 (Obsidian 결과 불필요)
-        await sendEmail(`[YouTube 요약] 완료 - 저장 ${totalSaved}개`, notionMsg);
-
-        // ── 신규 저장이 있을 때 Obsidian 동기화 트리거 + 통합 텔레그램 전송 ──
-        if (totalSaved > 0) {
-          log('🔄 Obsidian 동기화 시작...', 'info');
-          try {
-            const syncRes = await fetch('/api/sync-obsidian', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ notionMsg }),
-            });
-            if (syncRes.ok) {
-              log('✅ Obsidian 동기화 요청 완료 (백그라운드 실행 중) — 텔레그램은 Obsidian 결과와 합쳐 1회 전송됩니다', 'success');
-            }
-          } catch(e) {
-            log(`⚠️ Obsidian 동기화 요청 실패: ${e.message}`, 'warn');
-            // Obsidian 실패 시에도 Notion 결과는 알려줘야 하므로 단독 텔레그램 전송
-            await sendTelegram(notionMsg);
-          }
-        } else {
-          // 신규 저장 없으면 Obsidian 동기화 생략 → Notion 결과만 텔레그램 전송
-          await sendTelegram(notionMsg);
-        }
-      }
-    } catch(e) {
-      log(`❌ 오류: ${e.message}`, 'error');
-    } finally {
-      running = false;
-      $('startBtn').disabled = false;
-      $('btnTxt').textContent = '▶ 선택 실행';
-      $('stopBtn').disabled = true;
-      updateCheckHeader();
-    }
+    alert('v4.0 부터 브라우저 직접 처리는 없습니다.\n「🆕 AI 영상목록 처리」를 쓰세요.\n(33개 재생목록 순회가 꼭 필요하면 터미널에서 node scheduler.js --legacy)');
   }
 
   // ===== AI 영상목록 마스터 인제스트 =====
@@ -1893,7 +1348,7 @@
     chName.textContent = 'AI 영상목록 자동 분류 중...';
 
     log('🆕 AI 영상목록 마스터 인제스트 시작...', 'info');
-    log('  영상 요약 → 토픽 자동 분류 → Notion 저장 → YouTube 재생목록 추가', 'info');
+    log('  영상 요약 → 토픽 자동 분류 → 로컬 장부 저장 → YouTube 재생목록 추가', 'info');
 
     const startTime = Date.now();
     try {
@@ -1957,51 +1412,6 @@
       $('startBtn').disabled = false;
       $('stopBtn').disabled = true;
       updateCheckHeader();
-    }
-  }
-
-  // ===== Notion 토큰 유효성 테스트 =====
-  async function testNotion() {
-    const token = $('ntToken').value.trim();
-    const resultEl = $('notionTestResult');
-
-    if (!token) {
-      alert('Notion 토큰을 먼저 입력하세요.');
-      return;
-    }
-
-    // 테스트 중 표시
-    resultEl.style.display = 'block';
-    resultEl.style.background = 'rgba(10,255,237,0.08)';
-    resultEl.style.border = '1px solid rgba(10,255,237,0.2)';
-    resultEl.style.color = 'var(--accent-blue)';
-    resultEl.textContent = '⟳ 토큰 확인 중...';
-
-    try {
-      // 로컬 서버의 테스트 엔드포인트 호출
-      const res = await fetch('/test-notion', {
-        headers: { 'x-notion-token': token }
-      });
-      const data = await res.json();
-
-      if (res.ok && data.status && data.status.includes('✅')) {
-        // 성공
-        resultEl.style.background = 'rgba(48,209,88,0.1)';
-        resultEl.style.border = '1px solid rgba(48,209,88,0.3)';
-        resultEl.style.color = 'var(--success)';
-        resultEl.textContent = `✅ 토큰 유효! 연결 성공 (타입: ${data.type || '-'}, 이름: ${data.name || '-'})`;
-      } else {
-        // 실패
-        resultEl.style.background = 'rgba(255,69,58,0.1)';
-        resultEl.style.border = '1px solid rgba(255,69,58,0.3)';
-        resultEl.style.color = 'var(--error)';
-        resultEl.textContent = `❌ 토큰 오류: ${data.message || JSON.stringify(data)}`;
-      }
-    } catch (e) {
-      resultEl.style.background = 'rgba(255,69,58,0.1)';
-      resultEl.style.border = '1px solid rgba(255,69,58,0.3)';
-      resultEl.style.color = 'var(--error)';
-      resultEl.textContent = `❌ 서버 오류: ${e.message} — node server.js 가 실행 중인지 확인하세요.`;
     }
   }
 

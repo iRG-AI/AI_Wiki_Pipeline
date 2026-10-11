@@ -886,7 +886,7 @@ async function processMasterIngest(libCache) {
 
         // YouTube 토픽 재생목록에 추가 (신뢰도 0.6+, playlistSync 켜진 경우만)
         if (CONFIG.playlistSync && cls.confidence >= 0.6 && topics.length > 0) {
-          // pending 큐 헬퍼 (migrate_classify.js와 동일한 파일 공유)
+          // pending 큐 헬퍼 (legacy_scripts/migrate_classify.js 와 같은 파일 형식 — 그 스크립트는 v4.0 에서 은퇴)
           const PENDING_PATH = path.join(__dirname, 'pending_playlist_adds.json');
           const appendPending = (entry) => {
             let q = [];

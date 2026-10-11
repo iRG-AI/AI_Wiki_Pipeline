@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-# ===== Obsidian 증분 동기화 스크립트 =====
-# 노션 저장 완료 후 자동 실행:
-#   1. 노션 DB에서 신규 영상만 .md 추가
-#   2. MOC + 키워드 링크 전체 재구성
-# 실행: python3 sync_obsidian.py
+# ===== Obsidian 증분 동기화 스크립트 (v4.0: 원본 = 로컬 장부 data/library.db) =====
+# 스케줄러가 영상 저장·카톡 인제스트 뒤에 자동 실행:
+#   1. 장부 videos 의 topics → 기존 노트 tags 동기화
+#   2. 장부에만 있는 영상 → .md 추가 (본문 = 요약 마크다운)
+#   3. 장부에 없는 notion_id 를 가진 영상 노트 → _trash/ 격리 (3중 안전장치)
+#   4. 장부 tips 중 노트 없는 것 → AI 꿀팁/ 노트 추가 (꿀팁 고아는 보고만 한다)
+#   5. 변경이 있으면 MOC·Wiki·검색 인덱스 재구성
+#
+# 실행: /opt/homebrew/bin/python3 sync_obsidian.py [--rebuild] [--no-tips] [--orphans-dry-run] [--dry-run]
+#   --dry-run  Vault·log.md·장부를 하나도 쓰지 않고 할 일만 센다 (재구성·인제스트·인덱스도 건너뜀)
+#
+# 네트워크: 이 파일은 노션을 부르지 않는다. 장부는 읽기 전용(mode=ro)으로만 연다.
+# 프론트매터 키 `notion_id` 는 이름만 노션 시절 그대로다 — 값은 장부 record_id (노션에서 옮긴 행 = 노션 page id, 새 행 = uuid4).
 
-import os, re, json, ssl, shutil, subprocess, sys, time, unicodedata
+import os, re, json, shutil, subprocess, sys, time, unicodedata
 from datetime import datetime
-from urllib.request import urlopen, Request
-from collections import defaultdict
 
 VAULT    = '/Users/tycoonan/Documents/Obsidian/AI LLM Wiki/AI LLM Wiki'
 MOC_DIR  = os.path.join(VAULT, '_MOC')
@@ -16,6 +22,8 @@ TRASH_DIR = os.path.join(VAULT, '_trash')
 LOG_FILE = os.path.join(VAULT, 'log.md')
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TIPS_FOLDER = 'AI 꿀팁'   # v2.8 카톡 링크 노트 폴더. YouTube 로직(고아 격리·tags 동기화)에서 제외된다.
+sys.path.insert(0, os.path.join(SCRIPT_DIR, 'lib'))
+import library_db as ldb   # noqa: E402  v4.0 장부 (DB_PATH·open_existing)
 
 def nfc(s):
     """macOS NFD 파일명을 NFC로 정규화 (한글 깨짐 방지)"""
@@ -54,48 +62,26 @@ def write_wiki_log(event_type, summary, details=None):
     new_content = existing[:insert_pos] + entry + existing[insert_pos:]
     open(LOG_FILE, 'w', encoding='utf-8').write(nfc(new_content))
 
-# ── .env 로드 ──
-def load_env():
-    env_path = os.path.join(SCRIPT_DIR, '.env')
-    env = {}
-    if not os.path.exists(env_path):
-        return env
-    for line in open(env_path).read().split('\n'):
-        line = line.strip()
-        if not line or line.startswith('#') or '=' not in line:
-            continue
-        k, _, v = line.partition('=')
-        env[k.strip()] = v.strip()
-    return env
-
-ENV = load_env()
-NOTION_TOKEN = ENV.get('NOTION_TOKEN', '')
-NOTION_DB_ID = ENV.get('NOTION_DB_ID', '')
-NOTION_TIPS_DB_ID = ENV.get('NOTION_TIPS_DB_ID', '')   # v2.8 「AI 꿀팁」. 비어 있으면 꿀팁 동기화 건너뜀
-
 def log(msg): print(msg, flush=True)
 
-# ── Notion API 호출 ──
-def notion_call(method, path, body=None):
-    data = json.dumps(body).encode('utf-8') if body else None
-    for attempt in range(5):
-        try:
-            ctx = ssl.create_default_context()
-            req = Request(
-                f'https://api.notion.com{path}',
-                data=data, method=method,
-                headers={
-                    'Authorization': f'Bearer {NOTION_TOKEN}',
-                    'Content-Type': 'application/json',
-                    'Notion-Version': '2022-06-28',
-                }
-            )
-            with urlopen(req, context=ctx, timeout=30) as res:
-                return json.loads(res.read())
-        except Exception as e:
-            if attempt == 4:
-                raise e
-            time.sleep(1)
+# ── 프론트매터 (맨 앞 YAML 블록) ──
+# notion_id·video_url 은 프론트매터 안의 것만 센다. schema.md 처럼 본문 코드블록에 예시
+# 'notion_id: xxxxxxxx-…' 를 담은 문서를 영상 노트로 오인하지 않기 위함 (2026-10-11 dry-run 실측, scripts/notion_to_sqlite.py 와 같은 규칙).
+FM_RE = re.compile(r'\A﻿?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)', re.S)
+
+def fm_text(content):
+    m = FM_RE.match(content or '')
+    return m.group(1) if m else ''
+
+def fm_value(content, key):
+    m = re.search(rf'^{re.escape(key)}:\s*(.+)$', fm_text(content), re.MULTILINE)
+    return m.group(1).strip() if m else None
+
+def fm_notion_id(path):
+    try:
+        return fm_value(nfc(open(path, encoding='utf-8', errors='ignore').read()), 'notion_id')
+    except Exception:
+        return None
 
 # ── 파일명 안전 변환 ──
 def safe_filename(s):
@@ -104,9 +90,9 @@ def safe_filename(s):
 # ── 기존 Vault 파일 정보 수집 (notion_id, relpath, video_url) ──
 def get_existing_vault_info():
     """
-    id_to_path: notion_id -> fpath
+    id_to_path: notion_id -> fpath   (프론트매터 안의 notion_id 만)
     relpath_set: Vault 상대 파일 경로 집합
-    url_to_path: video_url -> fpath
+    url_to_path: video_url -> fpath  (프론트매터 안의 video_url 만)
     """
     id_to_path = {}
     relpath_set = set()
@@ -122,14 +108,14 @@ def get_existing_vault_info():
             relpath_set.add(relpath)
             try:
                 content = nfc(open(fpath, encoding='utf-8', errors='ignore').read())
-                m_id = re.search(r'^notion_id:\s*(.+)$', content, re.MULTILINE)
-                if m_id:
-                    id_to_path[m_id.group(1).strip()] = fpath
-                m_url = re.search(r'^video_url:\s*(.+)$', content, re.MULTILINE)
-                if m_url and m_url.group(1).strip() != 'null':
-                    url_to_path[m_url.group(1).strip()] = fpath
             except Exception:
-                pass
+                continue
+            nid = fm_value(content, 'notion_id')
+            if nid:
+                id_to_path[nid] = fpath
+            url = fm_value(content, 'video_url')
+            if url and url != 'null':
+                url_to_path[url] = fpath
     return id_to_path, relpath_set, url_to_path
 
 def get_existing_notion_ids():
@@ -137,59 +123,76 @@ def get_existing_notion_ids():
     return id_to_path
 
 
+# ── 장부 읽기 (읽기 전용) ──
+def _json_list(s):
+    try:
+        v = json.loads(s or '[]')
+        return [nfc(x) for x in v if x] if isinstance(v, list) else []
+    except Exception:
+        return []
+
+def load_library():
+    """(videos, tips) — 각 행은 dict, topics·tags 는 list. 장부가 없거나 버전이 다르면 던진다(만들지 않는다)."""
+    conn = ldb.open_existing(readonly=True)
+    try:
+        videos = [dict(r) for r in conn.execute('SELECT * FROM videos ORDER BY created_at, record_id')]
+        tips = [dict(r) for r in conn.execute('SELECT * FROM tips ORDER BY created_at, record_id')]
+    finally:
+        conn.close()
+    for v in videos:
+        v['topics'] = _json_list(v.get('topics'))
+    for t in tips:
+        t['tags'] = _json_list(t.get('tags'))
+    return videos, tips
+
+
 # ── 기존 .md 파일의 frontmatter tags 업데이트 ──
-def update_tags_in_file(fpath, new_topics):
-    """파일 frontmatter의 tags: 라인만 교체. 변경 시 True 반환."""
+def update_tags_in_file(fpath, new_topics, dry_run=False):
+    """프론트매터의 tags: 라인만 교체. 변경(dry_run 이면 변경 예정) 시 True 반환."""
     try:
         content = nfc(open(fpath, encoding='utf-8', errors='ignore').read())
     except Exception:
         return False
+    m_fm = FM_RE.match(content)
+    if not m_fm:
+        return False
     new_tags_line = f'tags: [{", ".join(chr(34) + t + chr(34) for t in new_topics)}]'
-    # 현재 tags 라인 추출해서 비교
-    m = re.search(r'^tags:.*$', content, re.MULTILINE)
-    if m and m.group(0) == new_tags_line:
-        return False  # 변경 없음
-    if m:
-        updated = content[:m.start()] + new_tags_line + content[m.end():]
-    else:
+    m = re.search(r'^tags:.*$', m_fm.group(1), re.MULTILINE)
+    if not m:
         return False  # tags 라인 없으면 스킵
-    open(fpath, 'w', encoding='utf-8').write(nfc(updated))
+    if m.group(0) == new_tags_line:
+        return False  # 변경 없음
+    if dry_run:
+        return True
+    start = m_fm.start(1) + m.start()
+    end = m_fm.start(1) + m.end()
+    open(fpath, 'w', encoding='utf-8').write(nfc(content[:start] + new_tags_line + content[end:]))
     return True
 
-# ── 기존 파일 tags Notion과 동기화 (--sync-tags 전용) ──
-def sync_existing_tags(pages):
-    """Notion의 현재 주제와 Obsidian .md tags를 맞춤. 변경된 파일 수 반환."""
+# ── 기존 파일 tags 를 장부 topics 와 동기화 ──
+def sync_existing_tags(videos, dry_run=False):
+    """장부의 현재 topics 와 Obsidian .md tags 를 맞춤. 변경된(dry_run 이면 변경될) 파일 수 반환."""
     log('🏷  기존 파일 tags 동기화 중...')
     id_to_path = get_existing_notion_ids()
 
     updated = 0
-    for page in pages:
-        pid = page['id']
-        if pid not in id_to_path:
+    for v in videos:
+        rid = v['record_id']
+        if rid not in id_to_path:
             continue
-        topics = [nfc(t.get('name', '')) for t in page.get('properties', {}).get('주제', {}).get('multi_select', [])]
-        if update_tags_in_file(id_to_path[pid], topics):
+        if update_tags_in_file(id_to_path[rid], v['topics'], dry_run):
             updated += 1
+            if dry_run and updated <= 10:
+                log(f'    [dry-run] tags → {v["topics"]}  {nfc(os.path.relpath(id_to_path[rid], VAULT))}')
 
     if updated > 0:
-        log(f'  ✅ {updated}개 파일 tags 갱신\n')
+        log(f'  ✅ {updated}개 파일 tags {"갱신 예정 (dry-run)" if dry_run else "갱신"}\n')
     else:
         log(f'  ✅ 변경 없음 (모두 최신 상태)\n')
     return updated
 
-# ── Notion 블록(본문) 가져오기 ──
-def get_blocks(page_id):
-    blocks, cursor = [], None
-    while True:
-        path = f'/v1/blocks/{page_id}/children?page_size=100'
-        if cursor: path += f'&start_cursor={cursor}'
-        res = notion_call('GET', path)
-        blocks.extend(res.get('results', []))
-        cursor = res.get('next_cursor')
-        if not cursor: break
-    return blocks
-
-# ── Rich text → 마크다운 ──
+# ── 노션 rich_text·블록 → 마크다운 ──
+# 이 파일은 더 이상 쓰지 않는다. scripts/notion_to_sqlite.py(노션 적재, 전환 후 은퇴)가 import 해서 남겨 둔다 — 지시서 3 에서 함께 정리.
 def rich_to_md(rt_list):
     out = ''
     for rt in rt_list or []:
@@ -217,126 +220,96 @@ def block_to_md(block):
     }
     return mapping.get(btype, text)
 
-# ── 신규 페이지 → .md 파일 저장 ──
-def save_page_as_md(page):
-    props   = page.get('properties', {})
-    title   = ''.join(t.get('text', {}).get('content', '') for t in props.get('영상 제목', {}).get('title', []))
-    channel = ''.join(t.get('text', {}).get('content', '') for t in props.get('유튜브 채널', {}).get('rich_text', []))
-    topics  = [t.get('name', '') for t in props.get('주제', {}).get('multi_select', [])]
-    folder  = topics[0] if topics else '기타'
-    upload_date   = props.get('업로드 일자', {}).get('date', {}).get('start', '') or ''
-    view_count    = props.get('조회수', {}).get('number', 0) or 0
-    sub_count     = props.get('구독자수', {}).get('number', 0) or 0
-    video_url     = props.get('영상 URL', {}).get('url', '') or ''
-    thumb_url     = props.get('썸네일 URL', {}).get('url', '') or ''
-    status        = props.get('처리 상태', {}).get('select', {}).get('name', '') or ''
+# ── 영상 노트 내용 ──
+# 노션 시절 노트(본문 블록 → 마크다운)와 같은 모양: 빈 줄(썸네일 자리) · '▶ 영상 보기' · 구분선 · 요약.
+def _q(s):
+    return (s or '').replace('"', "'")
 
+def video_target(rec):
+    """(폴더, 파일명, Vault 상대 경로)"""
+    topics = rec['topics']
+    folder = topics[0] if topics else '기타'
+    upload_date = rec.get('upload_date') or ''
     date_part = (upload_date[:10].replace('-', '') if upload_date else '00000000')
-    filename  = nfc(safe_filename(f'{channel}_{title}_{date_part}') + '.md')
+    filename = nfc(safe_filename(f'{rec.get("channel") or ""}_{rec.get("title") or ""}_{date_part}') + '.md')
+    folder_name = nfc(safe_filename(folder))
+    return folder_name, filename, nfc(os.path.join(folder_name, filename))
 
-    dir_path = os.path.join(VAULT, nfc(safe_filename(folder)))
-    os.makedirs(dir_path, exist_ok=True)
-
-    blocks  = get_blocks(page['id'])
-    body_md = '\n'.join(block_to_md(b) for b in blocks)
-
+def video_note_md(rec):
+    video_url = rec.get('video_url') or ''
+    body_md = '\n'.join(['', f'**▶ 영상 보기: **{video_url}', '---', rec.get('summary') or ''])
     md = '\n'.join([
         '---',
-        f'title: "{title.replace(chr(34), chr(39))}"',
-        f'channel: "{channel}"',
-        f'tags: [{", ".join(f"{chr(34)}{t}{chr(34)}" for t in topics)}]',
-        f'upload_date: {upload_date or "null"}',
-        f'view_count: {view_count}',
-        f'subscriber_count: {sub_count}',
+        f'title: "{_q(rec.get("title"))}"',
+        f'channel: "{_q(rec.get("channel"))}"',
+        f'tags: [{", ".join(f"{chr(34)}{t}{chr(34)}" for t in rec["topics"])}]',
+        f'upload_date: {rec.get("upload_date") or "null"}',
+        f'view_count: {rec.get("view_count") or 0}',
+        f'subscriber_count: {rec.get("subscriber_count") or 0}',
         f'video_url: {video_url or "null"}',
-        f'thumbnail: {thumb_url or "null"}',
-        f'status: {status}',
-        f'notion_id: {page["id"]}',
+        f'thumbnail: {rec.get("thumbnail_url") or "null"}',
+        f'status: {rec.get("status") or ""}',
+        f'notion_id: {rec["record_id"]}',
         '---',
         '',
         body_md,
     ])
-    md = nfc(md)  # NFD→NFC 정규화
+    return nfc(md)  # NFD→NFC 정규화
 
-    open(os.path.join(dir_path, filename), 'w', encoding='utf-8').write(md)
-    return folder, filename
+def save_record_as_md(rec):
+    folder_name, filename, _ = video_target(rec)
+    dir_path = os.path.join(VAULT, folder_name)
+    os.makedirs(dir_path, exist_ok=True)
+    open(os.path.join(dir_path, filename), 'w', encoding='utf-8').write(video_note_md(rec))
+    return folder_name, filename
 
-# ── 노션 DB 전체 로드 및 신규 파일 추가 ──
-def load_all_notion_pages():
-    """Notion DB 전체 페이지 로드. pages 리스트 반환."""
-    log('🔄 Notion DB 조회 중...')
-    pages, cursor = [], None
-    while True:
-        body = {'page_size': 100}
-        if cursor: body['start_cursor'] = cursor
-        res = notion_call('POST', f'/v1/databases/{NOTION_DB_ID}/query', body)
-        pages.extend(res.get('results', []))
-        cursor = res.get('next_cursor')
-        if not cursor: break
-    log(f'  총 {len(pages)}개 페이지\n')
-    return pages
-
-def get_target_relpath(page):
-    props   = page.get('properties', {})
-    title   = ''.join(t.get('text', {}).get('content', '') for t in props.get('영상 제목', {}).get('title', []))
-    channel = ''.join(t.get('text', {}).get('content', '') for t in props.get('유튜브 채널', {}).get('rich_text', []))
-    topics  = [t.get('name', '') for t in props.get('주제', {}).get('multi_select', [])]
-    folder  = topics[0] if topics else '기타'
-    upload_date = props.get('업로드 일자', {}).get('date', {}).get('start', '') or ''
-    date_part   = (upload_date[:10].replace('-', '') if upload_date else '00000000')
-
-    filename = nfc(safe_filename(f'{channel}_{title}_{date_part}') + '.md')
-    folder_name = nfc(safe_filename(folder))
-    return nfc(os.path.join(folder_name, filename))
-
-def sync_new_pages(pages=None):
+def sync_new_pages(videos, dry_run=False):
     log('📦 기존 Vault 파일 및 notion_id 정보 수집 중...')
     id_to_path, relpath_set, url_to_path = get_existing_vault_info()
     existing_ids = set(id_to_path.keys())
     log(f'  기존 notion_id 등록 파일: {len(existing_ids)}개, Vault md 문서: {len(relpath_set)}개\n')
 
-    if pages is None:
-        pages = load_all_notion_pages()
-
-    new_pages = []
+    new_recs = []
     seen_targets = set()
+    skipped = {'same_path': [], 'same_url': []}
 
-    for page in pages:
-        pid = page['id']
-        if pid in existing_ids:
+    for rec in videos:
+        if rec['record_id'] in existing_ids:
             continue
+        _, _, target_relpath = video_target(rec)
+        video_url = rec.get('video_url') or ''
 
-        target_relpath = get_target_relpath(page)
-        props = page.get('properties', {})
-        video_url = props.get('영상 URL', {}).get('url', '') or ''
-
-        # 이미 Vault에 동일 상대 경로 문서가 존재하거나 동일 video_url 문서가 존재하는 경우 스킵 (중복 노션 페이지 무한 덮어쓰기 방지)
-        if target_relpath in relpath_set or (video_url and video_url in url_to_path) or target_relpath in seen_targets:
-            continue
+        # 이미 Vault에 동일 상대 경로 문서가 존재하거나 동일 video_url 문서가 존재하는 경우 스킵 (중복 무한 덮어쓰기 방지)
+        if target_relpath in relpath_set or target_relpath in seen_targets:
+            skipped['same_path'].append(target_relpath); continue
+        if video_url and video_url in url_to_path:
+            skipped['same_url'].append(video_url); continue
 
         seen_targets.add(target_relpath)
-        new_pages.append(page)
+        new_recs.append(rec)
 
-    log(f'✨ 신규 영상: {len(new_pages)}개\n')
+    log(f'✨ 신규 영상: {len(new_recs)}개'
+        + (f' (노트 없이 건너뜀: 같은 경로 {len(skipped["same_path"])} · 같은 video_url {len(skipped["same_url"])})'
+           if skipped['same_path'] or skipped['same_url'] else '') + '\n')
+    for x in (skipped['same_path'] + skipped['same_url'])[:5]:
+        log(f'    [건너뜀] {x}')
 
     added = 0
-    for i, page in enumerate(new_pages):
+    for i, rec in enumerate(new_recs):
+        if dry_run:
+            log(f'  [dry-run {i+1}/{len(new_recs)}] {video_target(rec)[2]}')
+            added += 1
+            continue
         try:
-            folder, fname = save_page_as_md(page)
-            log(f'  [{i+1}/{len(new_pages)}] {folder}/{fname}')
+            folder, fname = save_record_as_md(rec)
+            log(f'  [{i+1}/{len(new_recs)}] {folder}/{fname}')
             added += 1
         except Exception as e:
             log(f'  ❌ 오류: {e}')
 
-    log(f'\n✅ {added}개 신규 파일 추가 완료\n')
-    return added
+    log(f'\n✅ {added}개 신규 파일 {"추가 예정 (dry-run)" if dry_run else "추가 완료"}\n')
+    return added, {k: len(v) for k, v in skipped.items()}
 
-# ── v2.8: Notion「AI 꿀팁」→ VAULT/AI 꿀팁/*.md (신규만, 평면 폴더) ──
-# 설계 제약 (docs/tasks/2026-09-06-kakao-tips-ingest.md §4-1):
-#   · 프론트매터 키는 link_url — video_url 절대 금지 (고아 격리 오탐 방지)
-#   · 폴더는 TIPS_FOLDER 평면 구조 — wiki_ingest/build_obsidian_wiki 가 최상위 폴더만 순회하므로 하위 폴더 금지
-#   · tags 키를 쓰지 않는다 — build_obsidian_wiki 가 tags 없으면 폴더명으로 MOC 를 만든다 (_MOC/AI 꿀팁.md)
-#   · 카테고리 '모델/LLM' 의 슬래시는 파일명에 못 쓴다 → safe_filename 이 '_' 로 치환
 # launchd 의 com.irichgreen.wiki-ingest 가 StandardOutPath 로 쓰는 바로 그 파일.
 # sync_obsidian 경로에서 띄운 wiki_ingest 의 출력도 여기에 append 해서
 # 두 실행 경로를 한 로그에서 보게 한다.
@@ -360,108 +333,115 @@ def _tee_wiki_log(stdout, stderr):
     except OSError as e:
         log(f'⚠️  wiki-ingest.log 기록 실패(무시): {e}')
 
-def sync_tips():
-    if not NOTION_TIPS_DB_ID:
-        log('ℹ️  NOTION_TIPS_DB_ID 없음 — 꿀팁 동기화 건너뜀\n')
-        return 0
-    sys.path.insert(0, os.path.join(SCRIPT_DIR, 'lib'))
-    import tips_notion as tn
+# ── 장부 tips → VAULT/AI 꿀팁/*.md (신규만, 평면 폴더) ──
+# 설계 제약 (docs/tasks/2026-09-06-kakao-tips-ingest.md §4-1):
+#   · 프론트매터 키는 link_url — video_url 절대 금지 (고아 격리 오탐 방지)
+#   · 폴더는 TIPS_FOLDER 평면 구조 — wiki_ingest/build_obsidian_wiki 가 최상위 폴더만 순회하므로 하위 폴더 금지
+#   · tags 키를 쓰지 않는다 — build_obsidian_wiki 가 tags 없으면 폴더명으로 MOC 를 만든다 (_MOC/AI 꿀팁.md)
+#   · 카테고리 '모델/LLM' 의 슬래시는 파일명에 못 쓴다 → safe_filename 이 '_' 로 치환
+# 꿀팁 고아(장부에 없는 notion_id 를 가진 꿀팁 노트)는 옮기지 않고 보고만 한다 (v4.0 2단계 결정):
+#   꿀팁 삭제는 장부를 직접 고칠 때만 생기는 드문 일이고, 꿀팁 폴더는 영상 고아 격리의 안전장치 분모 밖이다.
+def tip_note_md(r):
+    q = _q
+    saved = r.get('saved_date') or ''
+    lines = [
+        '---',
+        f'title: "{q(r["title"])}"',
+        f'channel: "{q(r["source"])}"',
+        'source_type: tip',
+        f'category: "{q(r["category"])}"',
+        f'keywords: [{", ".join(chr(34) + q(t) + chr(34) for t in r["tags"])}]',
+        f'importance: {r["importance"] or "null"}',
+        f'status: {r["status"] or "null"}',
+        f'upload_date: {saved[:10] if saved else "null"}',
+        f'link_url: {r["url"] or "null"}',
+        f'memo: "{q(r["memo"])}"',
+        f'notion_id: {r["record_id"]}',
+        '---',
+        '',
+        f'# {r["title"]}',
+        '',
+        f'- 🔗 링크: {r["url"]}',
+        f'- 📂 카테고리: {r["category"]}  ·  중요도: {r["importance"]}  ·  상태: {r["status"]}',
+        f'- 🏷 태그: {", ".join(r["tags"]) if r["tags"] else "(없음)"}',
+        f'- 🗓 저장일: {saved}  ·  출처: {r["source"]}',
+    ]
+    if r['memo']:
+        lines.append(f'- 📝 메모: {r["memo"]}')
+    if (r.get('body_md') or '').strip():
+        lines += ['', '## 본문', '', r['body_md']]
+    return nfc('\n'.join(lines)) + '\n'
 
-    log('🔗 Notion「AI 꿀팁」조회 중...')
-    try:
-        pages = tn.load_all_tips(NOTION_TIPS_DB_ID)
-    except tn.NotionAuthError as e:
-        log(f'🛑 {e} — 꿀팁 동기화 중단'); return 0
-    log(f'  총 {len(pages)}건')
-
+def sync_tips(tips, dry_run=False):
+    """반환: (추가 건수, 꿀팁 고아 건수)"""
+    log(f'🔗 장부 tips {len(tips)}건')
     tips_dir = os.path.join(VAULT, TIPS_FOLDER)
-    os.makedirs(tips_dir, exist_ok=True)
+    if not dry_run:
+        os.makedirs(tips_dir, exist_ok=True)
 
-    existing_ids = set()
-    for f in os.listdir(tips_dir):
-        if not f.endswith('.md'): continue
-        try:
-            head = open(os.path.join(tips_dir, f), encoding='utf-8', errors='ignore').read(1500)
-            m = re.search(r'^notion_id:\s*(.+)$', head, re.MULTILINE)
-            if m: existing_ids.add(m.group(1).strip())
-        except Exception:
-            pass
+    existing = {}   # notion_id -> 파일명
+    if os.path.isdir(tips_dir):
+        for f in os.listdir(tips_dir):
+            if not f.endswith('.md'): continue
+            nid = fm_notion_id(os.path.join(tips_dir, f))
+            if nid: existing[nid] = nfc(f)
 
-    new_pages = [p for p in pages if p['id'] not in existing_ids]
-    log(f'✨ 신규 꿀팁: {len(new_pages)}개 (기존 {len(existing_ids)}개)\n')
+    live = {t['record_id'] for t in tips}
+    tip_orphans = sorted(fn for nid, fn in existing.items() if nid not in live)
+    if tip_orphans:
+        log(f'  ⚠️  장부에 없는 꿀팁 노트 {len(tip_orphans)}개 (옮기지 않음 — 확인용): {tip_orphans[:5]}')
+
+    new_tips = [t for t in tips if t['record_id'] not in existing]
+    log(f'✨ 신규 꿀팁: {len(new_tips)}개 (기존 {len(existing)}개)\n')
 
     added = 0
-    for i, page in enumerate(new_pages):
+    for i, r in enumerate(new_tips):
         try:
-            r = tn.page_to_row(page)
-            date_part = (r['saved_date'][:10].replace('-', '') if r['saved_date'] else '00000000')
+            saved = r.get('saved_date') or ''
+            date_part = (saved[:10].replace('-', '') if saved else '00000000')
             fname = nfc(safe_filename(f"{date_part}_{r['title']}") + '.md')
             # 같은 날 같은 추정 제목("노션 자료 (제목 미확인)" 등)이 여럿이면 덮어쓰기 → notion_id 유실 → 매 실행 재생성.
             # 파일이 이미 있으면(=다른 notion_id) id 끝 6자리를 붙여 유일하게 만든다.
-            # (앞자리는 워크스페이스 공통 접두 '3bca3c…'라 구분이 안 된다)
             if os.path.exists(os.path.join(tips_dir, fname)):
-                fname = nfc(safe_filename(f"{date_part}_{r['title']}_{page['id'][-6:]}") + '.md')
-            # 본문: Notion 페이지에 사용자가 블록을 붙였으면 포함 (보통 비어 있음)
-            try:
-                body_md = '\n'.join(block_to_md(b) for b in tn.get_blocks(page['id']))
-            except Exception:
-                body_md = ''
-            q = lambda s: (s or '').replace('"', "'")
-            lines = [
-                '---',
-                f'title: "{q(r["title"])}"',
-                f'channel: "{q(r["source"])}"',
-                'source_type: tip',
-                f'category: "{q(r["category"])}"',
-                f'keywords: [{", ".join(chr(34) + q(t) + chr(34) for t in r["tags"])}]',
-                f'importance: {r["importance"] or "null"}',
-                f'status: {r["status"] or "null"}',
-                f'upload_date: {r["saved_date"][:10] if r["saved_date"] else "null"}',
-                f'link_url: {r["url"] or "null"}',
-                f'memo: "{q(r["memo"])}"',
-                f'notion_id: {page["id"]}',
-                '---',
-                '',
-                f'# {r["title"]}',
-                '',
-                f'- 🔗 링크: {r["url"]}',
-                f'- 📂 카테고리: {r["category"]}  ·  중요도: {r["importance"]}  ·  상태: {r["status"]}',
-                f'- 🏷 태그: {", ".join(r["tags"]) if r["tags"] else "(없음)"}',
-                f'- 🗓 저장일: {r["saved_date"]}  ·  출처: {r["source"]}',
-            ]
-            if r['memo']:
-                lines.append(f'- 📝 메모: {r["memo"]}')
-            if body_md.strip():
-                lines += ['', '## 본문', '', body_md]
-            open(os.path.join(tips_dir, fname), 'w', encoding='utf-8').write(nfc('\n'.join(lines)) + '\n')
-            log(f'  [{i+1}/{len(new_pages)}] {TIPS_FOLDER}/{fname}')
+                fname = nfc(safe_filename(f"{date_part}_{r['title']}_{r['record_id'][-6:]}") + '.md')
+            if dry_run:
+                log(f'  [dry-run {i+1}/{len(new_tips)}] {TIPS_FOLDER}/{fname}')
+            else:
+                open(os.path.join(tips_dir, fname), 'w', encoding='utf-8').write(tip_note_md(r))
+                log(f'  [{i+1}/{len(new_tips)}] {TIPS_FOLDER}/{fname}')
             added += 1
         except Exception as e:
             log(f'  ❌ 꿀팁 오류: {e}')
 
-    log(f'\n✅ 꿀팁 {added}개 신규 파일 추가 완료\n')
-    return added
+    log(f'\n✅ 꿀팁 {added}개 신규 파일 {"추가 예정 (dry-run)" if dry_run else "추가 완료"}\n')
+    return added, len(tip_orphans)
 
-# ── 고아 파일 격리 (Notion에서 삭제된 페이지의 .md) ──
-def quarantine_orphans(pages, dry_run=False):
+# ── 고아 파일 격리 (장부에 없는 영상 노트) ──
+ORPHAN_STATS = {'candidates': 0, 'blocked': ''}   # 마지막 점검 결과 (RESULT_JSON 보고용)
+
+def quarantine_orphans(videos, dry_run=False):
     """
-    Notion 활성 페이지에 없는 notion_id를 가진 .md를 _trash/로 이동. 이동 건수 반환.
-    삭제가 아니라 이동인 이유: Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므로
-    되돌릴 수 있어야 한다. 아래 3중 안전장치가 모두 통과할 때만 실행한다.
+    장부 videos 에 없는 notion_id 를 가진 영상 노트를 _trash/ 로 이동. 이동 건수 반환.
+    v4.0 첫 실행에서 videos_dup(중복 보관) 을 가리키던 노트가 여기서 격리된다 — 의도 (10-11 실측 0건).
+    삭제가 아니라 이동인 이유: 장부를 잘못 읽어 목록이 비면 대량 소실이 되므로 되돌릴 수 있어야 한다.
+    아래 3중 안전장치가 모두 통과할 때만 실행한다 (완화 금지).
     """
-    log('🧹 고아 파일 점검 중 (Notion에서 삭제된 페이지)...')
+    log('🧹 고아 파일 점검 중 (장부에 없는 영상 노트)...')
     id_to_path, _, _ = get_existing_vault_info()
+    ORPHAN_STATS.update(candidates=0, blocked='')
 
-    # 안전장치 1: Notion 페이지 로드 실패 시 아무것도 하지 않는다
-    if not pages:
-        log('  ⚠️  Notion 페이지 0건 — 고아 정리를 건너뜁니다 (API 오류 의심)\n')
+    # 안전장치 1: 장부 0건이면 아무것도 하지 않는다
+    if not videos:
+        log('  ⚠️  장부 videos 0건 — 고아 정리를 건너뜁니다 (장부 이상 의심)\n')
+        ORPHAN_STATS['blocked'] = 'empty'
         return 0
-    # 안전장치 2: 로드된 페이지가 기존 파일의 절반도 안 되면 부분 로드로 간주
-    if len(pages) < len(id_to_path) * 0.5:
-        log(f'  ⚠️  Notion {len(pages)}건 < Vault {len(id_to_path)}건의 50% — 부분 로드 의심, 건너뜁니다\n')
+    # 안전장치 2: 장부 행이 기존 파일의 절반도 안 되면 부분 로드로 간주
+    if len(videos) < len(id_to_path) * 0.5:
+        log(f'  ⚠️  장부 {len(videos)}건 < Vault {len(id_to_path)}건의 50% — 부분 로드 의심, 건너뜁니다\n')
+        ORPHAN_STATS['blocked'] = 'partial'
         return 0
 
-    live_ids = {p['id'] for p in pages}
+    live_ids = {v['record_id'] for v in videos}
 
     def is_video_note(fpath):
         """영상 노트만 격리 대상. schema.md 등 Vault 시스템 문서 오탐 방지."""
@@ -469,14 +449,15 @@ def quarantine_orphans(pages, dry_run=False):
         if os.path.dirname(relpath) == '':      # 영상 노트는 항상 토픽 폴더 안에 있다
             return False
         try:
-            head = nfc(open(fpath, encoding='utf-8', errors='ignore').read(1500))
+            content = nfc(open(fpath, encoding='utf-8', errors='ignore').read())
         except Exception:
             return False
-        m = re.search(r'^video_url:\s*(.+)$', head, re.MULTILINE)
-        return bool(m and m.group(1).strip() not in ('', 'null'))
+        url = fm_value(content, 'video_url')
+        return bool(url and url not in ('', 'null'))
 
     orphans = [(nid, fp) for nid, fp in id_to_path.items()
                if nid not in live_ids and is_video_note(fp)]
+    ORPHAN_STATS['candidates'] = len(orphans)
 
     if not orphans:
         log('  ✅ 고아 파일 없음\n')
@@ -486,6 +467,7 @@ def quarantine_orphans(pages, dry_run=False):
     ratio = len(orphans) / max(len(id_to_path), 1)
     if ratio > 0.4:
         log(f'  🚨 고아가 {len(orphans)}개({ratio:.0%})로 과다 — 안전을 위해 중단합니다. 수동 확인 필요\n')
+        ORPHAN_STATS['blocked'] = 'ratio'
         return 0
 
     log(f'  대상: {len(orphans)}개 ({ratio:.1%})')
@@ -513,27 +495,44 @@ def quarantine_orphans(pages, dry_run=False):
     return moved
 
 # ── 메인 실행 ──
-if __name__ == '__main__':
-    log('🚀 Obsidian 증분 동기화 시작\n')
+def main():
+    DRY = '--dry-run' in sys.argv
+    log(f'🚀 Obsidian 증분 동기화 시작 (원본: 장부 data/library.db{" · DRY-RUN — 아무것도 쓰지 않음" if DRY else ""})\n')
     start = time.time()
 
-    # Notion 페이지 1회 로드 (신규 추가 + tags 동기화 양쪽에서 재사용)
-    pages = load_all_notion_pages()
+    # 장부 1회 로드 (tags 동기화·신규 추가·고아 격리·꿀팁에서 재사용). 못 읽으면 Vault 를 건드리지 않고 끝낸다.
+    try:
+        videos, tips = load_library()
+    except Exception as e:
+        log(f'❌ 장부 읽기 실패 — Vault 를 건드리지 않고 종료: {e}')
+        print('RESULT_JSON:' + json.dumps({'added': 0, 'tips_added': 0, 'tags_updated': 0, 'orphans_removed': 0,
+                                           'rebuilt': False, 'elapsed': round(time.time() - start),
+                                           'error': f'library: {e}'[:200]}, ensure_ascii=False))
+        sys.exit(1)
+    log(f'📚 장부: 영상 {len(videos):,}개 · 꿀팁 {len(tips):,}개\n')
 
-    # 기존 파일 tags를 Notion 현재 주제로 항상 동기화
-    # (주제 변경이 없으면 update_tags_in_file이 False 반환 → 실질적 파일 쓰기 0건, 오버헤드 미미)
-    tags_updated = sync_existing_tags(pages)
+    # 기존 파일 tags 를 장부 topics 로 항상 동기화 (변경이 없으면 파일 쓰기 0건)
+    tags_updated = sync_existing_tags(videos, dry_run=DRY)
 
     # 1단계: 신규 파일 추가
-    added = sync_new_pages(pages)
+    added, skipped = sync_new_pages(videos, dry_run=DRY)
 
-    # 1.5단계: Notion에서 삭제된 페이지의 고아 .md 격리
-    # (--orphans-dry-run: 대상만 출력하고 이동하지 않음)
-    orphans_removed = quarantine_orphans(pages, dry_run='--orphans-dry-run' in sys.argv)
+    # 1.5단계: 장부에 없는 영상 노트 격리 (--orphans-dry-run: 대상만 출력)
+    orphans_removed = quarantine_orphans(videos, dry_run=DRY or '--orphans-dry-run' in sys.argv)
 
-    # 1.8단계 (v2.8): 「AI 꿀팁」DB → AI 꿀팁/ 노트 (신규만). 고아 격리 이후에 실행해 격리 분모에 섞이지 않게 한다.
-    tips_added = 0 if '--no-tips' in sys.argv else sync_tips()
+    # 1.8단계 (v2.8): 장부 tips → AI 꿀팁/ 노트 (신규만). 고아 격리 이후에 실행해 격리 분모에 섞이지 않게 한다.
+    tips_added, tips_orphans = (0, 0) if '--no-tips' in sys.argv else sync_tips(tips, dry_run=DRY)
     added += tips_added
+
+    if DRY:
+        log('ℹ️  dry-run — Wiki 재구성·인제스트·검색 인덱스·log.md 를 건너뜁니다')
+        print('RESULT_JSON:' + json.dumps({
+            'dry_run': True, 'videos': len(videos), 'tips': len(tips),
+            'added': added, 'tips_added': tips_added, 'tags_updated': tags_updated,
+            'orphans_candidates': ORPHAN_STATS['candidates'], 'orphans_blocked': ORPHAN_STATS['blocked'], 'skipped_same_path': skipped['same_path'], 'skipped_same_url': skipped['same_url'],
+            'tips_orphans': tips_orphans, 'elapsed': round(time.time() - start),
+        }, ensure_ascii=False))
+        sys.exit(0)
 
     # 2단계: 신규/갱신이 있거나 강제 재구성 옵션일 때 Wiki 재구성
     force = '--rebuild' in sys.argv
@@ -609,7 +608,7 @@ if __name__ == '__main__':
     if orphans_removed > 0:
         write_wiki_log('cleanup', f'고아 파일 {orphans_removed}개 격리', {
             '격리 위치': '_trash/ (내용 보존)',
-            '사유': 'Notion에서 삭제된 페이지의 잔여 .md',
+            '사유': '장부(data/library.db)에 없는 영상 노트',
         })
     if rebuilt:
         write_wiki_log('rebuild', 'MOC + 키워드 링크 재구성', {
@@ -624,7 +623,16 @@ if __name__ == '__main__':
         'tips_added': tips_added,
         'tags_updated': tags_updated,
         'orphans_removed': orphans_removed,
+        'orphans_candidates': ORPHAN_STATS['candidates'],
+        'orphans_blocked': ORPHAN_STATS['blocked'],
+        'tips_orphans': tips_orphans,
+        'skipped_same_path': skipped['same_path'],
+        'skipped_same_url': skipped['same_url'],
         'rebuilt': rebuilt,
         'elapsed': elapsed,
         'error': rebuild_err,
     }))
+
+
+if __name__ == '__main__':
+    main()
