@@ -252,6 +252,37 @@ def main():
         check('verify 통과 (Vault 영상 id 4 → videos 3 · dup 1 · 없음 0)',
               code == 0 and rj['vault_in_videos'] == 3 and rj['vault_in_dup'] == 1 and rj['vault_missing'] == 0, out[-600:])
 
+        print('▶ 전환 표시 (v4.0 2단계)')
+        code, out, rj = run(['--mark-switched'], Fake())
+        check('--mark-switched 종료 0 · switched_at 기록', code == 0 and rj and rj.get('switched_at'), out[-300:])
+        code, out, _ = run(['--mark-switched'], Fake())
+        check('두 번째 --mark-switched 는 거부', code == 1, out[-200:])
+        snap = open(ldb.DB_PATH, 'rb').read()
+        f = Fake()
+        code, out, _ = run(['--apply', '--replace'], f)
+        check('전환 후 --apply --replace 거부 (노션 호출 0 · 파일 무변경)', code == 1 and not f.calls
+              and open(ldb.DB_PATH, 'rb').read() == snap, out[-300:])
+        db = sqlite3.connect(ldb.DB_PATH)
+        with db:
+            db.execute("DELETE FROM meta WHERE key = 'switched_at'")
+            db.execute("UPDATE videos SET summary_src = 'app' WHERE record_id = 'bbbb-0'")
+        db.close()
+        f = Fake()
+        code, out, _ = run(['--apply', '--replace'], f)
+        check('표시가 없어도 앱이 쓴 영상이 있으면 거부', code == 1 and not f.calls and 'summary_src=app' in out, out[-300:])
+        db = sqlite3.connect(ldb.DB_PATH)
+        with db:
+            db.execute("UPDATE videos SET summary_src = 'property' WHERE record_id = 'bbbb-0'")
+            db.execute("UPDATE tips SET created_at = '2099-01-01T00:00:00.000Z' WHERE record_id = 'tttt-1'")
+        db.close()
+        f = Fake()
+        code, out, _ = run(['--apply', '--replace'], f)
+        check('적재 이후 생긴 꿀팁이 있어도 거부', code == 1 and not f.calls and '꿀팁' in out, out[-300:])
+        db = sqlite3.connect(ldb.DB_PATH)
+        with db:
+            db.execute("UPDATE tips SET created_at = '2026-01-01T00:00:00.000Z' WHERE record_id = 'tttt-1'")
+        db.close()
+
         print('▶ 안전장치')
         before = open(ldb.DB_PATH, 'rb').read()
         f = Fake(); f.fail_plan = [(lambda meth, p: p.endswith(f'{TDB}/query'), 401)]

@@ -6,6 +6,12 @@ v4.0 1단계 — 노션 → SQLite 적재 (노션 읽기 전용)
   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply            # data/library.db 생성 (이미 있으면 거부)
   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply --replace  # 기존 파일을 data/library.db.bak.<시각> 으로 옮기고 새로 만든다
   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify           # 노션 호출 없이 data/library.db ↔ Obsidian Vault 대조
+  /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --mark-switched    # (v4.0 2단계) 장부를 원본으로 확정 — 이후 --apply --replace 거부
+
+전환 후 재적재 금지 (v4.0 2단계):
+  스케줄러·카톡 인제스트가 장부에 직접 쓰기 시작하면 노션은 낡은 사본이다. 이때 --apply --replace 를 돌리면
+  앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다. 그래서 다음 중 하나라도 있으면 --replace 를 거부한다:
+  meta.switched_at 이 있음 · videos.summary_src='app' 행이 있음 · tips 에 loaded_at 이후 created_at 행이 있음.
 
   --summary-check=N   무작위 N개 영상의 노션 본문 블록과 '요약 내용' 속성을 비교해 보고만 한다 (기본 20, 0 = 끔)
   --summary-check=all 전량 비교하고, 다르면 본문 블록 쪽을 summary 로 쓴다 (페이지당 1회 호출, 3천 건이면 약 30분)
@@ -347,7 +353,7 @@ def verify():
     t_missing = tv - tips
     log('🔎 data/library.db 검증')
     log(f'  user_version {uv} · integrity_check {ic}')
-    log(f'  videos {n_v:,} · videos_dup {n_d:,} · tips {n_t:,}  (적재 시각 {meta.get("loaded_at", "?")})')
+    log(f'  videos {n_v:,} · videos_dup {n_d:,} · tips {n_t:,}  (적재 시각 {meta.get("loaded_at", "?")} · 전환 {meta.get("switched_at", "전")})')
     log(f'  videos 안 video_id 중복 {dup_vid} · video_id 없음 {no_vid} · summary_src {src}')
     log(f'  Vault 영상 노트 notion_id {len(vv):,} → videos {len(v_live):,} · videos_dup {len(v_dup):,}(2단계 고아 격리 예정) · 어디에도 없음 {len(v_missing):,}')
     log(f'  Vault 꿀팁 노트 notion_id {len(tv):,} → tips {len(tv & tips):,} · 없음 {len(t_missing):,}')
@@ -362,15 +368,58 @@ def verify():
         'mode': 'verify', 'ok': ok, 'videos': n_v, 'videos_dup': n_d, 'tips': n_t,
         'vault_video_ids': len(vv), 'vault_in_videos': len(v_live), 'vault_in_dup': len(v_dup),
         'vault_missing': len(v_missing), 'vault_tip_ids': len(tv), 'tips_missing': len(t_missing), 'vault_ignored': len(VAULT_IGNORED),
-        'summary_src': src, 'no_video_id': no_vid}, ensure_ascii=False))
+        'summary_src': src, 'no_video_id': no_vid, 'switched_at': meta.get('switched_at')}, ensure_ascii=False))
     log('✅ 검증 통과' if ok else '❌ 검증 실패 — 위 항목 확인')
     return 0 if ok else 1
+
+
+# ─────────────────────────── 전환 표시 / 재적재 거부 (v4.0 2단계) ───────────────────────────
+def switched_reasons(path):
+    """기존 장부를 노션 스냅샷으로 덮으면 안 되는 이유 목록. 비면 덮어도 된다."""
+    conn = ldb.open_db(path, readonly=True)
+    try:
+        meta = dict(conn.execute('SELECT key, value FROM meta').fetchall())
+        why = []
+        if meta.get('switched_at'):
+            why.append(f"meta.switched_at={meta['switched_at']} (장부가 원본으로 확정됨)")
+        n_app = conn.execute("SELECT COUNT(*) FROM videos WHERE summary_src = 'app'").fetchone()[0]
+        if n_app:
+            why.append(f'앱이 저장한 영상 {n_app}건 (summary_src=app)')
+        if meta.get('loaded_at'):
+            n_tip = conn.execute('SELECT COUNT(*) FROM tips WHERE created_at > ?', (meta['loaded_at'],)).fetchone()[0]
+            if n_tip:
+                why.append(f"적재 이후 생긴 꿀팁 {n_tip}건 (created_at > {meta['loaded_at']})")
+        return why
+    finally:
+        conn.close()
+
+
+def mark_switched():
+    if not os.path.exists(ldb.DB_PATH):
+        log(f'❌ {ldb.DB_PATH} 없음'); return 1
+    conn = ldb.open_db(ldb.DB_PATH)
+    try:
+        meta = dict(conn.execute('SELECT key, value FROM meta').fetchall())
+        if meta.get('switched_at'):
+            log(f"❌ 이미 전환 표시됨 (switched_at={meta['switched_at']})"); return 1
+        if meta.get('source') != 'notion':
+            log(f"❌ meta.source={meta.get('source')!r} — 노션에서 적재한 장부가 아닙니다"); return 1
+        ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        with conn:
+            conn.execute("INSERT INTO meta (key, value) VALUES ('switched_at', ?)", (ts,))
+        log(f'✅ 전환 표시 switched_at={ts} — 이후 --apply --replace 는 거부됩니다')
+        log('RESULT_JSON ' + json.dumps({'mode': 'mark-switched', 'switched_at': ts}, ensure_ascii=False))
+        return 0
+    finally:
+        conn.close()
 
 
 # ─────────────────────────── main ───────────────────────────
 def main(argv):
     if '--verify' in argv:
         return verify()
+    if '--mark-switched' in argv:
+        return mark_switched()
     apply_ = '--apply' in argv
     replace = '--replace' in argv
     n_check = 20
@@ -380,6 +429,13 @@ def main(argv):
             n_check = 'all' if v == 'all' else int(v)
     if apply_ and os.path.exists(ldb.DB_PATH) and not replace:
         log(f'❌ {ldb.DB_PATH} 가 이미 있습니다. 다시 만들려면 --apply --replace'); return 1
+    if apply_ and os.path.exists(ldb.DB_PATH):
+        why = switched_reasons(ldb.DB_PATH)
+        if why:
+            log('❌ 장부가 이미 원본입니다 — 노션 스냅샷으로 덮으면 앱이 쓴 행이 사라집니다. 거부:')
+            for w in why:
+                log(f'   · {w}')
+            return 1
 
     t0 = time.time()
     log(f'🚚 노션 → SQLite 적재 ({"APPLY" if apply_ else "DRY-RUN"})')

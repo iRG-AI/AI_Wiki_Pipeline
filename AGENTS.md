@@ -104,7 +104,7 @@ YouTube "AI 영상목록" (마스터 모드)
 
 | 파일 | 역할 |
 |------|------|
-| `scheduler.js` | 메인 오케스트레이터. YouTube API 조회, Gemini 요약, Notion 저장, Telegram 알림. launchd가 6시간 간격 실행. |
+| `scheduler.js` | 메인 오케스트레이터. YouTube API 조회, Gemini 요약, **로컬 장부 저장(v4.0, `lib/library.js`)**, Telegram 알림. launchd가 6시간 간격 실행. 노션 호출 없음. |
 | `server.js` | HTTP 서버(포트 3000). `index.html` 서빙 + Notion API 프록시(보안 화이트리스트). SSE `/api/master-ingest` 엔드포인트로 실시간 로그 스트리밍. |
 | `index.html` | 단일 페이지 웹 UI. 재생목록 관리, 마스터 인제스트 트리거, 처리 결과 테이블. |
 | `lib/classifier.js` | Gemini 기반 토픽 분류기. `playlists.json`의 토픽 목록만 허용(allowedSet 필터). 신뢰도 0.6 미만이면 YouTube 추가 건너뜀. |
@@ -155,7 +155,10 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 
 ### v4.0 이행 중 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
 
-- **지금(1단계 완료 ~ 2단계 전)은 노션이 여전히 원본이다.** `library.db` 는 적재 시점의 스냅샷이고 스케줄러는 노션에 쓴다. 2단계는 스케줄러를 멈추고 `--apply --replace` 로 다시 적재한 뒤 전환한다.
+- **2단계-a(쓰기 전환) 완료 후: 장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 노션에 쓰지 않고 `data/library.db` 에 쓴다. 노션은 낡은 사본(해지 대기).
+  2-b(읽기 전환) 전까지 `sync_obsidian.py` 는 아직 노션을 읽으므로 **새 영상·꿀팁의 Obsidian 노트가 생기지 않는다** — 2-a·2-b 사이에는 스케줄러를 멈춰 둔다.
+- **`meta.switched_at` 이 찍힌 장부에 `notion_to_sqlite.py --apply --replace` 를 돌리지 말 것** — 스크립트가 거부한다(앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다).
+- journal_mode 는 기본(DELETE) 그대로 둔다. 접근이 scheduler → kakao_ingest → sync_obsidian 순차라 WAL 이 필요 없다. 겹치면 Node·Python 모두 busy_timeout 5초 대기.
 - `record_id` = 노션 page id(하이픈 포함) = Obsidian `notion_id`. **프론트매터 키 이름 `notion_id` 를 바꾸지 말 것** — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다. 새 행은 uuid4.
 - `data/` 는 gitignore. 개인 요약 전체가 들어 있다 — `git check-ignore -q data/library.db` 로 확인.
 - `videos_dup` 은 지우지 않는다(중복 페이지 보관, 되돌림용). `has_vault_note=1` 행의 노트는 2단계 첫 동기화에서 `_trash/` 로 격리된다(의도됨).
@@ -163,14 +166,14 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 
 ### 중요한 제약사항
 
-**Notion 캐시 — 전부 읽었거나, 던지거나 (v3.2.1) — 건드리지 말 것**
+**장부 캐시 — 전부 읽었거나, 던지거나 (v3.2.1 → v4.0) — 건드리지 말 것**
 
-`scheduler.js:loadNotionCache()` 는 중복 판정의 유일한 근거다. 빈 캐시·부분 캐시가 한 번이라도 반환되면 전 영상이 신규로 보여 `MAX_NEW_PER_RUN`(15)편을 다시 요약·저장한다. 2026-08-12 ~ 10-01 사이 13회 발생해 Notion 중복 195건이 쌓였고, 결과가 "저장 15 · Skip 0 · 오류 0" 이라 성공으로 보였다.
+v4.0 2단계부터 `scheduler.js:loadLibraryCache()`(장부 `videos` 전량)가 중복 판정의 유일한 근거다. 아래 이력은 노션 캐시 시절 것이지만 원칙은 같다. `scheduler.js:loadNotionCache()` 는 중복 판정의 유일한 근거였다. 빈 캐시·부분 캐시가 한 번이라도 반환되면 전 영상이 신규로 보여 `MAX_NEW_PER_RUN`(15)편을 다시 요약·저장한다. 2026-08-12 ~ 10-01 사이 13회 발생해 Notion 중복 195건이 쌓였고, 결과가 "저장 15 · Skip 0 · 오류 0" 이라 성공으로 보였다.
 
-- 루프를 `do { … } while (cursor)` 로 되돌리지 말 것. 첫 페이지 실패 시 `continue` 가 조건 검사로 넘어가 재시도 없이 끝난다.
-- 재시도 초과·0건은 **던진다**. `break` 나 빈 `Map` 반환으로 바꾸지 말 것. `main` 이 받아 영상 처리와 큐 재시도를 건너뛴다(fail-closed).
-- Notion 401/403 은 재시도 없이 `fatalAuth` 로 던지고 `main` 이 즉시 종료한다(보안 원칙 1).
-- 새로 만든 빈 DB 로 처음 돌릴 때만 `.env` 에 `NOTION_CACHE_ALLOW_EMPTY=true`. 평소에는 넣지 않는다.
+- 장부 파일이 없으면 `lib/library.js:openLibrary()` 가 **만들지 않고 던진다.** 빈 장부를 새로 만들면 전 영상이 신규로 보인다. `user_version` 이 스키마와 다르면 던진다.
+- 0건은 **던진다**. 빈 `Map` 반환으로 바꾸지 말 것. `main` 이 받아 영상 처리와 큐 재시도를 건너뛰고 텔레그램으로 알린다(fail-closed).
+- 새로 만든 빈 장부로 처음 돌릴 때만 `.env` 에 `LIBRARY_ALLOW_EMPTY=true`. 평소에는 넣지 않는다. (`NOTION_CACHE_ALLOW_EMPTY` 는 더 이상 읽지 않는다)
+- `insertVideo` 는 같은 video_id 를 덮어쓰지 않는다(UNIQUE 위반으로 던짐 → 오류 1건). `INSERT OR REPLACE` 로 바꾸지 말 것.
 - **스케줄러 결과가 "저장 15 · Skip 0" 이면 성공이 아니라 캐시 이상을 의심한다.**
 
 **YouTube 조회 재시도·배치 (v3.2.1)**
@@ -179,7 +182,7 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므�
 - 채널 구독자 수는 `getBatchSubs()` 로 50개씩 순차 조회한다. 채널마다 `Promise.all` 로 부르던 방식(실행당 새 연결·유닛 약 450)으로 되돌리지 말 것.
 - `scheduler.js` 는 `require.main === module` 일 때만 `main` 을 돈다. 이 가드를 지우면 테스트가 실제 실행을 일으킨다.
 
-**한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. Notion 태그, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `addTopicToPage()`의 NFC 체크가 중복 태그 방지의 핵심.
+**한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. Notion 태그, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `lib/library.js:addTopic()`(v4.0, 장부의 현재 topics 를 다시 읽어 NFC 합집합)이 중복 태그 방지의 핵심.
 
 **Notion API 한계**:
 - 페이지 생성 시 `children` 최대 100블록. 초과분은 `/v1/blocks/{id}/children`으로 append.
@@ -272,6 +275,7 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
 
 ## 변경 이력
 
+- **2026-10-11 (v4.0 2단계-a)** — 쓰기 전환. `scheduler.js` 의 노션 캐시·저장·주제 추가·통계 갱신을 로컬 장부(`lib/library.js`, `node:sqlite`)로 교체 — 노션 호출 0. `kakao_ingest.py` 는 장부 `tips` 에 한 트랜잭션으로 쓴다. `lib/library_db.py:open_existing()`(없으면 만들지 않음). `notion_to_sqlite.py --mark-switched` + 전환 후 `--apply --replace` 거부. WAL 미전환(순차 접근, busy_timeout 5초). 테스트: `test_scheduler_guards.js` 16/16(노션 캐시 5건 → 장부 9건), `test_notion_to_sqlite.py` 37/37, 신규 `test_kakao_ingest.py` 17/17. 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-a.md`.
 - **2026-10-11 (v4.0 1단계)** — 노션 → SQLite 적재. 신규 `scripts/notion_to_sqlite.py`(노션 읽기 전용, 기본 dry-run, `--apply`·`--replace`·`--verify`·`--summary-check`), `scripts/test_notion_to_sqlite.py`(32/32, 네트워크 0회), `lib/library_schema.sql`·`lib/library_db.py`. `.gitignore` 에 `data/`. 적재 결과: 영상 페이지 3,189 → videos 2,986 · videos_dup 203 · tips 135, 요약 대조 무작위 100건 100/100 일치(속성=본문). 기존 파이프라인 코드 무변경(노션이 아직 원본). Vault 대조는 프론트매터 안의 notion_id 만 센다(Vault 루트 schema.md 본문 예시가 영상 id 로 잡혀 1차 dry-run 이 멈췄다). 노션에서 지워진 중복 꿀팁 page 의 잔여 노트 1건을 _trash/<시각>/AI 꿀팁/ 으로 격리. 지시서 `docs/tasks/2026-10-11-v4-notion-to-sqlite.md`·`-fix1.md`.
 - **2026-10-05 (v3.2.1)** — 스케줄러 네트워크 안전장치. 배경: 로그 집계(08-12 ~ 10-05, 실행 219회)에서 실행 통째 실패 62회(28%, ENOTFOUND 41·ETIMEDOUT 17·기타 4)와, Notion 캐시 첫 조회 실패 → 빈 캐시 진행 23회(그중 13회가 영상 15편 재저장, 중복 195건). `loadNotionCache()` 를 "전부 읽었거나, 던지거나" 로 교체(재시도 초과·0건은 throw, 401/403 은 fatalAuth 즉시 종료, `NOTION_CACHE_ALLOW_EMPTY` 로만 빈 DB 허용)하고 `main` 은 캐시 실패 시 영상 처리·큐 재시도를 건너뜀(fail-closed). `ytFetch()` 에 일시 오류 지수 백오프(2→16초, 5회) 추가, 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450)에서 `getBatchSubs()` 50개 배치 순차(9회)로 교체, `scheduler.js` 를 `require.main === module` 가드로 `require` 가능하게 함. 검증: `scripts/test_scheduler_guards.js` 12/12, 모의 실행 2종(네트워크 전면 실패·Notion 401) 기대대로, 읽기 전용 실측(캐시 3,042 · 영상 1,412 · 고유 채널 450 → 구독자 응답 450 · 신규 판정 22). 야간 ENOTFOUND 의 직접 원인은 밝히지 못했다. 지시서 `docs/tasks/2026-10-05-scheduler-network-guards.md`.
 - **2026-08-28 (v2.7.1)** — 토픽 분류의 일시적 서버 오류(5xx) 재시도 추가. `scheduler.js` 분류 catch 블록의 재시도 대상을 429/quota → +`5xx`·`UNAVAILABLE`·`overloaded`·`high demand`로 확장하고 지수 백오프(2→15초 상한)를 적용, 401/403은 즉시 중단으로 명시, `keysCount > 1` 조건을 키 교체에만 적용해 키 1개 환경에서도 재시도되게 했다. 재시도 소진 시 `cls`가 `undefined`인 채 `cls.topics`로 진입하던 잠복 TypeError 경로를 가드 2개로 차단. 지시서 `docs/tasks/2026-08-28-classify-transient-retry.md`.

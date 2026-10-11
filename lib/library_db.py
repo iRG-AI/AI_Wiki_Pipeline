@@ -23,10 +23,25 @@ def open_db(path=DB_PATH, readonly=False):
     else:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         conn = sqlite3.connect(path)
-        # journal_mode 는 기본(DELETE) 그대로 둔다. WAL 전환 여부는 동시 쓰기가 생기는 2단계에서 정한다.
+        # journal_mode 는 기본(DELETE) 그대로 둔다 (2단계 결정: 접근이 순차라 WAL 불필요, 겹치면 timeout 5초 대기).
     conn.row_factory = sqlite3.Row
     return conn
 
 
 def apply_schema(conn):
     conn.executescript(schema_sql())
+
+
+def open_existing(path=None, readonly=False):
+    """v4.0 2단계 — 이미 있는 장부만 연다. 파일이 없으면 만들지 않고 FileNotFoundError, user_version 이 다르면 RuntimeError.
+    빈 장부를 새로 만들면 모든 링크·영상이 신규로 보여 중복이 쌓인다(scheduler.js·lib/library.js 와 같은 원칙).
+    sqlite3.connect 의 기본 timeout 5초 = busy_timeout 5초 (Node 쪽 lib/library.js 와 같은 값)."""
+    path = path or DB_PATH
+    if not os.path.exists(path):
+        raise FileNotFoundError(f'장부 파일 없음: {path} — scripts/notion_to_sqlite.py 로 만든 data/library.db 가 있어야 합니다')
+    conn = open_db(path, readonly=readonly)
+    uv = conn.execute('PRAGMA user_version').fetchone()[0]
+    if uv != SCHEMA_VERSION:
+        conn.close()
+        raise RuntimeError(f'장부 user_version {uv} ≠ 스키마 {SCHEMA_VERSION}')
+    return conn

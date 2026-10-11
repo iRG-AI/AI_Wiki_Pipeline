@@ -1,0 +1,1584 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 2e4024d..c922d8e 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -104,7 +104,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ 
+ | 파일 | 역할 |
+ |------|------|
+-| `scheduler.js` | 메인 오케스트레이터. YouTube API 조회, Gemini 요약, Notion 저장, Telegram 알림. launchd가 6시간 간격 실행. |
++| `scheduler.js` | 메인 오케스트레이터. YouTube API 조회, Gemini 요약, **로컬 장부 저장(v4.0, `lib/library.js`)**, Telegram 알림. launchd가 6시간 간격 실행. 노션 호출 없음. |
+ | `server.js` | HTTP 서버(포트 3000). `index.html` 서빙 + Notion API 프록시(보안 화이트리스트). SSE `/api/master-ingest` 엔드포인트로 실시간 로그 스트리밍. |
+ | `index.html` | 단일 페이지 웹 UI. 재생목록 관리, 마스터 인제스트 트리거, 처리 결과 테이블. |
+ | `lib/classifier.js` | Gemini 기반 토픽 분류기. `playlists.json`의 토픽 목록만 허용(allowedSet 필터). 신뢰도 0.6 미만이면 YouTube 추가 건너뜀. |
+@@ -155,7 +155,10 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므
+ 
+ ### v4.0 이행 중 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
+ 
+-- **지금(1단계 완료 ~ 2단계 전)은 노션이 여전히 원본이다.** `library.db` 는 적재 시점의 스냅샷이고 스케줄러는 노션에 쓴다. 2단계는 스케줄러를 멈추고 `--apply --replace` 로 다시 적재한 뒤 전환한다.
++- **2단계-a(쓰기 전환) 완료 후: 장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 노션에 쓰지 않고 `data/library.db` 에 쓴다. 노션은 낡은 사본(해지 대기).
++  2-b(읽기 전환) 전까지 `sync_obsidian.py` 는 아직 노션을 읽으므로 **새 영상·꿀팁의 Obsidian 노트가 생기지 않는다** — 2-a·2-b 사이에는 스케줄러를 멈춰 둔다.
++- **`meta.switched_at` 이 찍힌 장부에 `notion_to_sqlite.py --apply --replace` 를 돌리지 말 것** — 스크립트가 거부한다(앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다).
++- journal_mode 는 기본(DELETE) 그대로 둔다. 접근이 scheduler → kakao_ingest → sync_obsidian 순차라 WAL 이 필요 없다. 겹치면 Node·Python 모두 busy_timeout 5초 대기.
+ - `record_id` = 노션 page id(하이픈 포함) = Obsidian `notion_id`. **프론트매터 키 이름 `notion_id` 를 바꾸지 말 것** — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다. 새 행은 uuid4.
+ - `data/` 는 gitignore. 개인 요약 전체가 들어 있다 — `git check-ignore -q data/library.db` 로 확인.
+ - `videos_dup` 은 지우지 않는다(중복 페이지 보관, 되돌림용). `has_vault_note=1` 행의 노트는 2단계 첫 동기화에서 `_trash/` 로 격리된다(의도됨).
+@@ -163,14 +166,14 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므
+ 
+ ### 중요한 제약사항
+ 
+-**Notion 캐시 — 전부 읽었거나, 던지거나 (v3.2.1) — 건드리지 말 것**
++**장부 캐시 — 전부 읽었거나, 던지거나 (v3.2.1 → v4.0) — 건드리지 말 것**
+ 
+-`scheduler.js:loadNotionCache()` 는 중복 판정의 유일한 근거다. 빈 캐시·부분 캐시가 한 번이라도 반환되면 전 영상이 신규로 보여 `MAX_NEW_PER_RUN`(15)편을 다시 요약·저장한다. 2026-08-12 ~ 10-01 사이 13회 발생해 Notion 중복 195건이 쌓였고, 결과가 "저장 15 · Skip 0 · 오류 0" 이라 성공으로 보였다.
++v4.0 2단계부터 `scheduler.js:loadLibraryCache()`(장부 `videos` 전량)가 중복 판정의 유일한 근거다. 아래 이력은 노션 캐시 시절 것이지만 원칙은 같다. `scheduler.js:loadNotionCache()` 는 중복 판정의 유일한 근거였다. 빈 캐시·부분 캐시가 한 번이라도 반환되면 전 영상이 신규로 보여 `MAX_NEW_PER_RUN`(15)편을 다시 요약·저장한다. 2026-08-12 ~ 10-01 사이 13회 발생해 Notion 중복 195건이 쌓였고, 결과가 "저장 15 · Skip 0 · 오류 0" 이라 성공으로 보였다.
+ 
+-- 루프를 `do { … } while (cursor)` 로 되돌리지 말 것. 첫 페이지 실패 시 `continue` 가 조건 검사로 넘어가 재시도 없이 끝난다.
+-- 재시도 초과·0건은 **던진다**. `break` 나 빈 `Map` 반환으로 바꾸지 말 것. `main` 이 받아 영상 처리와 큐 재시도를 건너뛴다(fail-closed).
+-- Notion 401/403 은 재시도 없이 `fatalAuth` 로 던지고 `main` 이 즉시 종료한다(보안 원칙 1).
+-- 새로 만든 빈 DB 로 처음 돌릴 때만 `.env` 에 `NOTION_CACHE_ALLOW_EMPTY=true`. 평소에는 넣지 않는다.
++- 장부 파일이 없으면 `lib/library.js:openLibrary()` 가 **만들지 않고 던진다.** 빈 장부를 새로 만들면 전 영상이 신규로 보인다. `user_version` 이 스키마와 다르면 던진다.
++- 0건은 **던진다**. 빈 `Map` 반환으로 바꾸지 말 것. `main` 이 받아 영상 처리와 큐 재시도를 건너뛰고 텔레그램으로 알린다(fail-closed).
++- 새로 만든 빈 장부로 처음 돌릴 때만 `.env` 에 `LIBRARY_ALLOW_EMPTY=true`. 평소에는 넣지 않는다. (`NOTION_CACHE_ALLOW_EMPTY` 는 더 이상 읽지 않는다)
++- `insertVideo` 는 같은 video_id 를 덮어쓰지 않는다(UNIQUE 위반으로 던짐 → 오류 1건). `INSERT OR REPLACE` 로 바꾸지 말 것.
+ - **스케줄러 결과가 "저장 15 · Skip 0" 이면 성공이 아니라 캐시 이상을 의심한다.**
+ 
+ **YouTube 조회 재시도·배치 (v3.2.1)**
+@@ -179,7 +182,7 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므
+ - 채널 구독자 수는 `getBatchSubs()` 로 50개씩 순차 조회한다. 채널마다 `Promise.all` 로 부르던 방식(실행당 새 연결·유닛 약 450)으로 되돌리지 말 것.
+ - `scheduler.js` 는 `require.main === module` 일 때만 `main` 을 돈다. 이 가드를 지우면 테스트가 실제 실행을 일으킨다.
+ 
+-**한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. Notion 태그, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `addTopicToPage()`의 NFC 체크가 중복 태그 방지의 핵심.
++**한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. Notion 태그, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `lib/library.js:addTopic()`(v4.0, 장부의 현재 topics 를 다시 읽어 NFC 합집합)이 중복 태그 방지의 핵심.
+ 
+ **Notion API 한계**:
+ - 페이지 생성 시 `children` 최대 100블록. 초과분은 `/v1/blocks/{id}/children`으로 append.
+@@ -272,6 +275,7 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
+ 
+ ## 변경 이력
+ 
++- **2026-10-11 (v4.0 2단계-a)** — 쓰기 전환. `scheduler.js` 의 노션 캐시·저장·주제 추가·통계 갱신을 로컬 장부(`lib/library.js`, `node:sqlite`)로 교체 — 노션 호출 0. `kakao_ingest.py` 는 장부 `tips` 에 한 트랜잭션으로 쓴다. `lib/library_db.py:open_existing()`(없으면 만들지 않음). `notion_to_sqlite.py --mark-switched` + 전환 후 `--apply --replace` 거부. WAL 미전환(순차 접근, busy_timeout 5초). 테스트: `test_scheduler_guards.js` 16/16(노션 캐시 5건 → 장부 9건), `test_notion_to_sqlite.py` 37/37, 신규 `test_kakao_ingest.py` 17/17. 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-a.md`.
+ - **2026-10-11 (v4.0 1단계)** — 노션 → SQLite 적재. 신규 `scripts/notion_to_sqlite.py`(노션 읽기 전용, 기본 dry-run, `--apply`·`--replace`·`--verify`·`--summary-check`), `scripts/test_notion_to_sqlite.py`(32/32, 네트워크 0회), `lib/library_schema.sql`·`lib/library_db.py`. `.gitignore` 에 `data/`. 적재 결과: 영상 페이지 3,189 → videos 2,986 · videos_dup 203 · tips 135, 요약 대조 무작위 100건 100/100 일치(속성=본문). 기존 파이프라인 코드 무변경(노션이 아직 원본). Vault 대조는 프론트매터 안의 notion_id 만 센다(Vault 루트 schema.md 본문 예시가 영상 id 로 잡혀 1차 dry-run 이 멈췄다). 노션에서 지워진 중복 꿀팁 page 의 잔여 노트 1건을 _trash/<시각>/AI 꿀팁/ 으로 격리. 지시서 `docs/tasks/2026-10-11-v4-notion-to-sqlite.md`·`-fix1.md`.
+ - **2026-10-05 (v3.2.1)** — 스케줄러 네트워크 안전장치. 배경: 로그 집계(08-12 ~ 10-05, 실행 219회)에서 실행 통째 실패 62회(28%, ENOTFOUND 41·ETIMEDOUT 17·기타 4)와, Notion 캐시 첫 조회 실패 → 빈 캐시 진행 23회(그중 13회가 영상 15편 재저장, 중복 195건). `loadNotionCache()` 를 "전부 읽었거나, 던지거나" 로 교체(재시도 초과·0건은 throw, 401/403 은 fatalAuth 즉시 종료, `NOTION_CACHE_ALLOW_EMPTY` 로만 빈 DB 허용)하고 `main` 은 캐시 실패 시 영상 처리·큐 재시도를 건너뜀(fail-closed). `ytFetch()` 에 일시 오류 지수 백오프(2→16초, 5회) 추가, 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450)에서 `getBatchSubs()` 50개 배치 순차(9회)로 교체, `scheduler.js` 를 `require.main === module` 가드로 `require` 가능하게 함. 검증: `scripts/test_scheduler_guards.js` 12/12, 모의 실행 2종(네트워크 전면 실패·Notion 401) 기대대로, 읽기 전용 실측(캐시 3,042 · 영상 1,412 · 고유 채널 450 → 구독자 응답 450 · 신규 판정 22). 야간 ENOTFOUND 의 직접 원인은 밝히지 못했다. 지시서 `docs/tasks/2026-10-05-scheduler-network-guards.md`.
+ - **2026-08-28 (v2.7.1)** — 토픽 분류의 일시적 서버 오류(5xx) 재시도 추가. `scheduler.js` 분류 catch 블록의 재시도 대상을 429/quota → +`5xx`·`UNAVAILABLE`·`overloaded`·`high demand`로 확장하고 지수 백오프(2→15초 상한)를 적용, 401/403은 즉시 중단으로 명시, `keysCount > 1` 조건을 키 교체에만 적용해 키 1개 환경에서도 재시도되게 했다. 재시도 소진 시 `cls`가 `undefined`인 채 `cls.topics`로 진입하던 잠복 TypeError 경로를 가드 2개로 차단. 지시서 `docs/tasks/2026-08-28-classify-transient-retry.md`.
+diff --git a/CLAUDE.md b/CLAUDE.md
+index c44f6ef..e895efa 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -23,7 +23,8 @@ python3 sync_obsidian.py       # Notion DB → Obsidian .md 파일 증분 동기
+ python3 sync_obsidian.py --no-tips   # 꿀팁 동기화 제외 (YouTube 쪽만 진단할 때)
+ python3 build_obsidian_wiki.py # MOC + 키워드 허브 파일 재구성
+ 
+-# 카카오톡 → Notion「AI 꿀팁」 (v3.0. 스케줄러가 --apply --if-new 로 자동 호출. 수동 실행은 /usr/bin/python3 — python.org 3.11은 SSL 인증서 없음)
++# 카카오톡 → 장부 tips (v4.0 2단계~: 노션 대신 data/library.db. 스케줄러가 --apply --if-new 로 자동 호출. 수동 실행은 /opt/homebrew/bin/python3)
++# ※ 아래 '→ Notion 육안 확인'·lib/tips_notion.py 줄은 v3.x 설명이다. 지금은 장부에 쓴다 (지시서 3 에서 정리)
+ /usr/bin/python3 kakao_ingest.py                    # dry-run (기본). 생성될 행 표만 출력
+ /usr/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 실제 생성 → Notion 육안 확인
+ /usr/bin/python3 kakao_ingest.py --apply            # 전량
+@@ -52,7 +53,9 @@ node scripts/test_scheduler_guards.js
+ /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py                    # dry-run
+ /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply --replace  # 다시 적재 (기존 파일은 .bak.<시각>)
+ /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify           # 노션 호출 없이 library.db ↔ Vault 대조
+-/opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py               # 회귀 테스트 (네트워크 0회, 32/32)
++/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --mark-switched    # (2단계) 장부를 원본으로 확정 — 이후 --apply --replace 거부
++/opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py               # 회귀 테스트 (네트워크 0회, 37/37)
++/opt/homebrew/bin/python3 scripts/test_kakao_ingest.py                   # (2단계) 카톡 → 장부 tips 회귀 테스트 (17/17)
+ 
+ # launchd 제어 (6시간 자동 실행)
+ launchctl start com.irichgreen.ytsummarizer
+@@ -128,7 +131,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ 
+ | 파일 | 역할 |
+ |------|------|
+-| `scheduler.js` | 메인 오케스트레이터. YouTube API 조회, Gemini 요약, Notion 저장, Telegram 알림. launchd가 6시간 간격 실행. |
++| `scheduler.js` | 메인 오케스트레이터. YouTube API 조회, Gemini 요약, **로컬 장부 저장(v4.0, `lib/library.js`)**, Telegram 알림. launchd가 6시간 간격 실행. 노션 호출 없음. |
+ | `server.js` | HTTP 서버(포트 3000). `index.html` 서빙 + Notion API 프록시(보안 화이트리스트). SSE `/api/master-ingest` 엔드포인트로 실시간 로그 스트리밍. |
+ | `index.html` | 단일 페이지 웹 UI. 재생목록 관리, 마스터 인제스트 트리거, 처리 결과 테이블. |
+ | `lib/classifier.js` | Gemini 기반 토픽 분류기. `playlists.json`의 토픽 목록만 허용(allowedSet 필터). 신뢰도 0.6 미만이면 YouTube 추가 건너뜀. |
+@@ -141,7 +144,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `playlists.json` | 33개 토픽 재생목록 목록. 분류기의 허용 토픽 소스이기도 함. gitignore 대상. |
+ | `scripts/clean_pending_queue.js` | (v2.5) 큐 중복 제거 + dead-letter 격리. 기본 dry-run, `--apply` 필요. |
+ | `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. |
+-| `kakao_ingest.py` | (v3.0) 카톡 CSV → Notion「AI 꿀팁」DB. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **DB 전량 조회 + URL 정규화 키**. |
++| `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. |
+ | `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
+ | `lib/tips_notion.py` | (v3.0) 「AI 꿀팁」DB 조회/생성 래퍼. 속성 타입 표를 주석에 고정. 401/403 → `NotionAuthError` 즉시 종료. |
+ | `wiki.html` | Wiki 검색 화면. 의미 검색 + AI 답변, 토픽 필터·정렬. `server.js`와 `wiki_lan_server.js`가 같은 파일을 서빙한다. |
+@@ -150,7 +153,9 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. |
+ | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
+ | `scripts/notion_to_sqlite.py` | (v4.0 1단계) 노션 두 DB → `data/library.db`. 노션 읽기 전용, 기본 dry-run. 중복 video_id 는 Vault 노트 기준으로 하나만 남기고 `videos_dup` 에 보관. |
+-| `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나 — Node 도 같은 파일을 실행) · Python 헬퍼. |
++| `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
++| `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
++| `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
+ 
+ ### Wiki 검색 — 입구는 여럿, 엔진은 하나 (v3.2)
+ 
+@@ -230,7 +235,10 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므
+ 
+ ### v4.0 이행 중 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
+ 
+-- **지금(1단계 완료 ~ 2단계 전)은 노션이 여전히 원본이다.** `library.db` 는 적재 시점의 스냅샷이고 스케줄러는 노션에 쓴다. 2단계는 스케줄러를 멈추고 `--apply --replace` 로 다시 적재한 뒤 전환한다.
++- **2단계-a(쓰기 전환) 완료 후: 장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 노션에 쓰지 않고 `data/library.db` 에 쓴다. 노션은 낡은 사본(해지 대기).
++  2-b(읽기 전환) 전까지 `sync_obsidian.py` 는 아직 노션을 읽으므로 **새 영상·꿀팁의 Obsidian 노트가 생기지 않는다** — 2-a·2-b 사이에는 스케줄러를 멈춰 둔다.
++- **`meta.switched_at` 이 찍힌 장부에 `notion_to_sqlite.py --apply --replace` 를 돌리지 말 것** — 스크립트가 거부한다(앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다).
++- journal_mode 는 기본(DELETE) 그대로 둔다. 접근이 scheduler → kakao_ingest → sync_obsidian 순차라 WAL 이 필요 없다. 겹치면 Node·Python 모두 busy_timeout 5초 대기.
+ - `record_id` = 노션 page id(하이픈 포함) = Obsidian `notion_id`. **프론트매터 키 이름 `notion_id` 를 바꾸지 말 것** — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다. 새 행은 uuid4.
+ - `data/` 는 gitignore. 개인 요약 전체가 들어 있다 — `git check-ignore -q data/library.db` 로 확인.
+ - `videos_dup` 은 지우지 않는다(중복 페이지 보관, 되돌림용). `has_vault_note=1` 행의 노트는 2단계 첫 동기화에서 `_trash/` 로 격리된다(의도됨).
+@@ -238,14 +246,14 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므
+ 
+ ### 중요한 제약사항
+ 
+-**Notion 캐시 — 전부 읽었거나, 던지거나 (v3.2.1) — 건드리지 말 것**
++**장부 캐시 — 전부 읽었거나, 던지거나 (v3.2.1 → v4.0) — 건드리지 말 것**
+ 
+-`scheduler.js:loadNotionCache()` 는 중복 판정의 유일한 근거다. 빈 캐시·부분 캐시가 한 번이라도 반환되면 전 영상이 신규로 보여 `MAX_NEW_PER_RUN`(15)편을 다시 요약·저장한다. 2026-08-12 ~ 10-01 사이 13회 발생해 Notion 중복 195건이 쌓였고, 결과가 "저장 15 · Skip 0 · 오류 0" 이라 성공으로 보였다.
++v4.0 2단계부터 `scheduler.js:loadLibraryCache()`(장부 `videos` 전량)가 중복 판정의 유일한 근거다. 아래 이력은 노션 캐시 시절 것이지만 원칙은 같다. `scheduler.js:loadNotionCache()` 는 중복 판정의 유일한 근거였다. 빈 캐시·부분 캐시가 한 번이라도 반환되면 전 영상이 신규로 보여 `MAX_NEW_PER_RUN`(15)편을 다시 요약·저장한다. 2026-08-12 ~ 10-01 사이 13회 발생해 Notion 중복 195건이 쌓였고, 결과가 "저장 15 · Skip 0 · 오류 0" 이라 성공으로 보였다.
+ 
+-- 루프를 `do { … } while (cursor)` 로 되돌리지 말 것. 첫 페이지 실패 시 `continue` 가 조건 검사로 넘어가 재시도 없이 끝난다.
+-- 재시도 초과·0건은 **던진다**. `break` 나 빈 `Map` 반환으로 바꾸지 말 것. `main` 이 받아 영상 처리와 큐 재시도를 건너뛴다(fail-closed).
+-- Notion 401/403 은 재시도 없이 `fatalAuth` 로 던지고 `main` 이 즉시 종료한다(보안 원칙 1).
+-- 새로 만든 빈 DB 로 처음 돌릴 때만 `.env` 에 `NOTION_CACHE_ALLOW_EMPTY=true`. 평소에는 넣지 않는다.
++- 장부 파일이 없으면 `lib/library.js:openLibrary()` 가 **만들지 않고 던진다.** 빈 장부를 새로 만들면 전 영상이 신규로 보인다. `user_version` 이 스키마와 다르면 던진다.
++- 0건은 **던진다**. 빈 `Map` 반환으로 바꾸지 말 것. `main` 이 받아 영상 처리와 큐 재시도를 건너뛰고 텔레그램으로 알린다(fail-closed).
++- 새로 만든 빈 장부로 처음 돌릴 때만 `.env` 에 `LIBRARY_ALLOW_EMPTY=true`. 평소에는 넣지 않는다. (`NOTION_CACHE_ALLOW_EMPTY` 는 더 이상 읽지 않는다)
++- `insertVideo` 는 같은 video_id 를 덮어쓰지 않는다(UNIQUE 위반으로 던짐 → 오류 1건). `INSERT OR REPLACE` 로 바꾸지 말 것.
+ - **스케줄러 결과가 "저장 15 · Skip 0" 이면 성공이 아니라 캐시 이상을 의심한다.**
+ 
+ **YouTube 조회 재시도·배치 (v3.2.1)**
+@@ -254,7 +262,7 @@ Notion API 일시 장애로 페이지 목록이 비면 대량 소실이 되므
+ - 채널 구독자 수는 `getBatchSubs()` 로 50개씩 순차 조회한다. 채널마다 `Promise.all` 로 부르던 방식(실행당 새 연결·유닛 약 450)으로 되돌리지 말 것.
+ - `scheduler.js` 는 `require.main === module` 일 때만 `main` 을 돈다. 이 가드를 지우면 테스트가 실제 실행을 일으킨다.
+ 
+-**한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. Notion 태그, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `addTopicToPage()`의 NFC 체크가 중복 태그 방지의 핵심.
++**한글 NFC 정규화**: macOS는 파일명을 NFD로 저장함. Notion 태그, 재생목록명, Obsidian 파일명은 모두 `.normalize('NFC')` 필수. `lib/library.js:addTopic()`(v4.0, 장부의 현재 topics 를 다시 읽어 NFC 합집합)이 중복 태그 방지의 핵심.
+ 
+ **Notion API 한계**:
+ - 페이지 생성 시 `children` 최대 100블록. 초과분은 `/v1/blocks/{id}/children`으로 append.
+@@ -404,6 +412,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-11 (v4.0 2단계-a)** — 쓰기 전환. `scheduler.js` 의 노션 캐시·저장·주제 추가·통계 갱신을 로컬 장부(`lib/library.js`, `node:sqlite`)로 교체 — 노션 호출 0. `kakao_ingest.py` 는 장부 `tips` 에 한 트랜잭션으로 쓴다. `lib/library_db.py:open_existing()`(없으면 만들지 않음). `notion_to_sqlite.py --mark-switched` + 전환 후 `--apply --replace` 거부. WAL 미전환(순차 접근, busy_timeout 5초). 테스트: `test_scheduler_guards.js` 16/16(노션 캐시 5건 → 장부 9건), `test_notion_to_sqlite.py` 37/37, 신규 `test_kakao_ingest.py` 17/17. 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-a.md`.
+ - **2026-10-11 (v4.0 1단계)** — 노션 → SQLite 적재. 신규 `scripts/notion_to_sqlite.py`(노션 읽기 전용, 기본 dry-run, `--apply`·`--replace`·`--verify`·`--summary-check`), `scripts/test_notion_to_sqlite.py`(32/32, 네트워크 0회), `lib/library_schema.sql`·`lib/library_db.py`. `.gitignore` 에 `data/`. 적재 결과: 영상 페이지 3,189 → videos 2,986 · videos_dup 203 · tips 135, 요약 대조 무작위 100건 100/100 일치(속성=본문). 기존 파이프라인 코드 무변경(노션이 아직 원본). Vault 대조는 프론트매터 안의 notion_id 만 센다(Vault 루트 schema.md 본문 예시가 영상 id 로 잡혀 1차 dry-run 이 멈췄다). 노션에서 지워진 중복 꿀팁 page 의 잔여 노트 1건을 _trash/<시각>/AI 꿀팁/ 으로 격리. 지시서 `docs/tasks/2026-10-11-v4-notion-to-sqlite.md`·`-fix1.md`.
+ - **2026-10-05 (v3.2.1)** — 스케줄러 네트워크 안전장치. 배경: 로그 집계(08-12 ~ 10-05, 실행 219회)에서 실행 통째 실패 62회(28%, ENOTFOUND 41·ETIMEDOUT 17·기타 4)와, Notion 캐시 첫 조회 실패 → 빈 캐시 진행 23회(그중 13회가 영상 15편 재저장, 중복 195건). `loadNotionCache()` 를 "전부 읽었거나, 던지거나" 로 교체(재시도 초과·0건은 throw, 401/403 은 fatalAuth 즉시 종료, `NOTION_CACHE_ALLOW_EMPTY` 로만 빈 DB 허용)하고 `main` 은 캐시 실패 시 영상 처리·큐 재시도를 건너뜀(fail-closed). `ytFetch()` 에 일시 오류 지수 백오프(2→16초, 5회) 추가, 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450)에서 `getBatchSubs()` 50개 배치 순차(9회)로 교체, `scheduler.js` 를 `require.main === module` 가드로 `require` 가능하게 함. 검증: `scripts/test_scheduler_guards.js` 12/12, 모의 실행 2종(네트워크 전면 실패·Notion 401) 기대대로, 읽기 전용 실측(캐시 3,042 · 영상 1,412 · 고유 채널 450 → 구독자 응답 450 · 신규 판정 22). 야간 ENOTFOUND 의 직접 원인은 밝히지 못했다. 지시서 `docs/tasks/2026-10-05-scheduler-network-guards.md`.
+ - **2026-10-03 (v3.2)** — 집 안 전용 읽기 전용 Wiki 검색 서버 `wiki_lan_server.js`(포트 3100) 신설 + `com.irichgreen.wiki-lan` 데몬. `server.js` 는 Notion 쓰기 프록시·인제스트 실행 엔드포인트가 함께 있어 `127.0.0.1` 전용을 유지하고, 검색 라우트 6개만 별도 서버로 노출한다. 안전장치: `.env` 의 `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용(미설정·오류 시 127.0.0.1 전용, fail-closed), 소켓 주소만 신뢰(XFF 무시), Host 검사, AI 답변 IP당 분당 5회 + 24시간 총량 제한. `wiki.html` 에 `IS_LOCAL` 추가(가족 PC 에서 Obsidian 링크 숨김). 검증: 바인딩 `*:3100`/`127.0.0.1:3000` 분리 유지, server.js 전용 경로 6종 전부 404, 위조 Host·타 출처 403, 검색 vector 2건, AI 답변 정상 1회. `CLAUDE.md` 머리 버전을 v3.0→v3.2 로 교정(README 는 09-10 에 이미 v3.1)하고, 표에 없던 검색 계열 파일(`wiki.html`·`lib/wiki_search.js`·`wiki_mcp.js`·`build_search_index.py`)을 추가. 방화벽 수신 허용(sudo)과 가족 PC 실접속 확인은 사용자 몫. 지시서 `docs/tasks/2026-10-03-wiki-lan-server.md`. 같은 날 보완: 기동 로그의 접속 주소를 `os.hostname()` → `scutil --get LocalHostName` 기준으로 교정(전자는 `.local`로 풀리지 않는 이름을 줬다), `.gitignore`에 `Claude outputs/` 추가, `AGENTS.md`의 낡은 인터프리터 문구 정정. 지시서 `docs/tasks/2026-10-03-wiki-lan-hostname-fix.md`.
+diff --git a/kakao_ingest.py b/kakao_ingest.py
+index 5d09284..5d16c29 100644
+--- a/kakao_ingest.py
++++ b/kakao_ingest.py
+@@ -1,30 +1,33 @@
+ #!/usr/bin/env python3
+ """
+-카카오톡 '나와의 채팅' CSV → Notion「AI 꿀팁」DB 인제스트 (v2.8)
++카카오톡 '나와의 채팅' CSV → 장부 tips 인제스트 (v2.8 → v4.0: 노션「AI 꿀팁」대신 data/library.db 의 tips 테이블)
+ 
+     /usr/bin/python3 kakao_ingest.py                 # dry-run (기본). 생성될 행을 표로만 출력
+     /usr/bin/python3 kakao_ingest.py --apply --limit=3
+     /usr/bin/python3 kakao_ingest.py --apply
+     옵션: --csv=<경로>  (기본: KAKAO_EXPORT_DIR 의 최신 KakaoTalk_Chat_안진훈_*.csv — NFC 비교)
+           --since=YYYY-MM-DD  (기본: 2026-03-01 — DB 시작 시점. 그 이전 카톡 링크는 AI 자료가 아님)
+-          --if-new   스케줄러용. 최신 CSV 의 mtime 이 .kakao_state.json 에 기록된 값과 같으면 Notion 조회 없이 즉시 종료
++          --if-new   스케줄러용. 최신 CSV 의 mtime 이 .kakao_state.json 에 기록된 값과 같으면 장부 조회 없이 즉시 종료
+           --force    --if-new 무시
+ 
+ 스케줄러 연동 (v3.0): scheduler.js 가 Obsidian 동기화 직전에 `--apply --if-new` 로 호출한다.
+ 마지막 줄에 `RESULT_JSON:{...}` 를 찍어 scheduler.js 가 파싱한다 (sync_obsidian.py 와 같은 규약).
+ `.kakao_state.json` 은 "이 CSV 는 이미 봤다"는 스킵 최적화일 뿐, 중복 방지 장치가 아니다.
+ 
+-멱등성: 중복 판정은 로컬 상태 파일이 아니라 **DB 전량 조회 + URL 정규화 키**로 한다.
++멱등성: 중복 판정은 로컬 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(url_key)**로 한다.
+ 같은 CSV를 몇 번 돌려도 신규 0건이어야 정상. (2026-09-06 중복 15건 사고 재발 방지 조건)
+ 
+-보안: 401/403 → 즉시 종료. 생성 루프 350ms 간격. 지침서 docs/tasks/2026-09-06-kakao-tips-ingest.md
++v4.0: 네트워크 요청 없음. 장부가 없으면 만들지 않고 실패한다(exit 1). 신규 행은 한 트랜잭션으로 넣는다(전부 들어가거나 하나도 안 들어가거나).
++지침서 docs/tasks/2026-09-06-kakao-tips-ingest.md, docs/tasks/2026-10-11-v4-sqlite-switch-a.md
+ """
+-import glob, json, os, sys, time
++import glob, json, os, sys, time, uuid
++from datetime import datetime, timezone
+ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ sys.path.insert(0, os.path.join(SCRIPT_DIR, 'lib'))
+ 
+ from kakao_parse import parse_links, guess_meta, url_key, nfc
+-import tips_notion as tn
++import tips_notion as tn          # .env 읽기(tn.ENV)만 쓴다. 노션 호출 없음 (노션 코드 정리는 지시서 3)
++import library_db as ldb
+ 
+ DEFAULT_SINCE = '2026-03-01'
+ CSV_PREFIX = 'KakaoTalk_Chat_안진훈'          # '나와의 채팅' 내보내기 파일만. 다른 대화방 CSV 는 무시
+@@ -90,14 +93,13 @@ def main():
+     log(f'📎 CSV 링크 {len(links)}건 (since {since}, CSV 내부 중복 제거 후)')
+ 
+     try:
+-        pages = tn.load_all_tips()
+-    except tn.NotionAuthError as e:
+-        log(f'🛑 {e}'); emit_result(error='auth', csv=csv_name, created=0, candidates=0, db_total=None); sys.exit(2)
++        conn = ldb.open_existing(readonly=not apply)
++        rows = [dict(r) for r in conn.execute('SELECT url, url_key FROM tips')]
+     except Exception as e:
+-        log(f'❌ Notion 조회 실패: {e}'); emit_result(error=str(e)[:200], csv=csv_name, created=0, candidates=0, db_total=None); sys.exit(1)
+-    rows = [tn.page_to_row(p) for p in pages]
+-    existing = {url_key(r['url']) for r in rows if r['url']}
+-    log(f'🗂  Notion「AI 꿀팁」{len(rows)}건 로드 (URL 키 {len(existing)}개)')
++        log(f'❌ 장부 열기 실패: {e}'); emit_result(error=str(e)[:200], csv=csv_name, created=0, candidates=0, db_total=None); sys.exit(1)
++    # url_key 열이 비어 있는 행(이론상 없음)은 url 로 다시 계산해 대조에서 빠지지 않게 한다
++    existing = {r['url_key'] or url_key(r['url']) for r in rows if r['url'] or r['url_key']}
++    log(f'🗂  장부 tips {len(rows)}건 로드 (URL 키 {len(existing)}개)')
+ 
+     new = [l for l in links if l['key'] not in existing]
+     log(f'✨ 신규 후보 {len(new)}건\n')
+@@ -111,6 +113,7 @@ def main():
+                         'created': created, 'db_total': len(rows) + created})
+ 
+     if not new:
++        conn.close()
+         log('✅ 생성할 행 없음 — 멱등성 OK')
+         mark_done(0)
+         emit_result(csv=csv_name, created=0, candidates=0, db_total=len(rows))
+@@ -130,33 +133,38 @@ def main():
+         log(f"{row['saved_date']:10} | {row['category']:6} | {row['title'][:42]:42} | {row['url'][:70]}")
+ 
+     if not apply:
++        conn.close()
+         log(f'\n👀 dry-run 종료 — 위 {len(plan)}건은 생성되지 않았습니다. 실제 생성은 --apply')
+         emit_result(dry_run=True, csv=csv_name, created=0, candidates=len(plan), db_total=len(rows))
+         return
+ 
+-    created, failed = 0, 0
+-    titles = []
+-    for i, row in enumerate(plan, 1):
+-        try:
+-            res = tn.create_tip(row)
+-            created += 1
+-            titles.append(row['title'])
+-            log(f"  [{i}/{len(plan)}] ✅ {row['title'][:40]}  {res.get('url', '')}")
+-        except tn.NotionAuthError as e:
+-            log(f'🛑 {e}\n   생성 {created}건 후 중단')
+-            emit_result(error='auth', csv=csv_name, created=created, candidates=len(plan), db_total=len(rows) + created)
+-            sys.exit(2)
+-        except Exception as e:
+-            failed += 1
+-            log(f"  [{i}/{len(plan)}] ❌ {row['title'][:40]} — {e}")
+-            if failed >= 5:
+-                log('🛑 연속 실패 5회 — 중단'); break
+-
+-    log(f'\n🎉 생성 {created}건 · 실패 {failed}건 · Notion 총 {len(rows) + created}건 예상')
+-    if failed == 0:
+-        mark_done(created)
+-    emit_result(csv=csv_name, created=created, failed=failed, candidates=len(plan),
+-                db_total=len(rows) + created, titles=titles[:10])
++    # 노션 tips_notion.build_properties 와 같은 기본값: 제목이 비면 URL, 카테고리 '기타', 상태 '미확인', 중요도 '중'
++    dt = datetime.now(timezone.utc)
++    now = dt.strftime('%Y-%m-%dT%H:%M:%S.') + f'{dt.microsecond // 1000:03d}Z'   # scheduler 와 같은 ISO 형식
++    vals = []
++    for row in plan:
++        vals.append((str(uuid.uuid4()), nfc((row['title'] or row['url'])[:200]), row['url'], url_key(row['url']),
++                     row.get('source') or '', json.dumps([nfc(t) for t in row.get('tags') or []], ensure_ascii=False),
++                     nfc(row.get('category') or '기타'), nfc(row.get('status') or '미확인'), nfc(row.get('importance') or '중'),
++                     (row.get('saved_date') or '')[:10] or None, nfc(row.get('memo') or ''), '', now, now))
++    try:
++        with conn:   # 한 트랜잭션 — 실패하면 아무 행도 남지 않는다
++            conn.executemany('INSERT INTO tips (record_id, title, url, url_key, source, tags, category, status, importance, '
++                             'saved_date, memo, body_md, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', vals)
++        db_total = conn.execute('SELECT COUNT(*) FROM tips').fetchone()[0]
++    except Exception as e:
++        log(f'❌ 장부 쓰기 실패 — 아무 행도 넣지 않았습니다: {e}')
++        emit_result(error=str(e)[:200], csv=csv_name, created=0, candidates=len(plan), db_total=len(rows))
++        sys.exit(1)
++    finally:
++        conn.close()
++    created = len(vals)
++    titles = [v[1] for v in vals]
++    for i, t in enumerate(titles, 1):
++        log(f'  [{i}/{created}] ✅ {t[:40]}')
++    log(f'\n🎉 생성 {created}건 · 장부 tips 총 {db_total}건')
++    mark_done(created)
++    emit_result(csv=csv_name, created=created, failed=0, candidates=len(plan), db_total=db_total, titles=titles[:10])
+ 
+ 
+ if __name__ == '__main__':
+diff --git a/lib/library.js b/lib/library.js
+new file mode 100644
+index 0000000..d75fb29
+--- /dev/null
++++ b/lib/library.js
+@@ -0,0 +1,109 @@
++// v4.0 로컬 원본 장부(data/library.db) — Node 쪽 헬퍼. Python 쪽은 lib/library_db.py.
++// 스키마 원본은 lib/library_schema.sql 하나다. 이 파일은 user_version 을 그 파일에서 읽어 대조만 한다.
++//
++// ★ openLibrary 는 파일이 없으면 만들지 않고 던진다. 빈 장부를 새로 만들면 모든 영상이 신규로 보여 중복 저장이 난다
++//   (2026-10-05 빈 Notion 캐시 사고와 같은 구조). 호출자(scheduler.js main)는 던지면 영상 처리를 건너뛴다(fail-closed).
++// ★ journal_mode 는 기본(DELETE) 그대로 둔다. 쓰기는 짧은 단일 문장이고 접근 순서가 scheduler → kakao_ingest → sync_obsidian
++//   으로 순차라 WAL 이 필요 없다. 동시 실행(launchd + 웹 버튼)이 겹치면 busy_timeout 5초 동안 기다린다.
++'use strict';
++const fs = require('fs');
++const path = require('path');
++const crypto = require('crypto');
++
++const REPO_ROOT = path.join(__dirname, '..');
++const DB_PATH = path.join(REPO_ROOT, 'data', 'library.db');
++const SCHEMA_PATH = path.join(__dirname, 'library_schema.sql');
++const BUSY_TIMEOUT_MS = 5000;
++
++// node:sqlite 는 Node 22 에서 실험 기능이라 require 순간 ExperimentalWarning 을 stderr 로 찍는다.
++// 그 한 줄만 삼킨다 (server.js 의 마스터 인제스트가 stderr 를 '⚠️' 로 화면에 흘리기 때문). 다른 경고는 그대로 통과.
++function loadSqlite() {
++  const orig = process.emitWarning;
++  process.emitWarning = function (w, ...rest) {
++    if (String((w && w.message) || w).includes('SQLite is an experimental feature')) return;
++    return orig.call(process, w, ...rest);
++  };
++  try { return require('node:sqlite'); } finally { process.emitWarning = orig; }
++}
++
++function schemaVersion() {
++  const m = fs.readFileSync(SCHEMA_PATH, 'utf8').match(/PRAGMA\s+user_version\s*=\s*(\d+)/i);
++  if (!m) throw new Error(`${SCHEMA_PATH} 에서 user_version 을 못 찾았습니다`);
++  return Number(m[1]);
++}
++
++function openLibrary(dbPath = DB_PATH) {
++  if (!fs.existsSync(dbPath)) {
++    throw new Error(`장부 파일 없음: ${path.relative(REPO_ROOT, dbPath) || dbPath} — scripts/notion_to_sqlite.py 로 만든 data/library.db 가 있어야 합니다`);
++  }
++  const { DatabaseSync } = loadSqlite();
++  const db = new DatabaseSync(dbPath);
++  try {
++    db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
++    const uv = db.prepare('PRAGMA user_version').get().user_version;
++    const want = schemaVersion();
++    if (uv !== want) throw new Error(`장부 user_version ${uv} ≠ 스키마 ${want} — 다른 버전의 장부입니다`);
++  } catch (e) {
++    try { db.close(); } catch {}
++    throw e;
++  }
++  return db;
++}
++
++const nfc = (s) => String(s || '').normalize('NFC');
++const nowIso = () => new Date().toISOString();
++
++function parseTopics(json) {
++  try {
++    const a = JSON.parse(json || '[]');
++    return Array.isArray(a) ? a.map(nfc).filter(Boolean) : [];
++  } catch { return []; }
++}
++
++// 중복 판정용 전체 행 (videos 만. videos_dup 은 같은 video_id 의 보관본이라 판정에 필요 없다)
++function allVideos(db) {
++  return db.prepare(
++    'SELECT record_id, video_id, title, topics, view_count, subscriber_count, upload_date FROM videos'
++  ).all().map(r => ({ ...r, topics: parseTopics(r.topics) }));
++}
++
++// 신규 영상 1건 저장 → record_id(uuid4). 같은 video_id 가 이미 있으면 UNIQUE 위반으로 던진다(덮어쓰지 않는다).
++function insertVideo(db, v) {
++  const topics = [...new Set((v.topics || []).map(nfc).filter(Boolean))];
++  const id = crypto.randomUUID();
++  const ts = nowIso();
++  db.prepare(`INSERT INTO videos
++    (record_id, video_id, title, channel, topics, upload_date, view_count, subscriber_count,
++     video_url, thumbnail_url, status, summary, summary_src, created_at, updated_at)
++    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'app', ?, ?)`).run(
++    id, v.videoId || null, nfc(v.title), nfc(v.channelTitle), JSON.stringify(topics),
++    v.uploadDate || null, v.viewCount ?? null, v.subscriberCount ?? null,
++    v.videoId ? `https://www.youtube.com/watch?v=${v.videoId}` : null,
++    v.thumbnail || null, '완료', nfc(v.summary), ts, ts);
++  return id;
++}
++
++// 주제 1개 추가. 장부의 현재 값을 다시 읽어 합집합으로 쓴다(캐시 값을 믿지 않는다). 반환: 추가했으면 true
++function addTopic(db, recordId, topic) {
++  const t = nfc(topic);
++  if (!t) return false;
++  const row = db.prepare('SELECT topics FROM videos WHERE record_id = ?').get(recordId);
++  if (!row) throw new Error(`장부에 없는 record_id: ${recordId}`);
++  const cur = parseTopics(row.topics);
++  if (cur.includes(t)) return false;
++  db.prepare('UPDATE videos SET topics = ?, updated_at = ? WHERE record_id = ?')
++    .run(JSON.stringify([...cur, t]), nowIso(), recordId);
++  return true;
++}
++
++// 조회수·구독자수(·업로드일) 갱신. uploadDate 가 없으면 기존 값을 그대로 둔다.
++function updateStats(db, recordId, viewCount, subscriberCount, uploadDate) {
++  const r = uploadDate
++    ? db.prepare('UPDATE videos SET view_count = ?, subscriber_count = ?, upload_date = ?, updated_at = ? WHERE record_id = ?')
++        .run(viewCount || 0, subscriberCount || 0, uploadDate, nowIso(), recordId)
++    : db.prepare('UPDATE videos SET view_count = ?, subscriber_count = ?, updated_at = ? WHERE record_id = ?')
++        .run(viewCount || 0, subscriberCount || 0, nowIso(), recordId);
++  return Number(r.changes) === 1;
++}
++
++module.exports = { DB_PATH, loadSqlite, openLibrary, allVideos, insertVideo, addTopic, updateStats, schemaVersion };
+diff --git a/lib/library_db.py b/lib/library_db.py
+index 5620fd5..4a59c65 100644
+--- a/lib/library_db.py
++++ b/lib/library_db.py
+@@ -23,10 +23,25 @@ def open_db(path=DB_PATH, readonly=False):
+     else:
+         os.makedirs(os.path.dirname(path), exist_ok=True)
+         conn = sqlite3.connect(path)
+-        # journal_mode 는 기본(DELETE) 그대로 둔다. WAL 전환 여부는 동시 쓰기가 생기는 2단계에서 정한다.
++        # journal_mode 는 기본(DELETE) 그대로 둔다 (2단계 결정: 접근이 순차라 WAL 불필요, 겹치면 timeout 5초 대기).
+     conn.row_factory = sqlite3.Row
+     return conn
+ 
+ 
+ def apply_schema(conn):
+     conn.executescript(schema_sql())
++
++
++def open_existing(path=None, readonly=False):
++    """v4.0 2단계 — 이미 있는 장부만 연다. 파일이 없으면 만들지 않고 FileNotFoundError, user_version 이 다르면 RuntimeError.
++    빈 장부를 새로 만들면 모든 링크·영상이 신규로 보여 중복이 쌓인다(scheduler.js·lib/library.js 와 같은 원칙).
++    sqlite3.connect 의 기본 timeout 5초 = busy_timeout 5초 (Node 쪽 lib/library.js 와 같은 값)."""
++    path = path or DB_PATH
++    if not os.path.exists(path):
++        raise FileNotFoundError(f'장부 파일 없음: {path} — scripts/notion_to_sqlite.py 로 만든 data/library.db 가 있어야 합니다')
++    conn = open_db(path, readonly=readonly)
++    uv = conn.execute('PRAGMA user_version').fetchone()[0]
++    if uv != SCHEMA_VERSION:
++        conn.close()
++        raise RuntimeError(f'장부 user_version {uv} ≠ 스키마 {SCHEMA_VERSION}')
++    return conn
+diff --git a/scheduler.js b/scheduler.js
+index 9ad9778..40cd422 100644
+--- a/scheduler.js
++++ b/scheduler.js
+@@ -1,10 +1,11 @@
+-// ===== YouTube → Notion AI 요약기 자동 스케줄러 =====
++// ===== YouTube AI 요약기 자동 스케줄러 (v4.0: 저장 = 로컬 장부 data/library.db) =====
+ // Mac launchd에 의해 6시간 간격으로 자동 실행됩니다.
+ // 직접 실행: node scheduler.js
+ 
+ const https = require('https');
+ const fs = require('fs');
+ const path = require('path');
++const library = require('./lib/library');   // v4.0 로컬 장부 (node:sqlite)
+ 
+ // ══════════════════════════════════
+ // ★ .env 파일에서 환경변수 로드 ★
+@@ -55,13 +56,11 @@ const CONFIG = {
+   youtubeApiKey:        process.env.YOUTUBE_API_KEY             || '',
+   geminiApiKey:         process.env.GEMINI_API_KEY              || '', // 하위 호환성용
+   geminiApiKeys:        getGeminiKeys(),                        // 다중 키 배열
+-  notionToken:          process.env.NOTION_TOKEN                || '',
+-  notionDbId:           process.env.NOTION_DB_ID                || '',
+   masterPlaylistId:     process.env.YOUTUBE_MASTER_PLAYLIST_ID  || '',
+ 
+   // 토픽별 YouTube 재생목록 자동 추가 (2026-09-09 신설 스위치).
+   // 'false' 로 두면 재생목록 추가와 pending 큐 재시도를 모두 건너뛴다.
+-  // ★ 요약·Notion 저장·Obsidian 동기화·토픽 분류는 이 값과 무관하게 그대로 동작한다.
++  // ★ 요약·장부 저장·Obsidian 동기화·토픽 분류는 이 값과 무관하게 그대로 동작한다.
+   //   playlists.json 은 분류기의 후보 토픽 목록이므로 비우면 안 된다(주제 분류가 죽는다).
+   playlistSync:         process.env.YOUTUBE_PLAYLIST_SYNC !== 'false',
+ 
+@@ -105,7 +104,7 @@ function sendTelegram(message) {
+   });
+ }
+ 
+-// ── (v3.0) 카카오톡 → Notion「AI 꿀팁」 ──
++// ── (v3.0) 카카오톡 → 장부 tips (v4.0 부터 노션 대신 data/library.db) ──
+ // kakao_ingest.py --apply --if-new 실행. 새 CSV 가 없으면 Python 쪽이 즉시 종료한다.
+ // 실패해도 reject 하지 않는다 — 카톡 단계가 Obsidian 동기화를 막으면 안 된다.
+ function runKakaoIngest(python3) {
+@@ -118,9 +117,7 @@ function runKakaoIngest(python3) {
+         let r = null;
+         const line = String(stdout || '').split('\n').find(l => l.startsWith('RESULT_JSON:'));
+         if (line) { try { r = JSON.parse(line.slice('RESULT_JSON:'.length)); } catch (e) { log(`⚠️ 카톡 결과 파싱 오류: ${e.message}`); } }
+-        if (r && r.error === 'auth') {
+-          log('🛑 카톡 인제스트: Notion 401/403 — 연쇄 요청 없이 이번 실행은 건너뜀 (토큰·DB 연결 확인 필요)');
+-        } else if (err) {
++        if (err) {
+           log(`⚠️ 카톡 인제스트 오류 (exit ${err.code}): ${String(stderr || '').slice(-300)}`);
+         } else if (r && r.skipped) {
+           log(`ℹ️  카톡 인제스트 건너뜀: ${r.skipped}${r.csv ? ` (${r.csv})` : ''}`);
+@@ -143,7 +140,7 @@ function sendEmail(subject, body) {
+     const auth = Buffer.from(`\0${from}\0${appPass}`).toString('base64');
+     const boundary = 'boundary_yt_notify';
+     const msg = [
+-      `From: YouTube Notion 요약기 <${from}>`,
++      `From: YouTube 요약기 <${from}>`,
+       `To: ${to}`,
+       `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
+       'MIME-Version: 1.0',
+@@ -203,15 +200,6 @@ function loadPlaylists() {
+   }
+ }
+ 
+-// ── 토큰 정리 ──
+-function cleanToken(token) {
+-  if (!token) return '';
+-  try { token = decodeURIComponent(token); } catch(e) {}
+-  token = token.trim().replace(/[\r\n\t\x00-\x1F\x7F]/g, '');
+-  token = token.replace(/^Bearer\s+/i, '');
+-  return token;
+-}
+-
+ // ── HTTPS GET/POST 래퍼 ──
+ // Buffer 배열로 수집 후 utf8 디코딩 → 이모지 등 멀티바이트 문자 깨짐 방지
+ function httpsRequest(options, body) {
+@@ -551,102 +539,41 @@ async function geminiSummarize(v) {
+   return finalSummary;
+ }
+ 
+-// ── Notion API 호출 ──
+-async function notionCall(method, apiPath, body) {
+-  const token = cleanToken(CONFIG.notionToken);
+-  const bodyStr = body ? JSON.stringify(body) : null;
+-  const res = await httpsRequest({
+-    hostname: 'api.notion.com',
+-    path: apiPath,
+-    method,
+-    headers: {
+-      'Authorization': `Bearer ${token}`,
+-      'Content-Type': 'application/json',
+-      'Notion-Version': '2022-06-28',
+-      ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr, 'utf8') } : {}),
+-    },
+-  }, bodyStr);
+-  return res;
+-}
+-
+-// ── Notion DB 전체 캐시 로드 (재생목록 처리 전 1회만 호출) ──
+-async function loadNotionCache() {
+-  const cache = new Map();
+-  let cursor = undefined;
+-  let total = 0;
+-  let retryCount = 0;
+-  let done = false;
+-  const MAX_RETRY = 10;          // 네트워크 복구 대기 포함해 여유 있게
+-  const NETWORK_WAIT_MS = 30000; // 네트워크 오류 시 30초 대기
+-  log('  📦 Notion DB 캐시 로딩 중...');
+-  // ★ `do { … } while (cursor)` 로 되돌리지 말 것. 첫 페이지에서 실패하면 `continue` 가 조건 검사로 넘어가는데
+-  //   cursor 가 아직 undefined 라 재시도 없이 빈 캐시로 끝난다. 빈 캐시는 전 영상을 신규로 보이게 해 중복 저장을 만든다.
+-  // ★ 이 함수는 "전부 읽었거나, 던지거나" 둘 중 하나다. 부분 캐시·빈 캐시를 반환하는 경로를 만들지 말 것.
+-  while (!done) {
+-    const body = { page_size: 100 };
+-    if (cursor) body.start_cursor = cursor;
+-    let res;
+-    try {
+-      res = await notionCall('POST', `/v1/databases/${CONFIG.notionDbId}/query`, body);
+-    } catch (netErr) {
+-      retryCount++;
+-      const isNetErr = netErr.code === 'ENOTFOUND' || netErr.code === 'ETIMEDOUT'
+-                    || netErr.code === 'ECONNREFUSED' || netErr.code === 'ECONNRESET';
+-      const waitMs = isNetErr ? NETWORK_WAIT_MS : 2000 * retryCount;
+-      log(`  ⚠️ 네트워크 오류 (${netErr.code || netErr.message}), ${waitMs / 1000}초 후 재시도 ${retryCount}/${MAX_RETRY}...`);
+-      if (retryCount >= MAX_RETRY) throw netErr;
+-      await new Promise(r => setTimeout(r, waitMs));
+-      continue;
+-    }
+-    if (res.status === 401 || res.status === 403) {
+-      // 인증 만료·권한 거부는 재시도하지 않는다(보안 원칙 1). main 이 fatalAuth 를 보고 즉시 종료한다.
+-      const authErr = new Error(`Notion 인증·권한 오류 (status ${res.status})`);
+-      authErr.fatalAuth = true;
+-      throw authErr;
+-    }
+-    if (res.status !== 200 || !Array.isArray(res.data?.results)) {
+-      retryCount++;
+-      log(`  ⚠️ Notion API 오류 (status ${res.status}), 재시도 ${retryCount}/${MAX_RETRY}...`);
+-      if (retryCount >= MAX_RETRY) {
+-        throw new Error(`Notion 캐시 로딩 실패 — 재시도 횟수 초과 (status ${res.status}, ${total}개까지 로드)`);
+-      }
+-      await new Promise(r => setTimeout(r, 2000 * retryCount));
+-      continue;
+-    }
+-    retryCount = 0;
+-    for (const page of (res.data?.results || [])) {
+-      const props = page.properties || {};
+-      const title = (props['영상 제목']?.title || []).map(t => t.text?.content || '').join('');
+-      const videoUrl = props['영상 URL']?.url || '';
+-      const vidMatch = videoUrl.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+-      const videoId = vidMatch ? vidMatch[1] : '';
+-      if (!videoId && !title) continue;
+-      
+-      const entry = {
+-        pageId:           page.id,
+-        title:            title,
+-        topics:           (props['주제']?.multi_select || []).map(t => (t.name || '').normalize('NFC')),
+-        savedViewCount:   props['조회수']?.number ?? null,
+-        savedSubscribers: props['구독자수']?.number ?? null,
+-        savedDate:        props['업로드 일자']?.date?.start ?? null,
+-      };
+-
+-      if (videoId) cache.set(videoId, entry);
+-      if (title) cache.set(title, entry);
+-      
+-      // 정규화된 제목 보조 키 등록 (공백/이모지 방지)
+-      const normTitle = normalizeTitle(title);
+-      if (normTitle) cache.set(normTitle, entry);
+-    }
+-    total += res.data.results.length;
+-    cursor = res.data.next_cursor;
+-    done = !cursor;
+-    log(`  📦 캐시 진행: ${total}개 로드됨...`);
++// ══════════════════════════════════
++// ── v4.0 로컬 장부 (data/library.db) ──
++// ══════════════════════════════════
++// 노션 대신 맥 로컬 SQLite 1파일이 원본이다. 스키마는 lib/library_schema.sql, 접근 함수는 lib/library.js.
++let libDb = null;   // main 에서 연다. 못 열면 null 그대로 두고 영상 처리를 건너뛴다(fail-closed)
++
++// ── 장부 전체 캐시 (재생목록 처리 전 1회) ──
++// ★ "전부 읽었거나, 던지거나" 둘 중 하나다. 빈 캐시는 전 영상을 신규로 보이게 해 중복 저장을 만든다(2026-10-05 사고).
++//   0건이면 던진다. 새로 만든 빈 장부가 맞을 때만 .env 에 LIBRARY_ALLOW_EMPTY=true.
++function loadLibraryCache(db) {
++  log('  📦 장부 캐시 로딩 중...');
++  const rows = library.allVideos(db);
++  if (rows.length === 0 && process.env.LIBRARY_ALLOW_EMPTY !== 'true') {
++    throw new Error('장부(videos)가 0건 — 새로 만든 빈 장부가 맞다면 .env 에 LIBRARY_ALLOW_EMPTY=true 를 넣고 다시 실행');
+   }
+-  if (total === 0 && process.env.NOTION_CACHE_ALLOW_EMPTY !== 'true') {
+-    throw new Error('Notion 캐시가 0건 — 새로 만든 빈 DB가 맞다면 .env 에 NOTION_CACHE_ALLOW_EMPTY=true 를 넣고 다시 실행');
++  const cache = new Map();
++  for (const r of rows) {
++    const title = r.title || '';
++    const videoId = r.video_id || '';
++    if (!videoId && !title) continue;
++    const entry = {
++      pageId:           r.record_id,          // 이름은 노션 시절 그대로 둔다 (= 장부 record_id)
++      title,
++      topics:           r.topics,
++      savedViewCount:   r.view_count ?? null,
++      savedSubscribers: r.subscriber_count ?? null,
++      savedDate:        r.upload_date ?? null,
++    };
++    if (videoId) cache.set(videoId, entry);
++    if (title) cache.set(title, entry);
++    // 정규화된 제목 보조 키 등록 (공백/이모지 방지)
++    const normTitle = normalizeTitle(title);
++    if (normTitle) cache.set(normTitle, entry);
+   }
+-  log(`  ✓ Notion DB 캐시 완료: ${total}개 페이지 로드`);
++  log(`  ✓ 장부 캐시 완료: ${rows.length}개 영상`);
+   return cache;
+ }
+ 
+@@ -661,186 +588,31 @@ function findDuplicate(video, cache) {
+   return null;
+ }
+ 
+-// ── 기존 페이지에 주제(재생목록) 추가 ──
+-async function addTopicToPage(pageId, newTopic, existingTopics) {
+-  // NFC 정규화 — 레거시 NFD 자모 분해 태그가 신규 NFC와 별개로 등록되는 것을 차단
+-  const nfcNew = (newTopic || '').normalize('NFC');
+-  const nfcExisting = (existingTopics || []).map(t => (t || '').normalize('NFC'));
+-  if (nfcExisting.includes(nfcNew)) return false;
+-  const allTopics = [...new Set([...nfcExisting, nfcNew])];
+-  const res = await notionCall('PATCH', `/v1/pages/${pageId}`, {
+-    properties: {
+-      '주제': { multi_select: allTopics.map(t => ({ name: t })) }
+-    }
+-  });
+-  return res.status === 200;
+-}
+-
+-// ── Notion rich_text 2000자 제한 분할 헬퍼 ──
+-function splitRichText(text, maxLen = 1900) {
+-  const result = [];
+-  for (let i = 0; i < (text || '').length; i += maxLen) {
+-    result.push({ type: 'text', text: { content: text.slice(i, i + maxLen) } });
+-  }
+-  return result.length ? result : [{ type: 'text', text: { content: '' } }];
+-}
+-
+-// ── **볼드** 마크다운 → Notion rich_text 변환 ──
+-function parseBoldRichText(text, maxLen = 1900) {
+-  const parts = [];
+-  const regex = /\*\*(.+?)\*\*/g;
+-  let last = 0, m;
+-  while ((m = regex.exec(text)) !== null) {
+-    if (m.index > last) parts.push({ type: 'text', text: { content: text.slice(last, m.index) } });
+-    parts.push({ type: 'text', text: { content: m[1] }, annotations: { bold: true } });
+-    last = m.index + m[0].length;
+-  }
+-  if (last < text.length) parts.push({ type: 'text', text: { content: text.slice(last) } });
+-
+-  // 각 part를 maxLen으로 분할
+-  const result = [];
+-  for (const p of parts) {
+-    const content = p.text.content;
+-    for (let i = 0; i < content.length; i += maxLen) {
+-      result.push({ ...p, text: { ...p.text, content: content.slice(i, i + maxLen) } });
+-    }
+-  }
+-  return result.length ? result : [{ type: 'text', text: { content: '' } }];
+-}
+-
+-// ── Notion 본문 블록 생성 ──
+-function buildBlocks(summary, thumbUrl, v) {
+-  const blocks = [];
+-  const ytUrl = `https://www.youtube.com/watch?v=${v.videoId}`;
+-
+-  blocks.push({ object: 'block', type: 'image', image: { type: 'external', external: { url: thumbUrl }, caption: [{ type: 'text', text: { content: v.title || '' } }] } });
+-  blocks.push({ object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: '▶ 영상 보기: ' }, annotations: { bold: true } }, { type: 'text', text: { content: ytUrl, link: { url: ytUrl } }, annotations: { color: 'blue' } }] } });
+-  blocks.push({ object: 'block', type: 'divider', divider: {} });
+-
+-  const lines = (summary || '').split('\n');
+-  let paraLines = [];
+-  const flushPara = () => {
+-    const text = paraLines.join('\n').trim();
+-    if (text) {
+-      // 1900자씩 나누되 ** 볼드 파싱 적용
+-      const richText = parseBoldRichText(text);
+-      // Notion rich_text 배열도 100개 제한 있으므로 50개씩 묶어 paragraph 생성
+-      for (let i = 0; i < richText.length; i += 50) {
+-        blocks.push({ object: 'block', type: 'paragraph', paragraph: { rich_text: richText.slice(i, i + 50) } });
+-      }
+-    }
+-    paraLines = [];
+-  };
+-
+-  for (const line of lines) {
+-    if (line.startsWith('## ')) {
+-      flushPara();
+-      blocks.push({ object: 'block', type: 'heading_2', heading_2: { rich_text: parseBoldRichText(line.replace(/^## /, '')) } });
+-    } else if (line.startsWith('# ')) {
+-      flushPara();
+-      blocks.push({ object: 'block', type: 'heading_1', heading_1: { rich_text: parseBoldRichText(line.replace(/^# /, '')) } });
+-    } else if (line.startsWith('- ') || line.startsWith('* ')) {
+-      flushPara();
+-      blocks.push({ object: 'block', type: 'bulleted_list_item', bulleted_list_item: { rich_text: parseBoldRichText(line.replace(/^[-*] /, '')) } });
+-    } else {
+-      paraLines.push(line);
+-    }
+-  }
+-  flushPara();
+-  return blocks;
++// ── 기존 영상에 주제(재생목록) 추가 ── 장부의 현재 topics 를 다시 읽어 합집합으로 쓴다. NFC 는 lib/library.js 가 맞춘다.
++function addTopicToRecord(recordId, newTopic) {
++  try { return library.addTopic(libDb, recordId, newTopic); }
++  catch (e) { log(`    ⚠️ 주제 추가 실패: ${e.message}`); return false; }
+ }
+ 
+-// ── Notion 저장 ──
+-// ── 중복 영상 조회수·구독자수 업데이트 ──
+-async function updateStats(pageId, viewCount, subscriberCount, uploadDate) {
+-  try {
+-    const props = {
+-      '조회수':   { number: viewCount || 0 },
+-      '구독자수': { number: subscriberCount || 0 },
+-    };
+-    if (uploadDate) props['업로드 일자'] = { date: { start: uploadDate } };
+-    await notionCall('PATCH', `/v1/pages/${pageId}`, { properties: props });
+-    return true;
+-  } catch { return false; }
++// ── 중복 영상 조회수·구독자수(·업로드일) 업데이트 ──
++function updateStatsInLibrary(recordId, viewCount, subscriberCount, uploadDate) {
++  try { return library.updateStats(libDb, recordId, viewCount, subscriberCount, uploadDate); }
++  catch (e) { log(`    ⚠️ 통계 갱신 실패: ${e.message}`); return false; }
+ }
+ 
+-async function saveToNotion(v, summary, playlistTitle) {
+-  const date = v.publishedAt?.split('T')[0] || null;
+-  const thumbUrl = v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`;
+-
+-  const body = {
+-    parent: { database_id: CONFIG.notionDbId },
+-    cover: { type: 'external', external: { url: thumbUrl } },
+-    properties: {
+-      '영상 제목': { title: [{ text: { content: v.title || '' } }] },
+-      '요약 내용': { rich_text: splitRichText(summary || '') },
+-      '유튜브 채널': { rich_text: [{ text: { content: v.channelTitle || '' } }] },
+-      '조회수': { number: v.viewCount || 0 },
+-      '구독자수': { number: v.subscriberCount || 0 },
+-      '영상 URL': { url: `https://www.youtube.com/watch?v=${v.videoId}` },
+-      '썸네일 URL': { url: thumbUrl },
+-      '처리 상태': { select: { name: '완료' } },
+-      '주제': { multi_select: playlistTitle ? [{ name: playlistTitle.normalize('NFC') }] : [] },
+-    },
+-    children: buildBlocks(summary, thumbUrl, v),
+-  };
+-  if (date) body.properties['업로드 일자'] = { date: { start: date } };
+-
+-  // Notion API: 페이지 생성 시 children 최대 100개 제한
+-  const allBlocks = body.children;
+-  body.children = allBlocks.slice(0, 100);
+-
+-  const res = await notionCall('POST', '/v1/pages', body);
+-  if (res.status !== 200) throw new Error(`Notion 저장 오류 ${res.status}: ${JSON.stringify(res.data)}`);
+-
+-  const pageId = res.data.id;
+-
+-  // 100개 초과 블록은 appendBlocks로 추가 저장
+-  for (let i = 100; i < allBlocks.length; i += 100) {
+-    const chunk = allBlocks.slice(i, i + 100);
+-    const appendRes = await notionCall('PATCH', `/v1/blocks/${pageId}/children`, { children: chunk });
+-    if (appendRes.status !== 200) {
+-      log(`  ⚠️  블록 추가 저장 오류 (${i}~${i+chunk.length}): ${appendRes.status}`);
+-    }
+-  }
+-
+-  return res.data;
+-}
+-
+-// ── Notion 저장 (다중 토픽 지원) ──
+-async function saveToNotionWithTopics(v, summary, topics) {
+-  const date = v.publishedAt?.split('T')[0] || null;
+-  const thumbUrl = v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`;
+-  const nfcTopics = [...new Set((topics || []).map(t => (t || '').normalize('NFC')))].filter(Boolean);
+-
+-  const body = {
+-    parent: { database_id: CONFIG.notionDbId },
+-    cover: { type: 'external', external: { url: thumbUrl } },
+-    properties: {
+-      '영상 제목': { title: [{ text: { content: v.title || '' } }] },
+-      '요약 내용': { rich_text: splitRichText(summary || '') },
+-      '유튜브 채널': { rich_text: [{ text: { content: v.channelTitle || '' } }] },
+-      '조회수': { number: v.viewCount || 0 },
+-      '구독자수': { number: v.subscriberCount || 0 },
+-      '영상 URL': { url: `https://www.youtube.com/watch?v=${v.videoId}` },
+-      '썸네일 URL': { url: thumbUrl },
+-      '처리 상태': { select: { name: '완료' } },
+-      '주제': { multi_select: nfcTopics.map(name => ({ name })) },
+-    },
+-    children: buildBlocks(summary, thumbUrl, v),
+-  };
+-  if (date) body.properties['업로드 일자'] = { date: { start: date } };
+-
+-  const allBlocks = body.children;
+-  body.children = allBlocks.slice(0, 100);
+-  const res = await notionCall('POST', '/v1/pages', body);
+-  if (res.status !== 200) throw new Error(`Notion 저장 오류 ${res.status}: ${JSON.stringify(res.data)}`);
+-  const pageId = res.data.id;
+-  for (let i = 100; i < allBlocks.length; i += 100) {
+-    const chunk = allBlocks.slice(i, i + 100);
+-    await notionCall('PATCH', `/v1/blocks/${pageId}/children`, { children: chunk });
+-  }
+-  return res.data;
++// ── 신규 영상 저장 → record_id ── 같은 video_id 가 이미 있으면 던진다(덮어쓰지 않는다). 호출자가 오류 1건으로 센다.
++function saveToLibrary(v, summary, topics) {
++  return library.insertVideo(libDb, {
++    videoId:         v.videoId,
++    title:           v.title,
++    channelTitle:    v.channelTitle,
++    topics:          topics || [],
++    uploadDate:      v.publishedAt?.split('T')[0] || null,
++    viewCount:       v.viewCount || 0,
++    subscriberCount: v.subscriberCount || 0,
++    thumbnail:       v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
++    summary,
++  });
+ }
+ 
+ // ── pending_playlist_adds.json 큐 소진 ──
+@@ -928,8 +700,8 @@ async function flushPendingQueue() {
+   log(`  ✓ pending 처리: ${done}건 추가 완료, ${remaining.length}건 잔여`);
+ }
+ 
+-// ── AI 영상목록 → 자동 분류 + Notion 저장 + 토픽 재생목록 추가 ──
+-async function processMasterIngest(notionCache) {
++// ── AI 영상목록 → 자동 분류 + 장부 저장 + 토픽 재생목록 추가 ──
++async function processMasterIngest(libCache) {
+   const masterId = CONFIG.masterPlaylistId;
+   if (!masterId) {
+     log('⚠️  YOUTUBE_MASTER_PLAYLIST_ID 미설정 — 마스터 인제스트 건너뜀');
+@@ -985,7 +757,7 @@ async function processMasterIngest(notionCache) {
+     }
+     v.subscriberCount = chCache[v.channelId] || 0;
+ 
+-    const dup = findDuplicate(v, notionCache);
++    const dup = findDuplicate(v, libCache);
+     if (dup) {
+       if (skipList.length < 5) skipList.push(v.title || '(제목 없음)');
+       skip++;
+@@ -1089,10 +861,9 @@ async function processMasterIngest(notionCache) {
+           log(`    ⚠️  신뢰도 낮음 — 주제 저장은 하되 수동 검토 권장`);
+         }
+ 
+-        // Notion 저장
+-        const notionPage = await saveToNotionWithTopics(v, summary, allTopics);
+-        const pageId = notionPage.id;
+-        log(`    ✓ Notion 저장 완료 (주제: ${allTopics.join(', ') || '(분류 없음)'})`);
++        // 장부 저장
++        const pageId = saveToLibrary(v, summary, allTopics);
++        log(`    ✓ 장부 저장 완료 (주제: ${allTopics.join(', ') || '(분류 없음)'})`);
+         // 결과 테이블용 구조화 데이터 (server.js → index.html 전달)
+         console.log('RESULT_ROW:' + JSON.stringify({
+           videoId: v.videoId, title: v.title, channelTitle: v.channelTitle,
+@@ -1100,8 +871,8 @@ async function processMasterIngest(notionCache) {
+           summary: summary?.slice(0, 200) || '', topics: allTopics, status: 'ok',
+         }));
+ 
+-        // notionCache 갱신
+-        notionCache.set(v.videoId || v.title, {
++        // 캐시 갱신
++        libCache.set(v.videoId || v.title, {
+           pageId, title: v.title, topics: allTopics,
+           savedViewCount: v.viewCount, savedSubscribers: v.subscriberCount,
+           savedDate: v.publishedAt?.split('T')[0] || null,
+@@ -1163,7 +934,7 @@ async function processMasterIngest(notionCache) {
+ }
+ 
+ // ── 재생목록 하나 처리 ──
+-async function processPlaylist(pl, notionCache) {
++async function processPlaylist(pl, libCache) {
+   const m = pl.url.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+   if (!m) { log(`⚠️  URL 형식 오류: ${pl.url}`); return { saved: 0, skip: 0, error: 0 }; }
+   const listId = m[1];
+@@ -1203,12 +974,12 @@ async function processPlaylist(pl, notionCache) {
+     v.subscriberCount = chCache[v.channelId] || 0;
+ 
+     log(`  [${i+1}/${videos.length}] ${v.title}`);
+-    const dup = findDuplicate(v, notionCache);
++    const dup = findDuplicate(v, libCache);
+     if (dup) {
+-      // ← API 호출 전에 미리 체크 (불필요한 Notion API 호출 차단)
++      // 이미 같은 주제가 있으면 장부를 건드리지 않는다
+       const needTopicAdd = !dup.topics.includes(playlistTitle);
+       const topicAdded = needTopicAdd
+-        ? await addTopicToPage(dup.pageId, playlistTitle, dup.topics)
++        ? addTopicToRecord(dup.pageId, playlistTitle)
+         : false;
+       if (topicAdded) dup.topics.push(playlistTitle);
+       const newViewCount = v.viewCount || 0;
+@@ -1230,7 +1001,7 @@ async function processPlaylist(pl, notionCache) {
+       );
+       const dateChanged = newDate && dup.savedDate && dup.savedDate !== newDate;
+       if (viewChanged || subsChanged || dateChanged) {
+-        await updateStats(dup.pageId, newViewCount, newSubscribers, dateChanged ? newDate : null);
++        updateStatsInLibrary(dup.pageId, newViewCount, newSubscribers, dateChanged ? newDate : null);
+         dup.savedViewCount = newViewCount;
+         dup.savedSubscribers = newSubscribers;
+         if (dateChanged) dup.savedDate = newDate;
+@@ -1251,7 +1022,7 @@ async function processPlaylist(pl, notionCache) {
+     }
+   }
+ 
+-  // ── 2단계: 신규 영상 3개씩 병렬 Gemini 요약 → Notion 저장 ──
++  // ── 2단계: 신규 영상 순차 Gemini 요약 → 장부 저장 ──
+   const PARALLEL = 1; // 순차 처리로 변경
+   if (newVideos.length > 0) {
+     log('\n  ⚡ 신규 ' + newVideos.length + '개 Gemini 병렬 요약 시작 (3개씩 동시)...');
+@@ -1270,14 +1041,14 @@ async function processPlaylist(pl, notionCache) {
+         if (res.status === 'rejected') throw new Error(res.reason?.message || '요약 실패');
+         const summary = res.value;
+         log('    ✓ 요약 완료 (' + summary.length + '자): ' + v.title.slice(0,30));
+-        await saveToNotion(v, summary, playlistTitle);
++        const recordId = saveToLibrary(v, summary, [playlistTitle]);
+         const cacheKey = v.videoId || v.title;
+-        notionCache.set(cacheKey, {
+-          pageId: 'new', title: v.title, topics: [playlistTitle],
++        libCache.set(cacheKey, {
++          pageId: recordId, title: v.title, topics: [playlistTitle],
+           savedViewCount: v.viewCount, savedSubscribers: v.subscriberCount,
+           savedDate: v.publishedAt?.split('T')[0] || null,
+         });
+-        log('    ✓ Notion 저장 완료');
++        log('    ✓ 장부 저장 완료');
+         saved++;
+       } catch(e) {
+         log('    ❌ 오류: ' + e.message);
+@@ -1330,9 +1101,9 @@ function formatElapsed(ms) {
+ async function main() {
+   log('');
+   const startTime = Date.now();
+-  const titleLine = makeLine('  YouTube → Notion 자동 요약 스케줄러 시작');
++  const titleLine = makeLine('  YouTube 자동 요약 스케줄러 시작 (v4.0 로컬 장부)');
+   log(titleLine);
+-  log('  YouTube → Notion 자동 요약 스케줄러 시작');
++  log('  YouTube 자동 요약 스케줄러 시작 (v4.0 로컬 장부)');
+   log(titleLine);
+ 
+   // 설정값 검증
+@@ -1356,33 +1127,30 @@ async function main() {
+     log(`📋 레거시 모드 — 총 ${playlists.length}개 재생목록 처리`);
+   }
+ 
+-  // ── Notion DB 전체 캐시 로드 ──
+-  // 캐시가 없으면 중복 판정을 못 한다. 로드에 실패하면 이번 실행은 영상 처리·큐 재시도를 건너뛴다(fail-closed).
+-  let notionCache = null;
++  // ── 장부(data/library.db) 열기 + 전체 캐시 ──
++  // 장부가 없거나·버전이 다르거나·0건이면 중복 판정을 못 한다. 이번 실행은 영상 처리·큐 재시도를 건너뛴다(fail-closed).
++  let libCache = null;
+   try {
+-    notionCache = await loadNotionCache();
++    libDb = library.openLibrary();
++    libCache = loadLibraryCache(libDb);
+   } catch (e) {
+-    if (e && e.fatalAuth) {
+-      log(`❌ ${e.message} — 추가 요청 없이 종료합니다.`);
+-      await sendTelegram(`🚨 <b>[작업 중단 알림]</b>\n${e.message}\nNotion 토큰·DB 공유 상태를 확인하세요. 프로세스를 중단했습니다.`);
+-      process.exit(1);
+-    }
+-    log(`❌ Notion 캐시 로드 실패 — 중복 저장을 막기 위해 이번 실행은 영상 처리를 건너뜁니다: ${e.message}`);
++    log(`❌ 장부 로드 실패 — 중복 저장을 막기 위해 이번 실행은 영상 처리를 건너뜁니다: ${e.message}`);
++    await sendTelegram(`🚨 <b>[장부 로드 실패]</b>\n${e.message}\n이번 실행은 영상 처리를 건너뛰었습니다.`);
+   }
+ 
+   // ── pending 큐 소진 (quota 여유분 내에서) ──
+-  if (notionCache) await flushPendingQueue();
++  if (libCache) await flushPendingQueue();
+ 
+   let totalSaved = 0, totalSkip = 0, totalError = 0;
+   const results = [];
+ 
+-  if (!notionCache) {
++  if (!libCache) {
+     totalError += 1;
+-    results.push({ name: useMasterMode ? 'AI 영상목록 (마스터)' : 'Notion 캐시', saved: 0, skip: 0, error: 1 });
++    results.push({ name: useMasterMode ? 'AI 영상목록 (마스터)' : '장부', saved: 0, skip: 0, error: 1 });
+   } else if (useMasterMode) {
+     // ── 신규 워크플로: AI 영상목록 → 자동 분류 ──
+     try {
+-      const result = await processMasterIngest(notionCache);
++      const result = await processMasterIngest(libCache);
+       totalSaved += result.saved;
+       totalSkip += result.skip;
+       totalError += result.error;
+@@ -1399,7 +1167,7 @@ async function main() {
+       const pl = playlists[i];
+       log(`\n━━━ [${i+1}/${playlists.length}] ${pl.name} ━━━`);
+       try {
+-        const result = await processPlaylist(pl, notionCache);
++        const result = await processPlaylist(pl, libCache);
+         totalSaved += result.saved;
+         totalSkip += result.skip;
+         totalError += result.error;
+@@ -1413,6 +1181,9 @@ async function main() {
+     }
+   }
+ 
++  // 장부 연결은 여기서 닫는다 (뒤이은 kakao_ingest·sync_obsidian 은 각자 연다)
++  if (libDb) { try { libDb.close(); } catch {} libDb = null; }
++
+   log('');
+   const line1 = `  완료! 저장: ${fmtNum(totalSaved)}개 / Skip: ${fmtNum(totalSkip)}개 / 오류: ${fmtNum(totalError)}개`;
+   const line2 = `  소요시간: ${formatElapsed(Date.now() - startTime)}`;
+@@ -1442,7 +1213,7 @@ async function main() {
+       }
+     } else {
+       lines.push(`• AI 영상목록 (마스터): 재생목록 ${fmtNum(inPlaylist)}개 | 신규 없음`);
+-      lines.push(`  ℹ️ ${fmtNum(r.skip)}개 모두 이미 Notion에 저장된 영상`);
++      lines.push(`  ℹ️ ${fmtNum(r.skip)}개 모두 이미 장부에 저장된 영상`);
+       // 스킵 예시 (최대 2개 — 실제로 어떤 영상인지 파악용)
+       const samples = (r.skipList || []).slice(0, 2).map(t => t.slice(0, 25));
+       if (samples.length) {
+@@ -1499,7 +1270,7 @@ async function main() {
+   }
+ 
+   const msg = [
+-    `🎬 YouTube → Notion 요약 완료`,
++    `🎬 YouTube 요약 완료`,
+     `📅 ${now}`,
+     `⏱ 소요시간: ${elapsed}`,
+     ``,
+@@ -1513,7 +1284,7 @@ async function main() {
+ 
+   const python3 = '/opt/homebrew/bin/python3';
+ 
+-  // ── (v3.0) 카카오톡 → Notion「AI 꿀팁」 (새 CSV 있을 때만 실제 동작) ──
++  // ── (v3.0) 카카오톡 → 장부 tips (새 CSV 있을 때만 실제 동작) ──
+   log('\n📎 카톡 → AI 꿀팁 인제스트...');
+   const kakao = await runKakaoIngest(python3);
+   const kakaoCreated = (kakao && kakao.created) || 0;
+@@ -1540,7 +1311,7 @@ async function main() {
+           ``,
+           `━━━━━━━━━━━━━━━━━━━━━━`,
+           `📎 카톡 → AI 꿀팁`,
+-          `  • Notion 신규: ${kakaoCreated}건 (DB 총 ${kakao.db_total}건)`,
++          `  • 장부 신규: ${kakaoCreated}건 (총 ${kakao.db_total}건)`,
+           ...(Array.isArray(kakao.titles) ? kakao.titles.slice(0, 5).map(t => `    - ${t}`) : []),
+         ] : [];
+         const obsSection = [
+@@ -1583,5 +1354,8 @@ if (require.main === module) {
+     process.exit(1);
+   });
+ } else {
+-  module.exports = { ytFetch, getVideos, getBatchDetails, getBatchSubs, loadNotionCache, findDuplicate };
++  module.exports = {
++    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary,
++    _setLibDb: (db) => { libDb = db; },   // 테스트 전용 (scripts/test_scheduler_guards.js)
++  };
+ }
+diff --git a/scripts/notion_to_sqlite.py b/scripts/notion_to_sqlite.py
+index 612282c..0f4a663 100644
+--- a/scripts/notion_to_sqlite.py
++++ b/scripts/notion_to_sqlite.py
+@@ -6,6 +6,12 @@ v4.0 1단계 — 노션 → SQLite 적재 (노션 읽기 전용)
+   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply            # data/library.db 생성 (이미 있으면 거부)
+   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply --replace  # 기존 파일을 data/library.db.bak.<시각> 으로 옮기고 새로 만든다
+   /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify           # 노션 호출 없이 data/library.db ↔ Obsidian Vault 대조
++  /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --mark-switched    # (v4.0 2단계) 장부를 원본으로 확정 — 이후 --apply --replace 거부
++
++전환 후 재적재 금지 (v4.0 2단계):
++  스케줄러·카톡 인제스트가 장부에 직접 쓰기 시작하면 노션은 낡은 사본이다. 이때 --apply --replace 를 돌리면
++  앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다. 그래서 다음 중 하나라도 있으면 --replace 를 거부한다:
++  meta.switched_at 이 있음 · videos.summary_src='app' 행이 있음 · tips 에 loaded_at 이후 created_at 행이 있음.
+ 
+   --summary-check=N   무작위 N개 영상의 노션 본문 블록과 '요약 내용' 속성을 비교해 보고만 한다 (기본 20, 0 = 끔)
+   --summary-check=all 전량 비교하고, 다르면 본문 블록 쪽을 summary 로 쓴다 (페이지당 1회 호출, 3천 건이면 약 30분)
+@@ -347,7 +353,7 @@ def verify():
+     t_missing = tv - tips
+     log('🔎 data/library.db 검증')
+     log(f'  user_version {uv} · integrity_check {ic}')
+-    log(f'  videos {n_v:,} · videos_dup {n_d:,} · tips {n_t:,}  (적재 시각 {meta.get("loaded_at", "?")})')
++    log(f'  videos {n_v:,} · videos_dup {n_d:,} · tips {n_t:,}  (적재 시각 {meta.get("loaded_at", "?")} · 전환 {meta.get("switched_at", "전")})')
+     log(f'  videos 안 video_id 중복 {dup_vid} · video_id 없음 {no_vid} · summary_src {src}')
+     log(f'  Vault 영상 노트 notion_id {len(vv):,} → videos {len(v_live):,} · videos_dup {len(v_dup):,}(2단계 고아 격리 예정) · 어디에도 없음 {len(v_missing):,}')
+     log(f'  Vault 꿀팁 노트 notion_id {len(tv):,} → tips {len(tv & tips):,} · 없음 {len(t_missing):,}')
+@@ -362,15 +368,58 @@ def verify():
+         'mode': 'verify', 'ok': ok, 'videos': n_v, 'videos_dup': n_d, 'tips': n_t,
+         'vault_video_ids': len(vv), 'vault_in_videos': len(v_live), 'vault_in_dup': len(v_dup),
+         'vault_missing': len(v_missing), 'vault_tip_ids': len(tv), 'tips_missing': len(t_missing), 'vault_ignored': len(VAULT_IGNORED),
+-        'summary_src': src, 'no_video_id': no_vid}, ensure_ascii=False))
++        'summary_src': src, 'no_video_id': no_vid, 'switched_at': meta.get('switched_at')}, ensure_ascii=False))
+     log('✅ 검증 통과' if ok else '❌ 검증 실패 — 위 항목 확인')
+     return 0 if ok else 1
+ 
+ 
++# ─────────────────────────── 전환 표시 / 재적재 거부 (v4.0 2단계) ───────────────────────────
++def switched_reasons(path):
++    """기존 장부를 노션 스냅샷으로 덮으면 안 되는 이유 목록. 비면 덮어도 된다."""
++    conn = ldb.open_db(path, readonly=True)
++    try:
++        meta = dict(conn.execute('SELECT key, value FROM meta').fetchall())
++        why = []
++        if meta.get('switched_at'):
++            why.append(f"meta.switched_at={meta['switched_at']} (장부가 원본으로 확정됨)")
++        n_app = conn.execute("SELECT COUNT(*) FROM videos WHERE summary_src = 'app'").fetchone()[0]
++        if n_app:
++            why.append(f'앱이 저장한 영상 {n_app}건 (summary_src=app)')
++        if meta.get('loaded_at'):
++            n_tip = conn.execute('SELECT COUNT(*) FROM tips WHERE created_at > ?', (meta['loaded_at'],)).fetchone()[0]
++            if n_tip:
++                why.append(f"적재 이후 생긴 꿀팁 {n_tip}건 (created_at > {meta['loaded_at']})")
++        return why
++    finally:
++        conn.close()
++
++
++def mark_switched():
++    if not os.path.exists(ldb.DB_PATH):
++        log(f'❌ {ldb.DB_PATH} 없음'); return 1
++    conn = ldb.open_db(ldb.DB_PATH)
++    try:
++        meta = dict(conn.execute('SELECT key, value FROM meta').fetchall())
++        if meta.get('switched_at'):
++            log(f"❌ 이미 전환 표시됨 (switched_at={meta['switched_at']})"); return 1
++        if meta.get('source') != 'notion':
++            log(f"❌ meta.source={meta.get('source')!r} — 노션에서 적재한 장부가 아닙니다"); return 1
++        ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
++        with conn:
++            conn.execute("INSERT INTO meta (key, value) VALUES ('switched_at', ?)", (ts,))
++        log(f'✅ 전환 표시 switched_at={ts} — 이후 --apply --replace 는 거부됩니다')
++        log('RESULT_JSON ' + json.dumps({'mode': 'mark-switched', 'switched_at': ts}, ensure_ascii=False))
++        return 0
++    finally:
++        conn.close()
++
++
+ # ─────────────────────────── main ───────────────────────────
+ def main(argv):
+     if '--verify' in argv:
+         return verify()
++    if '--mark-switched' in argv:
++        return mark_switched()
+     apply_ = '--apply' in argv
+     replace = '--replace' in argv
+     n_check = 20
+@@ -380,6 +429,13 @@ def main(argv):
+             n_check = 'all' if v == 'all' else int(v)
+     if apply_ and os.path.exists(ldb.DB_PATH) and not replace:
+         log(f'❌ {ldb.DB_PATH} 가 이미 있습니다. 다시 만들려면 --apply --replace'); return 1
++    if apply_ and os.path.exists(ldb.DB_PATH):
++        why = switched_reasons(ldb.DB_PATH)
++        if why:
++            log('❌ 장부가 이미 원본입니다 — 노션 스냅샷으로 덮으면 앱이 쓴 행이 사라집니다. 거부:')
++            for w in why:
++                log(f'   · {w}')
++            return 1
+ 
+     t0 = time.time()
+     log(f'🚚 노션 → SQLite 적재 ({"APPLY" if apply_ else "DRY-RUN"})')
+diff --git a/scripts/test_kakao_ingest.py b/scripts/test_kakao_ingest.py
+new file mode 100644
+index 0000000..976452e
+--- /dev/null
++++ b/scripts/test_kakao_ingest.py
+@@ -0,0 +1,123 @@
++#!/usr/bin/env python3
++"""kakao_ingest.py 회귀 테스트 (v4.0 — 장부 tips). 네트워크 0회, 임시 장부·임시 CSV·임시 상태 파일만 쓴다.
++
++    /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py
++
++지키는 것:
++  1) 장부가 없으면 만들지 않고 실패한다 (빈 장부 = 전부 신규 = 중복)
++  2) 중복 판정은 장부 tips 의 url_key — 같은 CSV 를 두 번 돌리면 두 번째는 0건 (2026-09-06 중복 15건 재발 방지)
++  3) dry-run 은 장부·상태 파일을 쓰지 않는다
++  4) 신규 행은 노션 시절과 같은 기본값·형식으로 들어간다
++  5) 노션·외부 HTTP 요청을 하나도 만들지 않는다
++"""
++import io, json, os, sqlite3, sys, tempfile
++from contextlib import redirect_stdout
++
++REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.insert(0, REPO)
++sys.path.insert(0, os.path.join(REPO, 'lib'))
++import urllib.request
++calls = []
++def _no_net(*a, **k):
++    calls.append(a[0] if a else k)
++    raise RuntimeError('네트워크 요청 금지 (테스트)')
++urllib.request.urlopen = _no_net
++import tips_notion
++tips_notion.urlopen = _no_net
++import library_db as ldb
++import kakao_ingest as ki
++
++results = []
++def check(name, cond, detail=''):
++    results.append(bool(cond))
++    print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f'  — {detail}' if detail and not cond else ''), flush=True)
++
++def run(argv):
++    sys.argv = ['kakao_ingest.py'] + argv
++    buf = io.StringIO()
++    code = 0
++    with redirect_stdout(buf):
++        try:
++            ki.main()
++        except SystemExit as e:
++            code = e.code or 0
++    out = buf.getvalue()
++    rj = next((json.loads(l[len('RESULT_JSON:'):]) for l in out.splitlines() if l.startswith('RESULT_JSON:')), None)
++    return code, out, rj
++
++def make_db(path):
++    os.makedirs(os.path.dirname(path), exist_ok=True)
++    c = ldb.open_db(path); ldb.apply_schema(c)
++    with c:
++        c.execute("INSERT INTO tips (record_id,title,url,url_key,source,tags,category,status,importance,saved_date,memo,created_at,updated_at) "
++                  "VALUES ('tip-old-1','기존 팁','https://github.com/a/b','https://github.com/a/b','github.com','[]','개발툴','미확인','중','2026-09-01','',"
++                  "'2026-09-01T00:00:00.000Z','2026-09-01T00:00:00.000Z')")
++    c.close()
++
++def tips(path):
++    c = sqlite3.connect(path); c.row_factory = sqlite3.Row
++    rows = [dict(r) for r in c.execute('SELECT * FROM tips ORDER BY created_at, record_id')]
++    c.close(); return rows
++
++def main():
++    tmp = tempfile.mkdtemp(prefix='kakao-test-')
++    ldb.DB_PATH = os.path.join(tmp, 'data', 'library.db')
++    ki.STATE_FILE = os.path.join(tmp, '.kakao_state.json')
++    csv_path = os.path.join(tmp, 'KakaoTalk_Chat_안진훈_2026-10-11.csv')
++    with open(csv_path, 'w', encoding='utf-8-sig', newline='') as f:
++        f.write('Date,User,Message\n'
++                '2026-02-01 10:00:00,"안진훈","https://old.example.com/x 기간 밖"\n'
++                '2026-10-01 09:00:00,"안진훈","https://www.github.com/a/b/?utm_source=x 이미 있는 레포"\n'
++                '2026-10-02 09:00:00,"안진훈","https://github.com/claude/skills 새 레포"\n'
++                '2026-10-03 09:00:00,"안진훈","https://example.com/prompt-guide 프롬프트 정리"\n'
++                '2026-10-03 09:05:00,"안진훈","https://example.com/prompt-guide/ 같은 링크 다시"\n')
++
++    print('▶ 장부 없음')
++    code, out, rj = run([f'--csv={csv_path}', '--apply'])
++    check('장부가 없으면 exit 1', code == 1, out[-300:])
++    check('장부 파일을 만들지 않는다', not os.path.exists(ldb.DB_PATH))
++    check('상태 파일을 쓰지 않는다', not os.path.exists(ki.STATE_FILE))
++
++    make_db(ldb.DB_PATH)
++    print('▶ dry-run')
++    code, out, rj = run([f'--csv={csv_path}'])
++    check('dry-run 종료 0 · 후보 2건 (기간 밖·기존·CSV 내부 중복 제외)', code == 0 and rj and rj['candidates'] == 2, rj)
++    check('dry-run 은 장부를 쓰지 않는다', len(tips(ldb.DB_PATH)) == 1)
++    check('dry-run 은 상태 파일을 쓰지 않는다', not os.path.exists(ki.STATE_FILE))
++
++    print('▶ apply')
++    code, out, rj = run([f'--csv={csv_path}', '--apply', '--if-new'])
++    rows = tips(ldb.DB_PATH)
++    check('apply 종료 0 · 신규 2 · 총 3', code == 0 and rj and rj['created'] == 2 and rj['db_total'] == 3 and len(rows) == 3, rj)
++    new = [r for r in rows if r['record_id'] != 'tip-old-1']
++    gh = next((r for r in new if 'github.com/claude/skills' in r['url']), {})
++    check('record_id 는 uuid4', all(len(r['record_id']) == 36 for r in new))
++    check('url_key 는 kakao_parse.url_key 와 같다', gh.get('url_key') == ki.url_key(gh.get('url', '')), gh)
++    check('기본값: 상태 미확인 · 중요도 중 · 카테고리 개발툴 · 출처 호스트', gh.get('status') == '미확인' and gh.get('importance') == '중'
++          and gh.get('category') == '개발툴' and gh.get('source') == 'github.com', gh)
++    check('tags 는 JSON 배열 · saved_date YYYY-MM-DD · body_md 빈 값', isinstance(json.loads(gh.get('tags', 'x')), list)
++          and gh.get('saved_date') == '2026-10-02' and gh.get('body_md') == '', gh)
++    check('created_at 은 ISO UTC(밀리초 Z)', all(len(r['created_at']) == 24 and r['created_at'].endswith('Z') for r in new), [r['created_at'] for r in new])
++    st = json.load(open(ki.STATE_FILE, encoding='utf-8'))
++    check('상태 파일 기록 (created 2 · db_total 3)', st.get('created') == 2 and st.get('db_total') == 3, st)
++
++    print('▶ 멱등성')
++    code, out, rj = run([f'--csv={csv_path}', '--apply', '--if-new'])
++    check('--if-new 같은 CSV 는 건너뜀', rj and rj.get('skipped') == 'already_processed', rj)
++    code, out, rj = run([f'--csv={csv_path}', '--apply', '--force'])
++    check('--force 로 다시 돌려도 신규 0 · 총 3', code == 0 and rj and rj['created'] == 0 and len(tips(ldb.DB_PATH)) == 3, rj)
++
++    print('▶ 쓰기 실패는 전부 아니면 전무')
++    c = sqlite3.connect(ldb.DB_PATH)
++    c.execute("CREATE TRIGGER boom BEFORE INSERT ON tips WHEN NEW.url LIKE '%prompt-guide%' BEGIN SELECT RAISE(ABORT, 'boom'); END")
++    c.execute("DELETE FROM tips WHERE record_id != 'tip-old-1'"); c.commit(); c.close()
++    code, out, rj = run([f'--csv={csv_path}', '--apply', '--force'])
++    check('중간 실패 시 exit 1 · 남은 행 0 (총 1 그대로)', code == 1 and len(tips(ldb.DB_PATH)) == 1, (code, rj))
++
++    check('네트워크 요청 0건', not calls, calls[:3])
++    ok = all(results)
++    print(f'\n{sum(results)}/{len(results)} PASS')
++    return 0 if ok else 1
++
++if __name__ == '__main__':
++    sys.exit(main())
+diff --git a/scripts/test_notion_to_sqlite.py b/scripts/test_notion_to_sqlite.py
+index 59eca8a..1cd026e 100644
+--- a/scripts/test_notion_to_sqlite.py
++++ b/scripts/test_notion_to_sqlite.py
+@@ -252,6 +252,37 @@ def main():
+         check('verify 통과 (Vault 영상 id 4 → videos 3 · dup 1 · 없음 0)',
+               code == 0 and rj['vault_in_videos'] == 3 and rj['vault_in_dup'] == 1 and rj['vault_missing'] == 0, out[-600:])
+ 
++        print('▶ 전환 표시 (v4.0 2단계)')
++        code, out, rj = run(['--mark-switched'], Fake())
++        check('--mark-switched 종료 0 · switched_at 기록', code == 0 and rj and rj.get('switched_at'), out[-300:])
++        code, out, _ = run(['--mark-switched'], Fake())
++        check('두 번째 --mark-switched 는 거부', code == 1, out[-200:])
++        snap = open(ldb.DB_PATH, 'rb').read()
++        f = Fake()
++        code, out, _ = run(['--apply', '--replace'], f)
++        check('전환 후 --apply --replace 거부 (노션 호출 0 · 파일 무변경)', code == 1 and not f.calls
++              and open(ldb.DB_PATH, 'rb').read() == snap, out[-300:])
++        db = sqlite3.connect(ldb.DB_PATH)
++        with db:
++            db.execute("DELETE FROM meta WHERE key = 'switched_at'")
++            db.execute("UPDATE videos SET summary_src = 'app' WHERE record_id = 'bbbb-0'")
++        db.close()
++        f = Fake()
++        code, out, _ = run(['--apply', '--replace'], f)
++        check('표시가 없어도 앱이 쓴 영상이 있으면 거부', code == 1 and not f.calls and 'summary_src=app' in out, out[-300:])
++        db = sqlite3.connect(ldb.DB_PATH)
++        with db:
++            db.execute("UPDATE videos SET summary_src = 'property' WHERE record_id = 'bbbb-0'")
++            db.execute("UPDATE tips SET created_at = '2099-01-01T00:00:00.000Z' WHERE record_id = 'tttt-1'")
++        db.close()
++        f = Fake()
++        code, out, _ = run(['--apply', '--replace'], f)
++        check('적재 이후 생긴 꿀팁이 있어도 거부', code == 1 and not f.calls and '꿀팁' in out, out[-300:])
++        db = sqlite3.connect(ldb.DB_PATH)
++        with db:
++            db.execute("UPDATE tips SET created_at = '2026-01-01T00:00:00.000Z' WHERE record_id = 'tttt-1'")
++        db.close()
++
+         print('▶ 안전장치')
+         before = open(ldb.DB_PATH, 'rb').read()
+         f = Fake(); f.fail_plan = [(lambda meth, p: p.endswith(f'{TDB}/query'), 401)]
+diff --git a/scripts/test_scheduler_guards.js b/scripts/test_scheduler_guards.js
+index c9b366b..28e5c97 100644
+--- a/scripts/test_scheduler_guards.js
++++ b/scripts/test_scheduler_guards.js
+@@ -1,16 +1,19 @@
+ #!/usr/bin/env node
+-// scheduler.js 의 네트워크 안전장치 회귀 테스트 — 네트워크·Notion·YouTube 를 실제로 부르지 않는다.
++// scheduler.js 의 네트워크·장부 안전장치 회귀 테스트 — 네트워크·YouTube 를 실제로 부르지 않고, 장부는 임시 파일로 만든다.
+ //   node scripts/test_scheduler_guards.js
+ // https.request 를 가짜로 바꾼 뒤 scheduler.js 를 require 한다. 대본(script)에 없는 요청이 나가면 그 자체로 실패다.
+ //
+ // 지키는 것:
+-//   1) Notion 캐시는 "전부 읽었거나, 던지거나" — 빈 캐시·부분 캐시를 돌려주지 않는다 (2026-10-05 중복 저장 195건의 원인)
++//   1) 장부 캐시는 "전부 읽었거나, 던지거나" — 장부 파일이 없으면 만들지 않고 던지고, 0건이면 던진다
++//      (2026-10-05 빈 캐시 중복 저장 195건의 원인. v4.0 에서 Notion 캐시 → 로컬 장부 data/library.db 로 바뀜)
+ //   2) YouTube 조회는 일시 오류만 재시도하고 401/403 은 즉시 던진다
+ //   3) 채널 구독자 수는 50개씩 묶어 순차 조회한다
++//   4) 장부 쓰기(저장·주제 추가·통계 갱신)는 같은 video_id 를 덮어쓰지 않고, 네트워크 요청을 하나도 만들지 않는다
+ 
+ const https = require('https');
+ const fs = require('fs');
+ const path = require('path');
++const os = require('os');
+ const { EventEmitter } = require('events');
+ 
+ // ── 격리: 실제 로그 파일에 쓰지 않고, 백오프 대기를 건너뛰고, 화면 로그를 끈다 ──
+@@ -19,7 +22,7 @@ const realSetTimeout = global.setTimeout;
+ global.setTimeout = (fn, _ms, ...args) => realSetTimeout(fn, 0, ...args);
+ const out = (s) => process.stdout.write(s + '\n');
+ console.log = () => {};
+-delete process.env.NOTION_CACHE_ALLOW_EMPTY;
++delete process.env.LIBRARY_ALLOW_EMPTY;
+ 
+ // ── 가짜 https.request ──
+ let script = [];   // [{ netErr: 'ENOTFOUND' } | { status: 200, body: {...} }]
+@@ -61,20 +64,36 @@ if (!fs.readFileSync(SCHEDULER, 'utf8').includes('require.main === module')) {
+   out('중단: scheduler.js 에 `require.main === module` 가드가 없다. 가드를 먼저 넣어야 이 테스트를 돌릴 수 있다.');
+   process.exit(2);
+ }
+-const { ytFetch, getBatchSubs, loadNotionCache } = require(SCHEDULER);
++const { ytFetch, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, _setLibDb } = require(SCHEDULER);
++const library = require(path.join(__dirname, '..', 'lib', 'library'));
++const { DatabaseSync } = library.loadSqlite();   // ExperimentalWarning 한 줄을 삼키는 로더
+ 
+ const net = (code) => ({ netErr: code });
+ const http = (status, body) => ({ status, body });
+-const notionPage = (n, nextCursor) => http(200, {
+-  results: Array.from({ length: n }, (_, i) => ({
+-    id: `page-${nextCursor || 'last'}-${i}`,
+-    properties: {
+-      '영상 제목': { title: [{ text: { content: `제목 ${nextCursor || 'last'} ${i}` } }] },
+-      '영상 URL': { url: `https://www.youtube.com/watch?v=${String(i).padStart(4, '0')}${(nextCursor || 'last').padEnd(7, 'x').slice(0, 7)}` },
+-    },
+-  })),
+-  next_cursor: nextCursor || null,
+-});
++// ── 임시 장부: lib/library_schema.sql 을 그대로 실행해 만든다 ──
++const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'sched-lib-'));
++let dbSeq = 0;
++function makeLibrary(rows = [], { userVersion } = {}) {
++  const p = path.join(TMP, `library-${++dbSeq}.db`);
++  const db = new DatabaseSync(p);
++  db.exec(fs.readFileSync(path.join(__dirname, '..', 'lib', 'library_schema.sql'), 'utf8'));
++  if (userVersion !== undefined) db.exec(`PRAGMA user_version = ${userVersion}`);
++  const ins = db.prepare(`INSERT INTO videos (record_id, video_id, title, channel, topics, upload_date, view_count,
++    subscriber_count, video_url, summary, summary_src, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`);
++  for (const r of rows) {
++    ins.run(r.id, r.vid ?? null, r.title || '', 'ch', JSON.stringify(r.topics || []), r.date ?? null, r.views ?? null,
++      null, r.vid ? `https://www.youtube.com/watch?v=${r.vid}` : null, '요약', 'property',
++      '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
++  }
++  db.close();
++  return p;
++}
++const SEED = [
++  { id: 'aaaa-1', vid: 'AAAAAAAAAA1', title: 'Claude Code 완벽 가이드!', topics: ['AI Claude'], date: '2026-09-01', views: 100 },
++  { id: 'aaaa-2', vid: 'AAAAAAAAAA2', title: '두 번째 영상', topics: [] },
++  { id: 'aaaa-3', vid: null, title: 'video_id 없는 영상' },
++];
++const count = (p) => { const d = new DatabaseSync(p); const n = d.prepare('SELECT COUNT(*) n FROM videos').get().n; d.close(); return n; };
+ 
+ async function expectThrow(fn) {
+   try { await fn(); } catch (e) { return e; }
+@@ -127,39 +146,93 @@ const cases = [
+     const map = await getBatchSubs(['UCa', 'UCgone']);
+     assert(map.UCa === 7 && !('UCgone' in map), '맵이 다르다');
+   }],
+-  ['loadNotionCache: 첫 페이지 네트워크 오류 뒤에도 전부 읽는다 (빈 캐시 금지)', async () => {
+-    script = [net('ENOTFOUND'), notionPage(100, 'cur1'), notionPage(30)];
+-    const cache = await loadNotionCache();
+-    assert(calls.length === 3, `요청 ${calls.length}회 (기대 3)`);
+-    assert(cache.size > 0, '캐시가 비었다');
+-    assert(cache.has('0000cur1xxx') && cache.has('0029lastxxx'), '두 페이지의 영상이 모두 들어 있지 않다');
+-  }],
+-  ['loadNotionCache: 0건이면 던진다', async () => {
+-    script = [http(200, { results: [], next_cursor: null })];
+-    const e = await expectThrow(() => loadNotionCache());
+-    assert(/0건/.test(e.message), '0건 오류가 아니다');
+-  }],
+-  ['loadNotionCache: 401 은 재시도 없이 fatalAuth 로 던진다', async () => {
+-    script = [http(401, { code: 'unauthorized' }), notionPage(10)];
+-    const e = await expectThrow(() => loadNotionCache());
+-    assert(e.fatalAuth === true, 'fatalAuth 가 아니다');
+-    assert(calls.length === 1, `요청 ${calls.length}회 (기대 1)`);
++  ['openLibrary: 장부 파일이 없으면 새로 만들지 않고 던진다', async () => {
++    const p = path.join(TMP, 'none', 'library.db');
++    const e = await expectThrow(() => library.openLibrary(p));
++    assert(/장부 파일 없음/.test(e.message), '파일 없음 오류가 아니다: ' + e.message);
++    assert(!fs.existsSync(p), '빈 장부 파일을 만들었다');
+   }],
+-  ['loadNotionCache: 중간에 오류가 계속되면 부분 캐시 대신 던진다', async () => {
+-    script = [notionPage(100, 'cur1'), ...Array.from({ length: 12 }, () => http(500, {}))];
+-    const e = await expectThrow(() => loadNotionCache());
+-    assert(/재시도 횟수 초과/.test(e.message), '재시도 초과 오류가 아니다');
+-    assert(calls.length === 11, `요청 ${calls.length}회 (기대 11)`);
++  ['openLibrary: user_version 이 스키마와 다르면 던진다', async () => {
++    const p = makeLibrary(SEED, { userVersion: 0 });
++    const e = await expectThrow(() => library.openLibrary(p));
++    assert(/user_version/.test(e.message), 'user_version 오류가 아니다: ' + e.message);
+   }],
+-  ['loadNotionCache: NOTION_CACHE_ALLOW_EMPTY=true 면 빈 DB 를 허용한다', async () => {
+-    process.env.NOTION_CACHE_ALLOW_EMPTY = 'true';
++  ['loadLibraryCache: video_id·제목·정규화 제목 키로 전부 들어간다', async () => {
++    const db = library.openLibrary(makeLibrary(SEED));
+     try {
+-      script = [http(200, { results: [], next_cursor: null })];
+-      const cache = await loadNotionCache();
+-      assert(cache.size === 0, '빈 캐시가 아니다');
+-    } finally {
+-      delete process.env.NOTION_CACHE_ALLOW_EMPTY;
+-    }
++      const cache = loadLibraryCache(db);
++      assert(cache.get('AAAAAAAAAA1')?.pageId === 'aaaa-1', 'video_id 키가 없다');
++      assert(cache.get('두 번째 영상')?.pageId === 'aaaa-2', '제목 키가 없다');
++      assert(findDuplicate({ title: 'video_id 없는 영상' }, cache)?.pageId === 'aaaa-3', 'video_id 없는 행을 제목으로 못 찾는다');
++      assert(findDuplicate({ videoId: 'ZZZZZZZZZZZ', title: 'claude code 완벽 가이드' }, cache)?.pageId === 'aaaa-1', '정규화 제목으로 못 찾는다');
++      const e = cache.get('AAAAAAAAAA1');
++      assert(e.topics[0] === 'AI Claude' && e.savedViewCount === 100 && e.savedDate === '2026-09-01', '캐시 항목 값이 다르다');
++    } finally { db.close(); }
++  }],
++  ['loadLibraryCache: 0건이면 던진다', async () => {
++    const db = library.openLibrary(makeLibrary([]));
++    try {
++      const e = await expectThrow(() => loadLibraryCache(db));
++      assert(/0건/.test(e.message), '0건 오류가 아니다');
++    } finally { db.close(); }
++  }],
++  ['loadLibraryCache: LIBRARY_ALLOW_EMPTY=true 면 빈 장부를 허용한다', async () => {
++    process.env.LIBRARY_ALLOW_EMPTY = 'true';
++    const db = library.openLibrary(makeLibrary([]));
++    try {
++      assert(loadLibraryCache(db).size === 0, '빈 캐시가 아니다');
++    } finally { db.close(); delete process.env.LIBRARY_ALLOW_EMPTY; }
++  }],
++  ['saveToLibrary: 신규 영상을 장부 형식대로 저장하고, 다시 읽은 캐시가 중복으로 잡는다', async () => {
++    const db = library.openLibrary(makeLibrary(SEED));
++    _setLibDb(db);
++    try {
++      const nfd = 'AI 클로드'.normalize('NFD');
++      const id = saveToLibrary({ videoId: 'NEWNEWNEW01', title: '새 영상', channelTitle: '채널', publishedAt: '2026-10-10T01:02:03Z',
++        viewCount: 5, subscriberCount: 7, thumbnail: 'https://i.ytimg.com/vi/NEWNEWNEW01/mq.jpg' }, '## 요약\n- 내용', [nfd, 'AI 클로드', 'AI 에이전트']);
++      assert(/^[0-9a-f-]{36}$/.test(id), 'record_id 가 uuid 가 아니다: ' + id);
++      const r = db.prepare('SELECT * FROM videos WHERE record_id = ?').get(id);
++      assert(r.video_id === 'NEWNEWNEW01' && r.video_url === 'https://www.youtube.com/watch?v=NEWNEWNEW01', 'video_id·url 이 다르다');
++      assert(r.topics === JSON.stringify(['AI 클로드', 'AI 에이전트']), 'topics 가 NFC·중복 제거되지 않았다: ' + r.topics);
++      assert(r.upload_date === '2026-10-10' && r.view_count === 5 && r.subscriber_count === 7, '날짜·통계가 다르다');
++      assert(r.thumbnail_url === 'https://i.ytimg.com/vi/NEWNEWNEW01/mq.jpg', '썸네일이 다르다');
++      assert(r.summary === '## 요약\n- 내용' && r.summary_src === 'app' && r.status === '완료', 'summary·summary_src·status 가 다르다');
++      assert(/^\d{4}-\d\d-\d\dT.*Z$/.test(r.created_at) && r.created_at === r.updated_at, '시각 형식이 다르다');
++      assert(findDuplicate({ videoId: 'NEWNEWNEW01' }, loadLibraryCache(db)), '저장한 영상을 캐시가 못 찾는다');
++    } finally { _setLibDb(null); db.close(); }
++  }],
++  ['saveToLibrary: 이미 있는 video_id 는 덮어쓰지 않고 던진다', async () => {
++    const p = makeLibrary(SEED);
++    const db = library.openLibrary(p);
++    _setLibDb(db);
++    try {
++      const e = await expectThrow(() => saveToLibrary({ videoId: 'AAAAAAAAAA1', title: '같은 영상' }, '요약', []));
++      assert(/UNIQUE/i.test(e.message), 'UNIQUE 위반이 아니다: ' + e.message);
++      assert(db.prepare("SELECT title FROM videos WHERE video_id = 'AAAAAAAAAA1'").get().title === 'Claude Code 완벽 가이드!', '기존 행이 바뀌었다');
++    } finally { _setLibDb(null); db.close(); }
++    assert(count(p) === 3, '행 수가 바뀌었다');
++  }],
++  ['addTopic: 장부의 현재 값과 합집합, 이미 있으면(NFD 포함) false', async () => {
++    const db = library.openLibrary(makeLibrary(SEED));
++    try {
++      assert(library.addTopic(db, 'aaaa-1', 'AI 에이전트') === true, '추가를 못 했다');
++      assert(library.addTopic(db, 'aaaa-1', 'AI 에이전트'.normalize('NFD')) === false, 'NFD 같은 주제를 또 넣었다');
++      assert(library.addTopic(db, 'aaaa-1', 'AI Claude') === false, '기존 주제를 또 넣었다');
++      const t = db.prepare("SELECT topics FROM videos WHERE record_id = 'aaaa-1'").get().topics;
++      assert(t === JSON.stringify(['AI Claude', 'AI 에이전트']), 'topics 가 다르다: ' + t);
++      await expectThrow(() => library.addTopic(db, 'no-such-id', 'AI Claude'));
++    } finally { db.close(); }
++  }],
++  ['updateStats: 업로드일을 안 주면 기존 날짜를 지킨다', async () => {
++    const db = library.openLibrary(makeLibrary(SEED));
++    try {
++      assert(library.updateStats(db, 'aaaa-1', 300, 40, null) === true, '갱신 실패');
++      let r = db.prepare("SELECT view_count, subscriber_count, upload_date FROM videos WHERE record_id = 'aaaa-1'").get();
++      assert(r.view_count === 300 && r.subscriber_count === 40 && r.upload_date === '2026-09-01', '값이 다르다');
++      library.updateStats(db, 'aaaa-1', 301, 41, '2026-09-02');
++      r = db.prepare("SELECT upload_date FROM videos WHERE record_id = 'aaaa-1'").get();
++      assert(r.upload_date === '2026-09-02', '업로드일이 안 바뀌었다');
++    } finally { db.close(); }
+   }],
+ ];
+ 
+@@ -169,6 +242,7 @@ const cases = [
+     script = []; calls = []; unscripted = 0;
+     try {
+       await fn();
++      assert(calls.length === 0 || /^(ytFetch|getBatchSubs)/.test(name), `장부 테스트가 네트워크 요청 ${calls.length}회를 만들었다`);
+       assert(unscripted === 0, `대본에 없는 요청 ${unscripted}회`);
+       pass++;
+       out(`PASS  ${name}`);
