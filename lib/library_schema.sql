@@ -6,7 +6,7 @@
 -- 문자열은 전부 NFC. topics·tags 는 JSON 배열 문자열.
 -- 시각(created_at·updated_at)은 ISO 8601 UTC ('2026-10-11T08:15:00.000Z').
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;   -- v4.5: wiki_extract 추가 (1 → 2, 이전 장부는 scripts/migrate_library.py)
 
 CREATE TABLE IF NOT EXISTS videos (
   record_id        TEXT PRIMARY KEY,
@@ -70,4 +70,19 @@ CREATE INDEX IF NOT EXISTS idx_tips_url_key ON tips(url_key);
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+-- v4.5 Wiki 합성 추출 결과 — 소스(노트 프론트매터 notion_id = videos/tips record_id)별 누적.
+-- wiki_ingest.py 가 쓰고, _wiki 개념·엔티티 페이지와 index.md 는 이 표 전체 + 현재 Vault 로 매 실행 다시 그린다.
+-- Gemini 무료 한도로 얻은 결과라 지우지 않는다(하루 1회 장부 백업에 포함).
+CREATE TABLE IF NOT EXISTS wiki_extract (
+  record_id   TEXT PRIMARY KEY,
+  status      TEXT NOT NULL,                     -- ok = 추출 성공(항목 0개도 정상) | seed = 옛 페이지에서 옮김(부분) | failed = 실패만 했음
+  source      TEXT NOT NULL DEFAULT '',          -- single | batch | seed
+  entities    TEXT NOT NULL DEFAULT '[]',        -- JSON [{name, insight, role}]
+  concepts    TEXT NOT NULL DEFAULT '[]',        -- JSON [{name, insight}]
+  relations   TEXT NOT NULL DEFAULT '[]',        -- JSON [{from, to, type}]
+  attempts    INTEGER NOT NULL DEFAULT 0,        -- 실패 횟수. ok 가 아닌 행은 3회에서 포기
+  created_at  TEXT NOT NULL,
+  updated_at  TEXT NOT NULL
 );

@@ -38,7 +38,7 @@ LOCAL_DIR = os.path.join(ldb.DATA_DIR, 'backups')
 NAME_RE = re.compile(r'^library-(\d{8})\.db\.gz$')
 KEEP_DAILY = 7
 KEEP_WEEKLY = 4
-TABLES = ('videos', 'videos_dup', 'tips', 'meta')
+TABLES = ('videos', 'videos_dup', 'tips', 'meta', 'wiki_extract')
 
 
 def log(m=''):

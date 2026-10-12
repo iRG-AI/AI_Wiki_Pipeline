@@ -181,7 +181,7 @@ AI_Wiki_Pipeline/
 ├── backup_library.py                  # (v4.1) 장부 하루 1회 백업 → data/backups/ + 구글 드라이브 (--dry-run / --status / --force)
 ├── sync_obsidian.py                   # 장부 → Obsidian 증분 동기화 (영상·꿀팁 노트, 고아 격리, --dry-run)
 ├── build_obsidian_wiki.py             # MOC + 채널 목차 + 키워드 링크 빌더 (내용 같으면 안 씀)
-├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 위키 페이지 합성
+├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 추출 → 장부 wiki_extract 누적 → 위키 페이지 렌더 (v4.5)
 ├── wiki_config.py                     # Wiki Ingest 공통 설정 및 Gemini 호출 유틸
 ├── build_search_index.py              # 검색 인덱스(임베딩) 증분 빌드 (프론트매터의 notion_id 기준)
 ├── wiki_lan_server.js                 # (v3.2) 집 안 전용 읽기 전용 Wiki 검색 서버 (포트 3100)
@@ -196,7 +196,7 @@ AI_Wiki_Pipeline/
 ├── lib/
 │   ├── library.js                     # (v4.0) 장부 Node 헬퍼 (openLibrary·insertVideo·addTopic·updateStats)
 │   ├── library_db.py                  # (v4.0) 장부 Python 헬퍼 (open_existing — 없으면 만들지 않음)
-│   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 1)
+│   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 2 = v4.5 wiki_extract)
 │   ├── env_util.py                    # (v4.0) .env 읽기 (의존성 없음)
 │   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
 │   ├── classifier.js                  # Gemini 기반 토픽 분류기
@@ -205,9 +205,10 @@ AI_Wiki_Pipeline/
 ├── scripts/
 │   ├── verify_library.py              # (v4.3) 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음)
 │   ├── retitle_tips.py                # (v4.4) 꿀팁 제목 보완 — 장부·노트 파일명·링크 일괄 (dry-run 기본)
+│   ├── migrate_library.py             # (v4.5) 장부 스키마 이전 1 → 2 (dry-run 기본, 백업 먼저)
 │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
 │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
-│   └── test_*.{js,py}                 # 회귀 테스트 8종 (네트워크 0회)
+│   └── test_*.{js,py}                 # 회귀 테스트 9종 (네트워크 0회)
 ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
 ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
 ├── docs/cowork-project-instructions.md # (옛) Cowork 프로젝트 인수인계 사본 (2026-08-17) — 현재 원본은 Cowork 프로젝트 설정
@@ -251,6 +252,10 @@ SHEET_MIRROR_TOKEN=<openssl rand -hex 24 로 만든 값 — Apps Script 스크�
 
 # (v4.1) 장부 백업 — 구글 드라이브 데스크톱 앱이 동기화하는 폴더 안. 없으면 로컬 data/backups/ 에만 만든다
 LIBRARY_BACKUP_DIR=~/Library/CloudStorage/GoogleDrive-<계정>/내 드라이브/YouTube_Ledger_Backup
+
+# (v4.5) Wiki 합성 backfill — 옛 소스를 묶어서 다시 추출. 영상 요약과 같은 Gemini 무료 키를 쓰므로 올리지 말 것
+WIKI_BACKFILL_DAILY_MAX=30                          # 하루(태평양시) 호출 상한, 0 = 끔 (없으면 30)
+WIKI_BACKFILL_BATCH=20                              # 한 호출에 묶는 소스 수 1~40 (없으면 20)
 
 # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
 WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
@@ -364,6 +369,8 @@ mv data/library.db.restore data/library.db
 launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ```
 
+> v4.5 이전(10-12 이전) 백업은 `user_version` 1 이다. 복원 뒤 `mv` 전에 `/opt/homebrew/bin/python3 scripts/migrate_library.py --db=data/library.db.restore --apply` 로 올린다(안 올리면 모든 실행이 버전 불일치로 멈춘다).
+
 > 복원하면 그 날짜 이후 저장된 영상이 장부에서 빠진다. 다음 실행이 그 영상을 신규로 다시 요약할 수 있고, Obsidian 에 남은 노트는 고아 격리 대상이 될 수 있다 — `sync_obsidian.py --orphans-dry-run` 부터 본다. 시트는 `sheet_mirror.py --full` 로 맞춘다.
 
 ### 6. Wiki 검색 (v3.2)
@@ -389,7 +396,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 ---
 
-## 🗄️ 장부 구조 (`data/library.db`, v4.0)
+## 🗄️ 장부 구조 (`data/library.db`, v4.0 · user_version 2 = v4.5)
 
 스키마 원본은 `lib/library_schema.sql` 하나다(Python·Node 가 같은 파일을 실행). 문자열은 NFC, 목록은 JSON 배열 문자열, 시각은 ISO 8601 UTC.
 
@@ -398,6 +405,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 | `videos` | 영상 1건 1행. `record_id`(노션에서 옮긴 행 = 노션 page id, 새 행 = uuid4 = Obsidian `notion_id`) · `video_id`(UNIQUE) · 제목 · 채널 · `topics` · 업로드일 · 조회수 · 구독자 · URL · `summary`(Gemini 요약 마크다운) | **영상** |
 | `tips` | 카톡 링크 1건 1행. 제목 · URL · `url_key`(중복 판정) · 출처(호스트) · `tags` · 카테고리 · 상태 · 중요도 · 저장일 · 메모 · `body_md`(본문) | **꿀팁** |
 | `videos_dup` | 1단계 적재 때 같은 video_id 로 겹친 노션 페이지 보관본 (지우지 않음) | — |
+| `wiki_extract` | (v4.5) Wiki 합성 추출 결과 — 소스(`record_id`)별 엔티티·개념·관계 JSON, `status`(ok·seed·failed)·`attempts`. `_wiki` 페이지는 이 표로 다시 그린다 | — |
 | `meta` | `switched_at`(장부 원본 확정 시각) · `sheet_wm_videos`·`sheet_wm_tips`(시트에 보낸 마지막 `updated_at`) · `sheet_target` · `sheet_last_ok` · 1단계 적재 기록(`source`·`loaded_at`·`schema_version`·`notion_video_pages`·`notion_tip_pages`) | — |
 
 시트 열 — **영상**: record_id · 업로드일 · 채널 · 제목 · 주제 · 조회수 · 구독자 · URL · 요약 · 저장 · 수정 / **꿀팁**: record_id · 저장일 · 제목 · URL · 출처 · 카테고리 · 태그 · 중요도 · 상태 · 메모 · 본문 · 저장 · 수정 (저장·수정은 KST).
@@ -415,6 +423,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.5** | 2026-10-12 | **Wiki 합성 결과 누적**: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서 페이지마다 1~10건만 남던 결함(05-12 도입 때부터) 수정. 추출 결과를 장부 새 표 `wiki_extract`(user_version 2, `scripts/migrate_library.py`)에 소스별로 쌓고 매 실행 전체로 다시 그림(내용 같으면 안 씀). 깨진 응답은 실패로 재시도(3회), 옛 페이지 항목 씨앗, 옛 소스 3천여 건은 20개 묶음 backfill(하루 30회, 약 6일). 회귀 테스트 9종 |
 | **v4.4** | 2026-10-12 | **꿀팁 제목 보완 도구**: 카톡 인제스트가 URL 로만 추정한 꿀팁 제목(「유튜브 영상 (제목 미확인)」·`courses` 등, 46건 누적)을 원문 제목으로 고치는 `scripts/retitle_tips.py`(CSV 입력, dry-run 기본). 장부 `title`·`updated_at`(시트 미러 반영) + 자동 메모 비움, 「AI 꿀팁」 노트 제자리 수정·파일명 변경, Vault `[[링크]]` 치환을 함께 하고 쓰기 전에 장부·파일을 백업. 첫 적용 5건. 회귀 테스트 8종 |
 | **v4.3** | 2026-10-12 | **노션 잔재 정리**: 노션 해지에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`(+ 테스트)와 `.env` 의 `NOTION_*` 3키를 지움. 계속 쓰던 장부 ↔ Vault 대조만 `scripts/verify_library.py` 로 떼어 냄(검사 항목·`RESULT_JSON` 동일, 테스트 16/16). 앱 코드 동작 무변경. |
 | **v4.2** | 2026-10-12 | **실행 실패 알림**: "저장 0 · Skip 0 · 오류 ≥1"(영상을 하나도 확인하지 못한 실행)과 치명적 오류가 텔레그램 없이 지나가던 구멍을 막음. 실행 상태 파일 `.run_state.json` 으로 네트워크가 죽어 못 보낸 실패·끝을 기록하지 못한 실행·9시간 넘게 빈 간격(빠진 정시 실행)을 다음 실행이 `[직전 실행 점검]` 으로 알림. `sendTelegram` 이 성공 여부를 돌려주고 JSON 아닌 응답에 죽지 않음 |
@@ -440,6 +449,21 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.5] — 2026-10-12 (🧠 Wiki 합성 결과 누적)
+
+**배경.** `wiki_ingest.py` 는 소스마다 Gemini 로 엔티티·개념을 뽑아 `_wiki/entities`·`concepts` 페이지를 만드는데, 페이지와 `index.md` 를 **그 실행에서 뽑은 것만으로** 통째로 다시 썼다. 추출 결과는 어디에도 저장하지 않았다. 그래서 5월 도입 이후 합성한 소스가 3,619건인데 페이지 56개의 source_count 는 1~10, index 는 마지막 실행의 9행뿐이었다. 응답 JSON 이 깨지면 빈 결과로 성공 처리돼 그 소스가 조용히 빠지는 결함도 있었다. 검색 인덱스·MCP 는 `_` 폴더를 읽지 않아 영향이 없었다.
+
+| 항목 | 내용 |
+|---|---|
+| 장부 | 새 표 `wiki_extract`(record_id = 노트 `notion_id`, status `ok`·`seed`·`failed`, entities·concepts·relations JSON, attempts). `user_version` 1 → 2. 기존 장부는 `scripts/migrate_library.py --apply`(온라인 백업 `data/library.db.bak.v1-<시각>` 뒤 스키마 실행, 버전·무결성·행 수 확인). 장부 백업에 포함 |
+| 렌더 | 매 실행 끝에 `wiki_extract` 전체 × 현재 Vault(파일명·제목)로 엔티티·개념·index 를 다시 그림. 결정적(`last_updated` = 기여 행의 `updated_at`), 내용 같으면 안 씀. Vault 에서 빠진 소스는 빠지고, 꿀팁 제목 변경은 저절로 반영 |
+| 실패 | 깨진 응답 → `failed`, 다음 실행이 다시 시도, 3회에서 포기. 정상 JSON 의 빈 결과는 `ok` |
+| 씨앗 | `wiki_ingest.py --seed-from-pages [--apply]` — 지금 페이지에 남은 항목을 `seed` 로(1회, 기본 dry-run) |
+| backfill | 인자 없는 실행(launchd 17:30)이 옛 소스 중 `wiki_extract` 가 없거나 `seed` 뿐인 것을 20개씩 한 호출로 추출, 하루(태평양시) 30회 상한(`.env WIKI_BACKFILL_DAILY_MAX`·`WIKI_BACKFILL_BATCH`). `sync_obsidian` 경로는 `--no-backfill`. 3천여 건 ≈ 160회 ≈ 6일 |
+| 그 밖 | `--render-only`(Gemini 없이 렌더), `WIKI_RESULT` 에 `failed`·`entities`·`concepts`·`backfill_*` 추가, `.wiki_state.json` 의 entities·concepts 가 전체 카운트 |
+| 테스트 | 신규 `scripts/test_wiki_ingest.py` 51/51(가짜 Gemini, 임시 Vault·장부). `test_backup_library.py` 버전 기대값을 스키마 버전으로. 회귀 테스트 9종 |
+| 지시서 | `docs/tasks/2026-10-12-wiki-extract-store.md` |
 
 #### [v4.4] — 2026-10-12 (🏷 꿀팁 제목 보완 도구)
 

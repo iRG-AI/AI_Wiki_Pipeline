@@ -533,7 +533,7 @@ def main():
         wiki_script = os.path.join(SCRIPT_DIR, 'wiki_ingest.py')
         if os.path.exists(wiki_script):
             wiki_result = subprocess.run(
-                [sys.executable, wiki_script],
+                [sys.executable, wiki_script, '--no-backfill'],   # v4.5 backfill 은 launchd 17:30 실행만 (스케줄러 시간을 늘리지 않는다)
                 capture_output=True, text=True
             )
             # ★ 캡처한 출력을 launchd 와 같은 로그에 흘려보낸다 (2026-09-10).

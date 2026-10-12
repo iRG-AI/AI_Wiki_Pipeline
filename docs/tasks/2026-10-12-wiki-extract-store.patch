@@ -1,0 +1,1768 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 693d47a..567b764 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -4,13 +4,14 @@
+ > 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
+ > (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
+ 
+-**현재 버전: v4.4** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
++**현재 버전: v4.5** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+ > v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
+ > v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠다. 장부 ↔ Vault 대조는 `scripts/verify_library.py`.
+ > v4.4: 꿀팁 제목 보완 `scripts/retitle_tips.py` — 장부 `title`·`updated_at` + 노트 제자리 수정·파일명 변경 + Vault 링크 치환을 한 번에(dry-run 기본, 쓰기 전 백업).
++> v4.5: Wiki 합성 결과 누적 — 장부 `wiki_extract`(user_version 2)에 소스별로 쌓고, `_wiki` 개념·엔티티·index 페이지는 매 실행 전체로 다시 그린다. 옛 소스는 `--backfill` 묶음 추출(하루 30회).
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -51,16 +52,23 @@ node scheduler.js --legacy     # 레거시 33개 재생목록 모드
+ /opt/homebrew/bin/python3 kakao_ingest.py --apply --if-new   # 스케줄러 모드: 같은 CSV(mtime)면 장부 조회 없이 즉시 종료 (--force 로 무시)
+ 
+ # Karpathy LLM Wiki
+-python3 wiki_ingest.py              # 증분: 미처리 소스만 Wiki 합성
+-python3 wiki_ingest.py --full       # 전체: 모든 소스 재분석
+-python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
++python3 wiki_ingest.py              # 증분(미처리 소스) → backfill(하루 WIKI_BACKFILL_DAILY_MAX 회) → 페이지 재렌더 (launchd 17:30)
++python3 wiki_ingest.py --no-backfill   # 증분 → 재렌더 (sync_obsidian 경로)
++python3 wiki_ingest.py --render-only   # Gemini 호출 없이 wiki_extract 로 페이지만 다시 그림
++python3 wiki_ingest.py --full       # 전체: 모든 소스 재분석 (backfill 안 함)
++python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리 (backfill 안 함)
++python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페이지 항목 → wiki_extract 씨앗. 기본 dry-run
++
++# 장부 스키마 올리기 (v4.5: user_version 1 → 2). 기본 dry-run. 옛 백업(v1)을 복원했을 때도
++/opt/homebrew/bin/python3 scripts/migrate_library.py [--apply] [--db=<경로>]
+ 
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+-# 회귀 테스트 8종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
++# 회귀 테스트 9종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+ /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
+ /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
+ /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
++/opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 51/51  Wiki 추출 누적·재렌더·backfill·씨앗 + 장부 스키마 이전 (가짜 Gemini)
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+@@ -162,7 +170,8 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `lib/classifier.js` | Gemini 기반 토픽 분류기. `playlists.json`의 토픽 목록만 허용(allowedSet 필터). 신뢰도 0.6 미만이면 YouTube 추가 건너뜀. |
+ | `lib/youtube_oauth.js` | YouTube OAuth2 쓰기 전용. access_token 메모리 캐시(50분), 일일 quota 추적(`.quota_state.json`), 호출 간 200ms rate limit. |
+ | `sync_obsidian.py` | (v4.0) 장부 `data/library.db`(읽기 전용) → Obsidian 증분 동기화. 노션 호출 없음. 내부적으로 `wiki_ingest.py`와 연동. 고아 `.md` 격리 포함(아래 참조). `--dry-run` 으로 할 일만 센다. |
+-| `wiki_ingest.py` | Karpathy LLM Wiki 파이프라인. Obsidian 노트를 순회하며 Gemini로 개념 단위 지식 추출 및 합성. |
++| `wiki_ingest.py` | Karpathy LLM Wiki 파이프라인. Obsidian 노트를 순회하며 Gemini로 엔티티·개념 추출 → (v4.5) 장부 `wiki_extract` 에 소스별 누적 → `_wiki/entities`·`concepts`·`index.md` 를 그 표 전체 + 현재 Vault 로 다시 그림(내용 같으면 안 씀). 아래 「Wiki 합성 결과 누적」. |
++| `scripts/migrate_library.py` | (v4.5) 장부 스키마 이전(user_version 1 → 2). 기본 dry-run, `--apply` 는 온라인 백업 `<장부>.bak.v1-<시각>` 뒤 스키마 실행(전부 `IF NOT EXISTS`) → 버전·무결성·행 수 확인. `--db=` 로 복원본에도. |
+ | `wiki_config.py` | Wiki 인제스트 설정 + Gemini 호출 래퍼. 4키 로테이션, RPD 20 추적(`.wiki_quota.json`), 429 RPD/RPM 분기, 5xx 백오프. |
+ | `build_obsidian_wiki.py` | 키워드별 허브 파일 27개 자동 생성(`_MOC/Claude.md` 등) + MOC 재구성. (v4.0) `write_if_changed()` — 내용이 같은 파일은 쓰지 않는다. |
+ | `legacy_scripts/` | (v4.0) 은퇴한 노션 전제 스크립트 보관(`migrate_classify.js`·`check_duplicates.py`·`cleanup_duplicates.py`·`fix_nfc_topics.js`·`notion_to_obsidian.js`). 실행 대상 아님 — `legacy_scripts/README.md`. |
+@@ -182,6 +191,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
+ | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
+ | `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
++| `scripts/test_wiki_ingest.py` | (v4.5) wiki_ingest 누적·재렌더·실패 처리·backfill 상한·씨앗 + `migrate_library` 회귀 테스트. 임시 Vault·장부·상태 파일, Gemini 는 가짜(네트워크 0). |
+ | `scripts/retitle_tips.py` · `scripts/test_retitle_tips.py` | (v4.4) 꿀팁 제목 보완. CSV(`record_id,old_title,new_title`) → 장부 `title`·`updated_at`(+ 카톡 자동 메모 비움) · 「AI 꿀팁」 노트 제자리 수정·파일명 변경 · Vault `[[링크]]` 치환 → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 검증 전부 통과 뒤에만 쓰고 쓰기 전 `data/retitle_backup/<시각>/` 에 장부·파일 백업. 장부 조건은 `record_id` + 옛 제목(같은 CSV 재실행은 멈춤). 종료 0 · 1 · 2(무변경). |
+ | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
+@@ -288,6 +298,26 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
+ - 겹친 실행(수동 실행이 정시 실행과 겹침)은 나중에 끝난 쪽 기록이 남는다. 그 정도의 부정확은 받아들인다.
+ - `.env`·`lib/youtube_oauth` 로드 실패로 마스터 인제스트를 통째로 건너뛰면 "저장 0 · Skip 0 · 오류 0" 이라 이 판정에 걸리지 않는다(빈 재생목록과 구분 불가). 범위 밖.
+ 
++### Wiki 합성 결과 누적 (v4.5) — 장부 `wiki_extract` 가 원본, 페이지는 그림
++
++```
++소스(노트) ─Gemini─▶ wiki_extract (record_id = notion_id, status ok | seed | failed, attempts)
++                         │  매 실행 끝: 표 전체 × 현재 Vault(record_id → 파일명·제목) 로 렌더
++                         ▼
++             _wiki/entities/*.md · _wiki/concepts/*.md · _wiki/index.md   (내용 같으면 안 씀)
++```
++
++- **v4.4 까지의 결함:** `update_concept_page`·`update_entity_page`·`build_wiki_index` 가 그 실행분만으로 파일 전체를 다시 써서, 페이지마다 그 페이지를 마지막으로 건드린 실행분(1~10건)만 남았다(05-12 도입 때부터). 추출 결과를 어디에도 저장하지 않아 되살릴 원본이 없었다. **페이지를 실행분으로 다시 쓰는 코드로 되돌리지 말 것.**
++- 페이지는 파생물이다. 손으로 고치면 다음 실행에 덮인다. 고칠 것은 `wiki_extract` 또는 노트다. `--render-only` 로 Gemini 없이 다시 그린다.
++- 렌더는 결정적이다 — `last_updated`·index 「마지막 갱신」은 실행 시각이 아니라 기여한 행의 `updated_at` 최댓값(KST). 그래서 할 일 없는 실행은 파일을 하나도 쓰지 않는다.
++- Vault 에서 빠진 소스(고아·격리)는 페이지에서 저절로 빠진다(장부 행은 남김). retitle 로 바뀐 파일명·제목도 저절로 따라간다. 항목이 0이 된 이름의 기존 페이지는 지우지 않는다.
++- **응답을 못 읽으면(깨진 JSON) 실패다.** v4.4 까지는 빈 결과로 성공 처리해 그 소스가 조용히 빠졌다. 지금은 `failed` 행 attempts+1, ingested 에 안 넣어 다음 실행이 다시 시도, **3회(`MAX_FAILS`)에서 포기**(ingested 표시). 정상 JSON 의 빈 결과는 `ok`.
++- **backfill:** `.wiki_state.json` ingested 에 있지만 `wiki_extract` 가 없거나 `seed` 뿐인 소스를 `WIKI_BACKFILL_BATCH`(기본 20)개씩 한 호출로 추출. 하루(태평양시) `WIKI_BACKFILL_DAILY_MAX`(기본 30, 0 = 끔)회 상한(두 설정 모두 프로세스 환경변수가 `.env` 보다 먼저 — 시험 1회는 `WIKI_BACKFILL_DAILY_MAX=1 python3 wiki_ingest.py`) — 사용량은 `.wiki_state.json` 의 `backfill: {date, calls}`. **영상 요약과 같은 무료 키를 쓰므로 상한을 올리면 요약이 429 를 맞는다.** 실패한 호출도 1회로 센다.
++- backfill 은 launchd 17:30 실행(인자 없음)에서만 돈다. `sync_obsidian` 경로는 `--no-backfill` — 스케줄러 실행 시간을 늘리지 않는다. `--full`·`--limit` 도 backfill 하지 않는다.
++- 씨앗(`--seed-from-pages`)은 v4.5 적용 때 1회 — 옛 페이지에 남아 있던 항목(약 80건)을 `seed` 로 옮겨 backfill 이 끝나기 전에도 페이지가 비지 않게 한다. `ok` 행은 덮지 않는다. backfill 이 seed 를 batch 결과로 바꾼다.
++- `.wiki_state.json` 의 `entities`·`concepts` 는 이제 전체 카운트다(예전엔 마지막 실행분).
++- 판정: `WIKI_RESULT` 에 `failed`·`entities`·`concepts`(전체 이름 수)·`backfill_calls`·`backfill_done`·`backfill_left` 가 더해졌다. `backfill_left` 가 0 이 되면 끝. `null` 은 그 실행에서 backfill 을 안 돌렸다는 뜻이다.
++
+ ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
+ 
+ 장부 `videos` 에 없는 notion_id 를 가진 영상 노트를 **삭제하지 않고** `VAULT/_trash/<타임스탬프>/`로 이동합니다 (v4.0 전에는 "Notion에서 삭제된 페이지").
+@@ -336,7 +366,8 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
+ - `record_id` = 노션 page id(하이픈 포함) = Obsidian `notion_id`. **프론트매터 키 이름 `notion_id` 를 바꾸지 말 것** — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다. 새 행은 uuid4.
+ - `data/` 는 gitignore. 개인 요약 전체가 들어 있다 — `git check-ignore -q data/library.db` 로 확인.
+ - `videos_dup` 은 지우지 않는다(중복 페이지 보관, 되돌림용). `has_vault_note=1` 행의 노트는 2단계 첫 동기화에서 `_trash/` 로 격리된다(의도됨).
+-- 스키마를 바꾸면 `lib/library_schema.sql` 의 `PRAGMA user_version` 을 올리고 `lib/library_db.py:SCHEMA_VERSION` 도 같이 올린다.
++- 스키마를 바꾸면 `lib/library_schema.sql` 의 `PRAGMA user_version` 을 올리고 `lib/library_db.py:SCHEMA_VERSION` 도 같이 올린다. 기존 장부는 `scripts/migrate_library.py --apply` 로 올린다 — **코드를 올린 뒤 이전 전까지는 모든 실행이 user_version 불일치로 던진다**(정시 실행 창 밖에서 연달아 할 것). 테스트 `test_backup_library.py` 의 버전 기대값은 `SCHEMA_VERSION` 을 따른다.
++- (v4.5, user_version 2) `wiki_extract` — Wiki 합성 추출 결과(위 「Wiki 합성 결과 누적」). Gemini 무료 한도로 얻은 값이라 지우지 않는다. 시트로 보내지 않는다. 장부 백업에 들어간다.
+ 
+ ### 중요한 제약사항
+ 
+@@ -417,7 +448,7 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
+ ① launchd  com.irichgreen.wiki-ingest         매일 17:30 (= PT 01:30, RPD 리셋 직후)
+ ② scheduler.js:1525  totalSaved === 0  →  sync_obsidian.py --rebuild
+      └ sync_obsidian.py:516  --rebuild → force=True
+-       └ sync_obsidian.py:538  subprocess.run([sys.executable, 'wiki_ingest.py'], capture_output=True)
++       └ sync_obsidian.py:538  subprocess.run([sys.executable, 'wiki_ingest.py', '--no-backfill'], capture_output=True)
+ ```
+ 
+ ②는 **저장 0건인 스케줄러 실행마다(00/06/12/18시)** 돈다. 증분 모드라 할 일이 없으면 즉시 끝나고,
+@@ -456,7 +487,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ |------|-----------|--------|-----------|
+ | `com.irichgreen.server` | `server.js` (포트 3000) | `KeepAlive`, `RunAtLoad` — 상주 | `/opt/homebrew/bin/node` |
+ | `com.irichgreen.ytsummarizer` | `scheduler.js` | 00 / 06 / 12 / 18시 | `/opt/homebrew/bin/node` |
+-| `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분) | 매일 17:30 | `/opt/homebrew/bin/python3` |
++| `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분 + backfill + 재렌더) | 매일 17:30 | `/opt/homebrew/bin/python3` |
+ | `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | `KeepAlive`, `RunAtLoad`, `ThrottleInterval 60` — 상주 | `/opt/homebrew/bin/node` |
+ 
+ - **실제 동작하는 plist는 `~/Library/LaunchAgents/`에 있다.** 레포 루트의 plist 4개는 그 원본이며 모두 실경로(`<REPO_ROOT>` 의 절대경로)가 들어 있다. **원본은 설치본과 같게 유지한다** — 2026-10-12 대조에서 `wiki-ingest` 원본만 옛 값(03:00 · `/usr/bin/python3` · `--full`)이라 설치본(17:30 · Homebrew python3 · 증분)으로 맞췄다. 확인: `diff <(plutil -convert xml1 -o - ~/Library/LaunchAgents/<라벨>.plist) <(plutil -convert xml1 -o - <라벨>.plist)`. 예전에 `server`·`ytsummarizer` 두 개에 있던 `/Users/사용자명/youtube-notion-app` 플레이스홀더는 제거했다.
+@@ -502,6 +533,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-12 (v4.5 — Wiki 합성 결과 누적)** — 결함: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서(05-12 도입 때부터) 페이지 56개의 source_count 가 1~10, index 9행뿐이었다(합성 소스 3,619건). 추출 결과를 저장하지 않아 되살릴 원본이 없었다. 수정: 장부에 `wiki_extract` 표(user_version 1 → 2, `scripts/migrate_library.py`), 소스별 누적 + 매 실행 전체 재렌더(결정적, 내용 같으면 안 씀, 고아 제외·retitle 반영), 깨진 응답은 실패로 3회까지 재시도, 옛 페이지 항목 씨앗(`--seed-from-pages`), 옛 소스 backfill(20개 묶음, 하루 30회, launchd 경로만 — `sync_obsidian` 은 `--no-backfill`). `backup_library.py` 행 수에 `wiki_extract` 추가. 테스트: 신규 `test_wiki_ingest.py` 51/51, `test_backup_library.py` 버전 기대값을 `SCHEMA_VERSION` 으로. 회귀 테스트 9종. 지시서 `docs/tasks/2026-10-12-wiki-extract-store.md`.
+ - **2026-10-12 (v4.4 — 꿀팁 제목 보완 도구)** — `scripts/retitle_tips.py`(+ `scripts/test_retitle_tips.py` 49/49) 신규: 장부 tips 제목·`updated_at` + 「AI 꿀팁」 노트 제자리 수정·파일명 변경 + Vault 링크 치환, dry-run 기본·쓰기 전 백업(`data/retitle_backup/`, gitignore 의 `data/` 아래). 앱 코드·데몬 무변경. 첫 적용 5건(`docs/tasks/2026-10-12-retitle-tips.csv`). 회귀 테스트 8종. 지시서 `docs/tasks/2026-10-12-retitle-tips.md`.
+ - **2026-10-12 (v4.3 — 노션 잔재 정리)** — 노션 해지(10-12)에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`·`scripts/test_notion_to_sqlite.py` 삭제, `.env` 의 `NOTION_*` 3키 삭제. 그중 계속 쓰던 장부 ↔ Vault 대조(`--verify`)는 `scripts/verify_library.py`(+ `scripts/test_verify_library.py` 16/16)로 떼어 냈다 — 검사 항목·`RESULT_JSON` 키 동일, 실데이터 결과 동일(영상 2,999 · 꿀팁 148 · 없음 0). 앱 코드 변경 없음(주석 3곳). 회귀 테스트 7종 유지. 이름 변경 날짜 표기를 실제 실행일(10-12)로 정정.
+ - **2026-10-12 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
+diff --git a/CLAUDE.md b/CLAUDE.md
+index d7e671e..afdc650 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -2,13 +2,14 @@
+ 
+ This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+ 
+-**현재 버전: v4.4** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
++**현재 버전: v4.5** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+ > v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
+ > v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠다. 장부 ↔ Vault 대조는 `scripts/verify_library.py`.
+ > v4.4: 꿀팁 제목 보완 `scripts/retitle_tips.py` — 장부 `title`·`updated_at` + 노트 제자리 수정·파일명 변경 + Vault 링크 치환을 한 번에(dry-run 기본, 쓰기 전 백업).
++> v4.5: Wiki 합성 결과 누적 — 장부 `wiki_extract`(user_version 2)에 소스별로 쌓고, `_wiki` 개념·엔티티·index 페이지는 매 실행 전체로 다시 그린다. 옛 소스는 `--backfill` 묶음 추출(하루 30회).
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -49,16 +50,23 @@ node scheduler.js --legacy     # 레거시 33개 재생목록 모드
+ /opt/homebrew/bin/python3 kakao_ingest.py --apply --if-new   # 스케줄러 모드: 같은 CSV(mtime)면 장부 조회 없이 즉시 종료 (--force 로 무시)
+ 
+ # Karpathy LLM Wiki
+-python3 wiki_ingest.py              # 증분: 미처리 소스만 Wiki 합성
+-python3 wiki_ingest.py --full       # 전체: 모든 소스 재분석
+-python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
++python3 wiki_ingest.py              # 증분(미처리 소스) → backfill(하루 WIKI_BACKFILL_DAILY_MAX 회) → 페이지 재렌더 (launchd 17:30)
++python3 wiki_ingest.py --no-backfill   # 증분 → 재렌더 (sync_obsidian 경로)
++python3 wiki_ingest.py --render-only   # Gemini 호출 없이 wiki_extract 로 페이지만 다시 그림
++python3 wiki_ingest.py --full       # 전체: 모든 소스 재분석 (backfill 안 함)
++python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리 (backfill 안 함)
++python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페이지 항목 → wiki_extract 씨앗. 기본 dry-run
++
++# 장부 스키마 올리기 (v4.5: user_version 1 → 2). 기본 dry-run. 옛 백업(v1)을 복원했을 때도
++/opt/homebrew/bin/python3 scripts/migrate_library.py [--apply] [--db=<경로>]
+ 
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+-# 회귀 테스트 8종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
++# 회귀 테스트 9종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+ /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
+ /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
+ /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
++/opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 51/51  Wiki 추출 누적·재렌더·backfill·씨앗 + 장부 스키마 이전 (가짜 Gemini)
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+@@ -160,7 +168,8 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `lib/classifier.js` | Gemini 기반 토픽 분류기. `playlists.json`의 토픽 목록만 허용(allowedSet 필터). 신뢰도 0.6 미만이면 YouTube 추가 건너뜀. |
+ | `lib/youtube_oauth.js` | YouTube OAuth2 쓰기 전용. access_token 메모리 캐시(50분), 일일 quota 추적(`.quota_state.json`), 호출 간 200ms rate limit. |
+ | `sync_obsidian.py` | (v4.0) 장부 `data/library.db`(읽기 전용) → Obsidian 증분 동기화. 노션 호출 없음. 내부적으로 `wiki_ingest.py`와 연동. 고아 `.md` 격리 포함(아래 참조). `--dry-run` 으로 할 일만 센다. |
+-| `wiki_ingest.py` | Karpathy LLM Wiki 파이프라인. Obsidian 노트를 순회하며 Gemini로 개념 단위 지식 추출 및 합성. |
++| `wiki_ingest.py` | Karpathy LLM Wiki 파이프라인. Obsidian 노트를 순회하며 Gemini로 엔티티·개념 추출 → (v4.5) 장부 `wiki_extract` 에 소스별 누적 → `_wiki/entities`·`concepts`·`index.md` 를 그 표 전체 + 현재 Vault 로 다시 그림(내용 같으면 안 씀). 아래 「Wiki 합성 결과 누적」. |
++| `scripts/migrate_library.py` | (v4.5) 장부 스키마 이전(user_version 1 → 2). 기본 dry-run, `--apply` 는 온라인 백업 `<장부>.bak.v1-<시각>` 뒤 스키마 실행(전부 `IF NOT EXISTS`) → 버전·무결성·행 수 확인. `--db=` 로 복원본에도. |
+ | `wiki_config.py` | Wiki 인제스트 설정 + Gemini 호출 래퍼. 4키 로테이션, RPD 20 추적(`.wiki_quota.json`), 429 RPD/RPM 분기, 5xx 백오프. |
+ | `build_obsidian_wiki.py` | 키워드별 허브 파일 27개 자동 생성(`_MOC/Claude.md` 등) + MOC 재구성. (v4.0) `write_if_changed()` — 내용이 같은 파일은 쓰지 않는다. |
+ | `legacy_scripts/` | (v4.0) 은퇴한 노션 전제 스크립트 보관(`migrate_classify.js`·`check_duplicates.py`·`cleanup_duplicates.py`·`fix_nfc_topics.js`·`notion_to_obsidian.js`). 실행 대상 아님 — `legacy_scripts/README.md`. |
+@@ -180,6 +189,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
+ | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
+ | `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
++| `scripts/test_wiki_ingest.py` | (v4.5) wiki_ingest 누적·재렌더·실패 처리·backfill 상한·씨앗 + `migrate_library` 회귀 테스트. 임시 Vault·장부·상태 파일, Gemini 는 가짜(네트워크 0). |
+ | `scripts/retitle_tips.py` · `scripts/test_retitle_tips.py` | (v4.4) 꿀팁 제목 보완. CSV(`record_id,old_title,new_title`) → 장부 `title`·`updated_at`(+ 카톡 자동 메모 비움) · 「AI 꿀팁」 노트 제자리 수정·파일명 변경 · Vault `[[링크]]` 치환 → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 검증 전부 통과 뒤에만 쓰고 쓰기 전 `data/retitle_backup/<시각>/` 에 장부·파일 백업. 장부 조건은 `record_id` + 옛 제목(같은 CSV 재실행은 멈춤). 종료 0 · 1 · 2(무변경). |
+ | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
+@@ -286,6 +296,26 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
+ - 겹친 실행(수동 실행이 정시 실행과 겹침)은 나중에 끝난 쪽 기록이 남는다. 그 정도의 부정확은 받아들인다.
+ - `.env`·`lib/youtube_oauth` 로드 실패로 마스터 인제스트를 통째로 건너뛰면 "저장 0 · Skip 0 · 오류 0" 이라 이 판정에 걸리지 않는다(빈 재생목록과 구분 불가). 범위 밖.
+ 
++### Wiki 합성 결과 누적 (v4.5) — 장부 `wiki_extract` 가 원본, 페이지는 그림
++
++```
++소스(노트) ─Gemini─▶ wiki_extract (record_id = notion_id, status ok | seed | failed, attempts)
++                         │  매 실행 끝: 표 전체 × 현재 Vault(record_id → 파일명·제목) 로 렌더
++                         ▼
++             _wiki/entities/*.md · _wiki/concepts/*.md · _wiki/index.md   (내용 같으면 안 씀)
++```
++
++- **v4.4 까지의 결함:** `update_concept_page`·`update_entity_page`·`build_wiki_index` 가 그 실행분만으로 파일 전체를 다시 써서, 페이지마다 그 페이지를 마지막으로 건드린 실행분(1~10건)만 남았다(05-12 도입 때부터). 추출 결과를 어디에도 저장하지 않아 되살릴 원본이 없었다. **페이지를 실행분으로 다시 쓰는 코드로 되돌리지 말 것.**
++- 페이지는 파생물이다. 손으로 고치면 다음 실행에 덮인다. 고칠 것은 `wiki_extract` 또는 노트다. `--render-only` 로 Gemini 없이 다시 그린다.
++- 렌더는 결정적이다 — `last_updated`·index 「마지막 갱신」은 실행 시각이 아니라 기여한 행의 `updated_at` 최댓값(KST). 그래서 할 일 없는 실행은 파일을 하나도 쓰지 않는다.
++- Vault 에서 빠진 소스(고아·격리)는 페이지에서 저절로 빠진다(장부 행은 남김). retitle 로 바뀐 파일명·제목도 저절로 따라간다. 항목이 0이 된 이름의 기존 페이지는 지우지 않는다.
++- **응답을 못 읽으면(깨진 JSON) 실패다.** v4.4 까지는 빈 결과로 성공 처리해 그 소스가 조용히 빠졌다. 지금은 `failed` 행 attempts+1, ingested 에 안 넣어 다음 실행이 다시 시도, **3회(`MAX_FAILS`)에서 포기**(ingested 표시). 정상 JSON 의 빈 결과는 `ok`.
++- **backfill:** `.wiki_state.json` ingested 에 있지만 `wiki_extract` 가 없거나 `seed` 뿐인 소스를 `WIKI_BACKFILL_BATCH`(기본 20)개씩 한 호출로 추출. 하루(태평양시) `WIKI_BACKFILL_DAILY_MAX`(기본 30, 0 = 끔)회 상한(두 설정 모두 프로세스 환경변수가 `.env` 보다 먼저 — 시험 1회는 `WIKI_BACKFILL_DAILY_MAX=1 python3 wiki_ingest.py`) — 사용량은 `.wiki_state.json` 의 `backfill: {date, calls}`. **영상 요약과 같은 무료 키를 쓰므로 상한을 올리면 요약이 429 를 맞는다.** 실패한 호출도 1회로 센다.
++- backfill 은 launchd 17:30 실행(인자 없음)에서만 돈다. `sync_obsidian` 경로는 `--no-backfill` — 스케줄러 실행 시간을 늘리지 않는다. `--full`·`--limit` 도 backfill 하지 않는다.
++- 씨앗(`--seed-from-pages`)은 v4.5 적용 때 1회 — 옛 페이지에 남아 있던 항목(약 80건)을 `seed` 로 옮겨 backfill 이 끝나기 전에도 페이지가 비지 않게 한다. `ok` 행은 덮지 않는다. backfill 이 seed 를 batch 결과로 바꾼다.
++- `.wiki_state.json` 의 `entities`·`concepts` 는 이제 전체 카운트다(예전엔 마지막 실행분).
++- 판정: `WIKI_RESULT` 에 `failed`·`entities`·`concepts`(전체 이름 수)·`backfill_calls`·`backfill_done`·`backfill_left` 가 더해졌다. `backfill_left` 가 0 이 되면 끝. `null` 은 그 실행에서 backfill 을 안 돌렸다는 뜻이다.
++
+ ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
+ 
+ 장부 `videos` 에 없는 notion_id 를 가진 영상 노트를 **삭제하지 않고** `VAULT/_trash/<타임스탬프>/`로 이동합니다 (v4.0 전에는 "Notion에서 삭제된 페이지").
+@@ -334,7 +364,8 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
+ - `record_id` = 노션 page id(하이픈 포함) = Obsidian `notion_id`. **프론트매터 키 이름 `notion_id` 를 바꾸지 말 것** — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다. 새 행은 uuid4.
+ - `data/` 는 gitignore. 개인 요약 전체가 들어 있다 — `git check-ignore -q data/library.db` 로 확인.
+ - `videos_dup` 은 지우지 않는다(중복 페이지 보관, 되돌림용). `has_vault_note=1` 행의 노트는 2단계 첫 동기화에서 `_trash/` 로 격리된다(의도됨).
+-- 스키마를 바꾸면 `lib/library_schema.sql` 의 `PRAGMA user_version` 을 올리고 `lib/library_db.py:SCHEMA_VERSION` 도 같이 올린다.
++- 스키마를 바꾸면 `lib/library_schema.sql` 의 `PRAGMA user_version` 을 올리고 `lib/library_db.py:SCHEMA_VERSION` 도 같이 올린다. 기존 장부는 `scripts/migrate_library.py --apply` 로 올린다 — **코드를 올린 뒤 이전 전까지는 모든 실행이 user_version 불일치로 던진다**(정시 실행 창 밖에서 연달아 할 것). 테스트 `test_backup_library.py` 의 버전 기대값은 `SCHEMA_VERSION` 을 따른다.
++- (v4.5, user_version 2) `wiki_extract` — Wiki 합성 추출 결과(위 「Wiki 합성 결과 누적」). Gemini 무료 한도로 얻은 값이라 지우지 않는다. 시트로 보내지 않는다. 장부 백업에 들어간다.
+ 
+ ### 중요한 제약사항
+ 
+@@ -415,7 +446,7 @@ GCP       : youtube-data-api-487306, 게시 상태 = 프로덕션
+ ① launchd  com.irichgreen.wiki-ingest         매일 17:30 (= PT 01:30, RPD 리셋 직후)
+ ② scheduler.js:1525  totalSaved === 0  →  sync_obsidian.py --rebuild
+      └ sync_obsidian.py:516  --rebuild → force=True
+-       └ sync_obsidian.py:538  subprocess.run([sys.executable, 'wiki_ingest.py'], capture_output=True)
++       └ sync_obsidian.py:538  subprocess.run([sys.executable, 'wiki_ingest.py', '--no-backfill'], capture_output=True)
+ ```
+ 
+ ②는 **저장 0건인 스케줄러 실행마다(00/06/12/18시)** 돈다. 증분 모드라 할 일이 없으면 즉시 끝나고,
+@@ -454,7 +485,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ |------|-----------|--------|-----------|
+ | `com.irichgreen.server` | `server.js` (포트 3000) | `KeepAlive`, `RunAtLoad` — 상주 | `/opt/homebrew/bin/node` |
+ | `com.irichgreen.ytsummarizer` | `scheduler.js` | 00 / 06 / 12 / 18시 | `/opt/homebrew/bin/node` |
+-| `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분) | 매일 17:30 | `/opt/homebrew/bin/python3` |
++| `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분 + backfill + 재렌더) | 매일 17:30 | `/opt/homebrew/bin/python3` |
+ | `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | `KeepAlive`, `RunAtLoad`, `ThrottleInterval 60` — 상주 | `/opt/homebrew/bin/node` |
+ 
+ - **실제 동작하는 plist는 `~/Library/LaunchAgents/`에 있다.** 레포 루트의 plist 4개는 그 원본이며 모두 실경로(`<REPO_ROOT>` 의 절대경로)가 들어 있다. **원본은 설치본과 같게 유지한다** — 2026-10-12 대조에서 `wiki-ingest` 원본만 옛 값(03:00 · `/usr/bin/python3` · `--full`)이라 설치본(17:30 · Homebrew python3 · 증분)으로 맞췄다. 확인: `diff <(plutil -convert xml1 -o - ~/Library/LaunchAgents/<라벨>.plist) <(plutil -convert xml1 -o - <라벨>.plist)`. 예전에 `server`·`ytsummarizer` 두 개에 있던 `/Users/사용자명/youtube-notion-app` 플레이스홀더는 제거했다.
+@@ -500,6 +531,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-12 (v4.5 — Wiki 합성 결과 누적)** — 결함: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서(05-12 도입 때부터) 페이지 56개의 source_count 가 1~10, index 9행뿐이었다(합성 소스 3,619건). 추출 결과를 저장하지 않아 되살릴 원본이 없었다. 수정: 장부에 `wiki_extract` 표(user_version 1 → 2, `scripts/migrate_library.py`), 소스별 누적 + 매 실행 전체 재렌더(결정적, 내용 같으면 안 씀, 고아 제외·retitle 반영), 깨진 응답은 실패로 3회까지 재시도, 옛 페이지 항목 씨앗(`--seed-from-pages`), 옛 소스 backfill(20개 묶음, 하루 30회, launchd 경로만 — `sync_obsidian` 은 `--no-backfill`). `backup_library.py` 행 수에 `wiki_extract` 추가. 테스트: 신규 `test_wiki_ingest.py` 51/51, `test_backup_library.py` 버전 기대값을 `SCHEMA_VERSION` 으로. 회귀 테스트 9종. 지시서 `docs/tasks/2026-10-12-wiki-extract-store.md`.
+ - **2026-10-12 (v4.4 — 꿀팁 제목 보완 도구)** — `scripts/retitle_tips.py`(+ `scripts/test_retitle_tips.py` 49/49) 신규: 장부 tips 제목·`updated_at` + 「AI 꿀팁」 노트 제자리 수정·파일명 변경 + Vault 링크 치환, dry-run 기본·쓰기 전 백업(`data/retitle_backup/`, gitignore 의 `data/` 아래). 앱 코드·데몬 무변경. 첫 적용 5건(`docs/tasks/2026-10-12-retitle-tips.csv`). 회귀 테스트 8종. 지시서 `docs/tasks/2026-10-12-retitle-tips.md`.
+ - **2026-10-12 (v4.3 — 노션 잔재 정리)** — 노션 해지(10-12)에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`·`scripts/test_notion_to_sqlite.py` 삭제, `.env` 의 `NOTION_*` 3키 삭제. 그중 계속 쓰던 장부 ↔ Vault 대조(`--verify`)는 `scripts/verify_library.py`(+ `scripts/test_verify_library.py` 16/16)로 떼어 냈다 — 검사 항목·`RESULT_JSON` 키 동일, 실데이터 결과 동일(영상 2,999 · 꿀팁 148 · 없음 0). 앱 코드 변경 없음(주석 3곳). 회귀 테스트 7종 유지. 이름 변경 날짜 표기를 실제 실행일(10-12)로 정정.
+ - **2026-10-12 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
+diff --git a/README.md b/README.md
+index 89488ba..5b02b98 100644
+--- a/README.md
++++ b/README.md
+@@ -181,7 +181,7 @@ AI_Wiki_Pipeline/
+ ├── backup_library.py                  # (v4.1) 장부 하루 1회 백업 → data/backups/ + 구글 드라이브 (--dry-run / --status / --force)
+ ├── sync_obsidian.py                   # 장부 → Obsidian 증분 동기화 (영상·꿀팁 노트, 고아 격리, --dry-run)
+ ├── build_obsidian_wiki.py             # MOC + 채널 목차 + 키워드 링크 빌더 (내용 같으면 안 씀)
+-├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 위키 페이지 합성
++├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 추출 → 장부 wiki_extract 누적 → 위키 페이지 렌더 (v4.5)
+ ├── wiki_config.py                     # Wiki Ingest 공통 설정 및 Gemini 호출 유틸
+ ├── build_search_index.py              # 검색 인덱스(임베딩) 증분 빌드 (프론트매터의 notion_id 기준)
+ ├── wiki_lan_server.js                 # (v3.2) 집 안 전용 읽기 전용 Wiki 검색 서버 (포트 3100)
+@@ -196,7 +196,7 @@ AI_Wiki_Pipeline/
+ ├── lib/
+ │   ├── library.js                     # (v4.0) 장부 Node 헬퍼 (openLibrary·insertVideo·addTopic·updateStats)
+ │   ├── library_db.py                  # (v4.0) 장부 Python 헬퍼 (open_existing — 없으면 만들지 않음)
+-│   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 1)
++│   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 2 = v4.5 wiki_extract)
+ │   ├── env_util.py                    # (v4.0) .env 읽기 (의존성 없음)
+ │   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
+ │   ├── classifier.js                  # Gemini 기반 토픽 분류기
+@@ -205,9 +205,10 @@ AI_Wiki_Pipeline/
+ ├── scripts/
+ │   ├── verify_library.py              # (v4.3) 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음)
+ │   ├── retitle_tips.py                # (v4.4) 꿀팁 제목 보완 — 장부·노트 파일명·링크 일괄 (dry-run 기본)
++│   ├── migrate_library.py             # (v4.5) 장부 스키마 이전 1 → 2 (dry-run 기본, 백업 먼저)
+ │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
+ │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
+-│   └── test_*.{js,py}                 # 회귀 테스트 8종 (네트워크 0회)
++│   └── test_*.{js,py}                 # 회귀 테스트 9종 (네트워크 0회)
+ ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
+ ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
+ ├── docs/cowork-project-instructions.md # (옛) Cowork 프로젝트 인수인계 사본 (2026-08-17) — 현재 원본은 Cowork 프로젝트 설정
+@@ -252,6 +253,10 @@ SHEET_MIRROR_TOKEN=<openssl rand -hex 24 로 만든 값 — Apps Script 스크
+ # (v4.1) 장부 백업 — 구글 드라이브 데스크톱 앱이 동기화하는 폴더 안. 없으면 로컬 data/backups/ 에만 만든다
+ LIBRARY_BACKUP_DIR=~/Library/CloudStorage/GoogleDrive-<계정>/내 드라이브/YouTube_Ledger_Backup
+ 
++# (v4.5) Wiki 합성 backfill — 옛 소스를 묶어서 다시 추출. 영상 요약과 같은 Gemini 무료 키를 쓰므로 올리지 말 것
++WIKI_BACKFILL_DAILY_MAX=30                          # 하루(태평양시) 호출 상한, 0 = 끔 (없으면 30)
++WIKI_BACKFILL_BATCH=20                              # 한 호출에 묶는 소스 수 1~40 (없으면 20)
++
+ # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
+ WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
+ WIKI_LAN_ASK_DAILY_MAX=20                           # AI 답변 24시간 총량 (Gemini 무료 한도 보호)
+@@ -364,6 +369,8 @@ mv data/library.db.restore data/library.db
+ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ ```
+ 
++> v4.5 이전(10-12 이전) 백업은 `user_version` 1 이다. 복원 뒤 `mv` 전에 `/opt/homebrew/bin/python3 scripts/migrate_library.py --db=data/library.db.restore --apply` 로 올린다(안 올리면 모든 실행이 버전 불일치로 멈춘다).
++
+ > 복원하면 그 날짜 이후 저장된 영상이 장부에서 빠진다. 다음 실행이 그 영상을 신규로 다시 요약할 수 있고, Obsidian 에 남은 노트는 고아 격리 대상이 될 수 있다 — `sync_obsidian.py --orphans-dry-run` 부터 본다. 시트는 `sheet_mirror.py --full` 로 맞춘다.
+ 
+ ### 6. Wiki 검색 (v3.2)
+@@ -389,7 +396,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ ---
+ 
+-## 🗄️ 장부 구조 (`data/library.db`, v4.0)
++## 🗄️ 장부 구조 (`data/library.db`, v4.0 · user_version 2 = v4.5)
+ 
+ 스키마 원본은 `lib/library_schema.sql` 하나다(Python·Node 가 같은 파일을 실행). 문자열은 NFC, 목록은 JSON 배열 문자열, 시각은 ISO 8601 UTC.
+ 
+@@ -398,6 +405,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ | `videos` | 영상 1건 1행. `record_id`(노션에서 옮긴 행 = 노션 page id, 새 행 = uuid4 = Obsidian `notion_id`) · `video_id`(UNIQUE) · 제목 · 채널 · `topics` · 업로드일 · 조회수 · 구독자 · URL · `summary`(Gemini 요약 마크다운) | **영상** |
+ | `tips` | 카톡 링크 1건 1행. 제목 · URL · `url_key`(중복 판정) · 출처(호스트) · `tags` · 카테고리 · 상태 · 중요도 · 저장일 · 메모 · `body_md`(본문) | **꿀팁** |
+ | `videos_dup` | 1단계 적재 때 같은 video_id 로 겹친 노션 페이지 보관본 (지우지 않음) | — |
++| `wiki_extract` | (v4.5) Wiki 합성 추출 결과 — 소스(`record_id`)별 엔티티·개념·관계 JSON, `status`(ok·seed·failed)·`attempts`. `_wiki` 페이지는 이 표로 다시 그린다 | — |
+ | `meta` | `switched_at`(장부 원본 확정 시각) · `sheet_wm_videos`·`sheet_wm_tips`(시트에 보낸 마지막 `updated_at`) · `sheet_target` · `sheet_last_ok` · 1단계 적재 기록(`source`·`loaded_at`·`schema_version`·`notion_video_pages`·`notion_tip_pages`) | — |
+ 
+ 시트 열 — **영상**: record_id · 업로드일 · 채널 · 제목 · 주제 · 조회수 · 구독자 · URL · 요약 · 저장 · 수정 / **꿀팁**: record_id · 저장일 · 제목 · URL · 출처 · 카테고리 · 태그 · 중요도 · 상태 · 메모 · 본문 · 저장 · 수정 (저장·수정은 KST).
+@@ -415,6 +423,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ | 버전 | 날짜 | 주요 내용 요약 |
+ | :-- | :--- | :--- |
++| **v4.5** | 2026-10-12 | **Wiki 합성 결과 누적**: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서 페이지마다 1~10건만 남던 결함(05-12 도입 때부터) 수정. 추출 결과를 장부 새 표 `wiki_extract`(user_version 2, `scripts/migrate_library.py`)에 소스별로 쌓고 매 실행 전체로 다시 그림(내용 같으면 안 씀). 깨진 응답은 실패로 재시도(3회), 옛 페이지 항목 씨앗, 옛 소스 3천여 건은 20개 묶음 backfill(하루 30회, 약 6일). 회귀 테스트 9종 |
+ | **v4.4** | 2026-10-12 | **꿀팁 제목 보완 도구**: 카톡 인제스트가 URL 로만 추정한 꿀팁 제목(「유튜브 영상 (제목 미확인)」·`courses` 등, 46건 누적)을 원문 제목으로 고치는 `scripts/retitle_tips.py`(CSV 입력, dry-run 기본). 장부 `title`·`updated_at`(시트 미러 반영) + 자동 메모 비움, 「AI 꿀팁」 노트 제자리 수정·파일명 변경, Vault `[[링크]]` 치환을 함께 하고 쓰기 전에 장부·파일을 백업. 첫 적용 5건. 회귀 테스트 8종 |
+ | **v4.3** | 2026-10-12 | **노션 잔재 정리**: 노션 해지에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`(+ 테스트)와 `.env` 의 `NOTION_*` 3키를 지움. 계속 쓰던 장부 ↔ Vault 대조만 `scripts/verify_library.py` 로 떼어 냄(검사 항목·`RESULT_JSON` 동일, 테스트 16/16). 앱 코드 동작 무변경. |
+ | **v4.2** | 2026-10-12 | **실행 실패 알림**: "저장 0 · Skip 0 · 오류 ≥1"(영상을 하나도 확인하지 못한 실행)과 치명적 오류가 텔레그램 없이 지나가던 구멍을 막음. 실행 상태 파일 `.run_state.json` 으로 네트워크가 죽어 못 보낸 실패·끝을 기록하지 못한 실행·9시간 넘게 빈 간격(빠진 정시 실행)을 다음 실행이 `[직전 실행 점검]` 으로 알림. `sendTelegram` 이 성공 여부를 돌려주고 JSON 아닌 응답에 죽지 않음 |
+@@ -441,6 +450,21 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ ### 📝 상세 변경 내역 (Detailed Change Log)
+ 
++#### [v4.5] — 2026-10-12 (🧠 Wiki 합성 결과 누적)
++
++**배경.** `wiki_ingest.py` 는 소스마다 Gemini 로 엔티티·개념을 뽑아 `_wiki/entities`·`concepts` 페이지를 만드는데, 페이지와 `index.md` 를 **그 실행에서 뽑은 것만으로** 통째로 다시 썼다. 추출 결과는 어디에도 저장하지 않았다. 그래서 5월 도입 이후 합성한 소스가 3,619건인데 페이지 56개의 source_count 는 1~10, index 는 마지막 실행의 9행뿐이었다. 응답 JSON 이 깨지면 빈 결과로 성공 처리돼 그 소스가 조용히 빠지는 결함도 있었다. 검색 인덱스·MCP 는 `_` 폴더를 읽지 않아 영향이 없었다.
++
++| 항목 | 내용 |
++|---|---|
++| 장부 | 새 표 `wiki_extract`(record_id = 노트 `notion_id`, status `ok`·`seed`·`failed`, entities·concepts·relations JSON, attempts). `user_version` 1 → 2. 기존 장부는 `scripts/migrate_library.py --apply`(온라인 백업 `data/library.db.bak.v1-<시각>` 뒤 스키마 실행, 버전·무결성·행 수 확인). 장부 백업에 포함 |
++| 렌더 | 매 실행 끝에 `wiki_extract` 전체 × 현재 Vault(파일명·제목)로 엔티티·개념·index 를 다시 그림. 결정적(`last_updated` = 기여 행의 `updated_at`), 내용 같으면 안 씀. Vault 에서 빠진 소스는 빠지고, 꿀팁 제목 변경은 저절로 반영 |
++| 실패 | 깨진 응답 → `failed`, 다음 실행이 다시 시도, 3회에서 포기. 정상 JSON 의 빈 결과는 `ok` |
++| 씨앗 | `wiki_ingest.py --seed-from-pages [--apply]` — 지금 페이지에 남은 항목을 `seed` 로(1회, 기본 dry-run) |
++| backfill | 인자 없는 실행(launchd 17:30)이 옛 소스 중 `wiki_extract` 가 없거나 `seed` 뿐인 것을 20개씩 한 호출로 추출, 하루(태평양시) 30회 상한(`.env WIKI_BACKFILL_DAILY_MAX`·`WIKI_BACKFILL_BATCH`). `sync_obsidian` 경로는 `--no-backfill`. 3천여 건 ≈ 160회 ≈ 6일 |
++| 그 밖 | `--render-only`(Gemini 없이 렌더), `WIKI_RESULT` 에 `failed`·`entities`·`concepts`·`backfill_*` 추가, `.wiki_state.json` 의 entities·concepts 가 전체 카운트 |
++| 테스트 | 신규 `scripts/test_wiki_ingest.py` 51/51(가짜 Gemini, 임시 Vault·장부). `test_backup_library.py` 버전 기대값을 스키마 버전으로. 회귀 테스트 9종 |
++| 지시서 | `docs/tasks/2026-10-12-wiki-extract-store.md` |
++
+ #### [v4.4] — 2026-10-12 (🏷 꿀팁 제목 보완 도구)
+ 
+ **배경.** `kakao_ingest.py` 는 링크를 열지 않고 URL 로만 제목을 추정한다(`lib/kakao_parse.py:guess_meta`). 유튜브 shorts·노션 공개 페이지는 「유튜브 영상 (제목 미확인)」·「노션 자료 (제목 미확인)」, 그 밖은 URL 마지막 조각(`courses`, `linkedin skills claude code setup`)이 제목이 되고, 3월부터 「원문 확인 필요」 메모가 붙은 꿀팁이 46건 쌓였다. 장부만 고치면 시트는 바뀌지만 `sync_obsidian.py` 는 꿀팁 노트를 **새로 만들기만** 하므로 Obsidian 노트·파일명·링크는 옛 제목으로 남는다.
+diff --git a/backup_library.py b/backup_library.py
+index e084d59..098ed28 100644
+--- a/backup_library.py
++++ b/backup_library.py
+@@ -38,7 +38,7 @@ LOCAL_DIR = os.path.join(ldb.DATA_DIR, 'backups')
+ NAME_RE = re.compile(r'^library-(\d{8})\.db\.gz$')
+ KEEP_DAILY = 7
+ KEEP_WEEKLY = 4
+-TABLES = ('videos', 'videos_dup', 'tips', 'meta')
++TABLES = ('videos', 'videos_dup', 'tips', 'meta', 'wiki_extract')
+ 
+ 
+ def log(m=''):
+diff --git a/lib/library_db.py b/lib/library_db.py
+index 4fc0758..b486a77 100644
+--- a/lib/library_db.py
++++ b/lib/library_db.py
+@@ -9,7 +9,7 @@ REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ DATA_DIR    = os.path.join(REPO_ROOT, 'data')
+ DB_PATH     = os.path.join(DATA_DIR, 'library.db')
+ SCHEMA_PATH = os.path.join(REPO_ROOT, 'lib', 'library_schema.sql')
+-SCHEMA_VERSION = 1
++SCHEMA_VERSION = 2   # v4.5 wiki_extract — lib/library_schema.sql 의 PRAGMA user_version 과 같이 올린다
+ 
+ 
+ def schema_sql():
+diff --git a/lib/library_schema.sql b/lib/library_schema.sql
+index 9ec9c9c..b46bd08 100644
+--- a/lib/library_schema.sql
++++ b/lib/library_schema.sql
+@@ -6,7 +6,7 @@
+ -- 문자열은 전부 NFC. topics·tags 는 JSON 배열 문자열.
+ -- 시각(created_at·updated_at)은 ISO 8601 UTC ('2026-10-11T08:15:00.000Z').
+ 
+-PRAGMA user_version = 1;
++PRAGMA user_version = 2;   -- v4.5: wiki_extract 추가 (1 → 2, 이전 장부는 scripts/migrate_library.py)
+ 
+ CREATE TABLE IF NOT EXISTS videos (
+   record_id        TEXT PRIMARY KEY,
+@@ -71,3 +71,18 @@ CREATE TABLE IF NOT EXISTS meta (
+   key   TEXT PRIMARY KEY,
+   value TEXT NOT NULL
+ );
++
++-- v4.5 Wiki 합성 추출 결과 — 소스(노트 프론트매터 notion_id = videos/tips record_id)별 누적.
++-- wiki_ingest.py 가 쓰고, _wiki 개념·엔티티 페이지와 index.md 는 이 표 전체 + 현재 Vault 로 매 실행 다시 그린다.
++-- Gemini 무료 한도로 얻은 결과라 지우지 않는다(하루 1회 장부 백업에 포함).
++CREATE TABLE IF NOT EXISTS wiki_extract (
++  record_id   TEXT PRIMARY KEY,
++  status      TEXT NOT NULL,                     -- ok = 추출 성공(항목 0개도 정상) | seed = 옛 페이지에서 옮김(부분) | failed = 실패만 했음
++  source      TEXT NOT NULL DEFAULT '',          -- single | batch | seed
++  entities    TEXT NOT NULL DEFAULT '[]',        -- JSON [{name, insight, role}]
++  concepts    TEXT NOT NULL DEFAULT '[]',        -- JSON [{name, insight}]
++  relations   TEXT NOT NULL DEFAULT '[]',        -- JSON [{from, to, type}]
++  attempts    INTEGER NOT NULL DEFAULT 0,        -- 실패 횟수. ok 가 아닌 행은 3회에서 포기
++  created_at  TEXT NOT NULL,
++  updated_at  TEXT NOT NULL
++);
+diff --git a/scripts/migrate_library.py b/scripts/migrate_library.py
+new file mode 100644
+index 0000000..d23fe7b
+--- /dev/null
++++ b/scripts/migrate_library.py
+@@ -0,0 +1,110 @@
++#!/usr/bin/env python3
++"""
++장부(data/library.db) 스키마 올리기 — v4.5 (user_version 1 → 2, wiki_extract 표 추가)
++
++  /opt/homebrew/bin/python3 scripts/migrate_library.py            # dry-run (기본): 현재·목표 버전, 새로 생길 표만 보고
++  /opt/homebrew/bin/python3 scripts/migrate_library.py --apply    # 적용
++  ... --db=<경로>                                                 # 다른 장부(복원본·테스트 사본)에 적용
++
++--apply 순서:
++  1) 장부가 없으면 만들지 않고 실패. user_version 이 목표면 "이미 최신"(exit 0). 목표-1 이 아니면 거부(exit 1).
++  2) SQLite 온라인 백업 API 로 <장부>.bak.v<현재>-<KST 시각> 사본 → integrity_check ok 확인 (이미 있으면 거부)
++  3) lib/library_schema.sql 실행 — 전부 CREATE ... IF NOT EXISTS 라 기존 표·행은 그대로, 없는 표만 생기고 user_version 이 오른다
++  4) 확인: user_version = 목표 · integrity_check ok · 기존 표 행 수 그대로 · 새 표 존재. 어긋나면 exit 1 (백업에서 되돌린다)
++RESULT_JSON 한 줄. 옛 백업(v1)을 복원했을 때도 이것으로 올린다.
++"""
++import json, os, sqlite3, sys
++from datetime import datetime, timezone, timedelta
++
++REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.insert(0, os.path.join(REPO_ROOT, 'lib'))
++import library_db as ldb   # noqa: E402
++
++KST = timezone(timedelta(hours=9))
++OLD_TABLES = ('videos', 'videos_dup', 'tips', 'meta')
++
++
++def log(m=''):
++    print(m, flush=True)
++
++
++def emit(**kw):
++    print('RESULT_JSON ' + json.dumps(kw, ensure_ascii=False), flush=True)
++
++
++def tables(conn):
++    return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
++
++
++def counts(conn):
++    have = tables(conn)
++    return {t: conn.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0] for t in OLD_TABLES if t in have}
++
++
++def main(argv=None):
++    argv = sys.argv[1:] if argv is None else argv
++    apply = '--apply' in argv
++    db = ldb.DB_PATH
++    for a in argv:
++        if a.startswith('--db='):
++            db = os.path.abspath(os.path.expanduser(a[5:]))
++    target = ldb.SCHEMA_VERSION
++    if not os.path.exists(db):
++        log(f'❌ 장부 없음: {db} — 만들지 않는다')
++        emit(ok=False, error='no_db', db=db)
++        return 1
++    conn = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
++    uv = conn.execute('PRAGMA user_version').fetchone()[0]
++    before = counts(conn)
++    missing = sorted(t for t in ('wiki_extract',) if t not in tables(conn))
++    conn.close()
++    log(f'장부 {db}\n  user_version {uv} → 목표 {target} · 새 표 {missing or "없음"} · 행 수 {before}')
++    if uv == target:
++        log('✅ 이미 최신 — 할 일 없음')
++        emit(ok=True, changed=False, user_version=uv, rows=before)
++        return 0
++    if uv != target - 1:
++        log(f'❌ user_version {uv} 은 이 스크립트가 올리는 범위({target - 1} → {target})가 아니다')
++        emit(ok=False, error=f'user_version:{uv}')
++        return 1
++    if not apply:
++        log('  (dry-run — 쓰지 않음. 적용은 --apply)')
++        emit(ok=True, changed=False, dry_run=True, user_version=uv, target=target, missing=missing, rows=before)
++        return 0
++
++    bak = f'{db}.bak.v{uv}-{datetime.now(KST):%Y%m%d-%H%M%S}'
++    if os.path.exists(bak):
++        log(f'❌ 백업 이름이 이미 있음: {bak}')
++        emit(ok=False, error='backup_exists')
++        return 1
++    src = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
++    dst = sqlite3.connect(bak)
++    src.backup(dst)
++    src.close()
++    ic = dst.execute('PRAGMA integrity_check').fetchone()[0]
++    dst.close()
++    if ic != 'ok':
++        log(f'❌ 백업 사본 integrity_check {ic} — 적용 안 함')
++        emit(ok=False, error='backup_integrity', backup=bak)
++        return 1
++    log(f'  백업 {bak} (integrity ok)')
++
++    conn = ldb.open_db(db)
++    ldb.apply_schema(conn)
++    conn.close()
++
++    conn = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
++    uv2 = conn.execute('PRAGMA user_version').fetchone()[0]
++    ic2 = conn.execute('PRAGMA integrity_check').fetchone()[0]
++    after = counts(conn)
++    has_new = 'wiki_extract' in tables(conn)
++    conn.close()
++    ok = (uv2 == target and ic2 == 'ok' and after == before and has_new)
++    log(f'  결과 user_version {uv2} · integrity {ic2} · 행 수 {after} · wiki_extract {"있음" if has_new else "없음"}')
++    log('✅ 적용 완료' if ok else f'❌ 확인 실패 — 백업 {bak} 에서 되돌릴 것')
++    emit(ok=ok, changed=True, user_version=uv2, integrity=ic2, rows=after, rows_before=before, backup=bak)
++    return 0 if ok else 1
++
++
++if __name__ == '__main__':
++    sys.exit(main())
+diff --git a/scripts/test_backup_library.py b/scripts/test_backup_library.py
+index 663dc08..321910d 100644
+--- a/scripts/test_backup_library.py
++++ b/scripts/test_backup_library.py
+@@ -107,7 +107,7 @@ raw = unpack(f, os.path.join(root, 'restored.db'))
+ check('압축 해제본 sha256 = 보고값', rj and sha(raw) == rj['sha256'])
+ c = sqlite3.connect(raw)
+ check('해제본 integrity_check ok', c.execute('PRAGMA integrity_check').fetchone()[0] == 'ok')
+-check('해제본 user_version = 1', c.execute('PRAGMA user_version').fetchone()[0] == 1)
++check(f'해제본 user_version = {ldb.SCHEMA_VERSION}', c.execute('PRAGMA user_version').fetchone()[0] == ldb.SCHEMA_VERSION)
+ check('해제본 meta 보존', c.execute("SELECT value FROM meta WHERE key='switched_at'").fetchone() is not None)
+ c.close()
+ check('장부 파일 무변경 (sha256)', sha(db) == before)
+diff --git a/scripts/test_wiki_ingest.py b/scripts/test_wiki_ingest.py
+new file mode 100644
+index 0000000..7ec4392
+--- /dev/null
++++ b/scripts/test_wiki_ingest.py
+@@ -0,0 +1,345 @@
++#!/usr/bin/env python3
++"""
++wiki_ingest.py (v4.5 wiki_extract 누적·재렌더·backfill·씨앗) + scripts/migrate_library.py 회귀 테스트
++— 네트워크 0회(Gemini 는 가짜), 실제 Vault·data/·상태 파일 무변경
++
++  /opt/homebrew/bin/python3 scripts/test_wiki_ingest.py
++
++끝에 'N/N PASS' 를 찍고 실패가 있으면 종료 코드 1.
++"""
++import contextlib, hashlib, io, json, os, re, shutil, sqlite3, sys, tempfile
++import urllib.request
++
++REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.insert(0, os.path.join(REPO_ROOT, 'scripts'))
++sys.path.insert(0, os.path.join(REPO_ROOT, 'lib'))
++sys.path.insert(0, REPO_ROOT)
++
++NET_CALLS = []
++def _no_net(*a, **k):
++    NET_CALLS.append(a)
++    raise RuntimeError('네트워크 호출 금지')
++urllib.request.urlopen = _no_net
++
++import wiki_config as wc        # noqa: E402
++wc.urlopen = _no_net
++import wiki_ingest as wi        # noqa: E402
++import migrate_library as mig   # noqa: E402
++import library_db as ldb        # noqa: E402
++
++REAL = {k: getattr(wi, k) for k in ('VAULT', 'WIKI_DIR', 'ENTITIES_DIR', 'CONCEPTS_DIR')}
++REAL_STATE, REAL_DB, REAL_QUOTA = wc.STATE_FILE, ldb.DB_PATH, wc._QUOTA_FILE
++for _k in ('WIKI_BACKFILL_DAILY_MAX', 'WIKI_BACKFILL_BATCH'):
++    os.environ.pop(_k, None)   # 바깥 셸 값이 테스트를 흔들지 않게
++
++results = []
++def check(name, cond, detail=''):
++    results.append((name, bool(cond)))
++    print(f'{"PASS" if cond else "FAIL"}  {name}' + (f'  — {detail}' if detail and not cond else ''))
++
++
++def tree_hash(root):
++    h = hashlib.sha256()
++    for d, _, fs in sorted(os.walk(root)):
++        for f in sorted(fs):
++            p = os.path.join(d, f)
++            h.update(p.encode()); h.update(open(p, 'rb').read())
++    return h.hexdigest()
++
++
++# ── 가짜 Gemini ──
++CALLS = []
++SINGLE = {}      # 제목 → 응답 문자열
++BATCH_DROP = set()   # backfill 응답에서 뺄 제목
++def fake_gemini(prompt, temperature=0.2, max_tokens=4000):
++    if '### S1' in prompt:
++        CALLS.append(('batch', max_tokens))
++        out = []
++        for m in re.finditer(r'### S(\d+)\n- 제목: (.*)\n', prompt):
++            sid, title = m.group(1), m.group(2)
++            if title in BATCH_DROP: continue
++            out.append({'id': f'S{sid}', 'entities': [{'name': 'Claude Code', 'insight': f'BF {title}', 'role': '도구'}],
++                        'concepts': [{'name': '바이브코딩', 'insight': f'BF {title}'}], 'relations': []})
++        return json.dumps({'results': out}, ensure_ascii=False)
++    title = re.search(r'- 제목: (.*)\n', prompt).group(1)
++    CALLS.append(('single', title))
++    r = SINGLE.get(title)
++    if isinstance(r, Exception):
++        raise r
++    return r if r is not None else json.dumps({'entities': [], 'concepts': [], 'relations': []})
++wi.gemini_call = fake_gemini
++
++
++def ok_json(ents=(), cons=(), rels=()):
++    return json.dumps({'entities': [{'name': n, 'insight': f'{n} 요점', 'role': r} for n, r in ents],
++                       'concepts': [{'name': n, 'insight': f'{n} 요점'} for n in cons],
++                       'relations': [{'from': a, 'to': b, 'type': t} for a, b, t in rels]}, ensure_ascii=False)
++
++
++def note(vault, folder, fname, title, rid, date='2026-10-01'):
++    p = os.path.join(vault, folder, fname)
++    os.makedirs(os.path.dirname(p), exist_ok=True)
++    open(p, 'w', encoding='utf-8').write(
++        f'---\ntitle: "{title}"\nchannel: "채널"\nupload_date: {date}\nnotion_id: {rid}\n---\n\n## 영상 개요\n{title} 본문\n')
++    return p
++
++
++def setup(name, db_version=None):
++    root = tempfile.mkdtemp(prefix=f'wiki_ingest_{name}_')
++    vault = os.path.join(root, 'vault')
++    os.makedirs(vault)
++    wi.VAULT = vault
++    wi.WIKI_DIR = os.path.join(vault, '_wiki')
++    wi.ENTITIES_DIR = os.path.join(wi.WIKI_DIR, 'entities')
++    wi.CONCEPTS_DIR = os.path.join(wi.WIKI_DIR, 'concepts')
++    os.makedirs(wi.ENTITIES_DIR); os.makedirs(wi.CONCEPTS_DIR)
++    wc.STATE_FILE = os.path.join(root, '.wiki_state.json')
++    wc._QUOTA_FILE = os.path.join(root, '.wiki_quota.json')
++    ldb.DB_PATH = os.path.join(root, 'data', 'library.db')
++    c = ldb.open_db(ldb.DB_PATH); ldb.apply_schema(c)
++    with c:
++        c.execute("INSERT INTO videos (record_id, video_id, title, created_at, updated_at) VALUES ('v','VVVVVVVVVVV','t','x','x')")
++    c.close()
++    CALLS.clear(); SINGLE.clear(); BATCH_DROP.clear()
++    wc.ENV.pop('WIKI_BACKFILL_DAILY_MAX', None)
++    return root, vault
++
++
++def run(*args):
++    buf = io.StringIO()
++    with contextlib.redirect_stdout(buf):
++        code = wi.main(list(args))
++    out = buf.getvalue()
++    m = re.search(r'WIKI_RESULT:(\{.*\})', out)
++    return code, out, (json.loads(m.group(1)) if m else None)
++
++
++def page(vault, kind, name):
++    p = os.path.join(vault, '_wiki', kind, f'{name}.md')
++    return open(p, encoding='utf-8').read() if os.path.exists(p) else ''
++
++
++def rows():
++    c = sqlite3.connect(ldb.DB_PATH); c.row_factory = sqlite3.Row
++    r = {x['record_id']: dict(x) for x in c.execute('SELECT * FROM wiki_extract')}
++    c.close()
++    return r
++
++
++def state():
++    return json.load(open(wc.STATE_FILE, encoding='utf-8'))
++
++
++# ═══ 1. 핵심 회귀 — 두 번째 실행이 첫 실행분을 지우지 않는다 ═══
++root, vault = setup('accum')
++note(vault, 'AI Claude', 'a1.md', '영상A', 'rid-a')
++note(vault, 'AI Claude', 'b1.md', '영상B', 'rid-b')
++SINGLE['영상A'] = ok_json([('Claude Code', '도구')], ['바이브코딩'], [('Claude Code', '바이브코딩', '사용')])
++SINGLE['영상B'] = ok_json([('Claude Code', '주제')], ['바이브코딩', 'MCP'])
++code, out, r1 = run()
++check('1차: 2건 처리 · 개념 2 · 엔티티 1', code == 0 and r1['processed'] == 2 and r1['concepts'] == 2 and r1['entities'] == 1, str(r1))
++note(vault, 'AI Gemini', 'c1.md', '영상C', 'rid-c', date='2026-10-05')
++SINGLE['영상C'] = ok_json([('Gemini', '주제')], ['바이브코딩'])
++code, out, r2 = run()
++p = page(vault, 'concepts', '바이브코딩')
++check('2차: 신규 1건만 Gemini 호출', len(CALLS) == 3 and CALLS[-1] == ('single', '영상C') and sorted(CALLS[:2]) == [('single', '영상A'), ('single', '영상B')], CALLS)
++check('2차 뒤 바이브코딩 페이지 = 3건 누적 (1차분 유지)', 'source_count: 3' in p and '[[a1|영상A]]' in p and '[[b1|영상B]]' in p and '[[c1|영상C]]' in p, p[:400])
++check('MCP 페이지는 2차에 안 건드렸어도 그대로 1건', 'source_count: 1' in page(vault, 'concepts', 'MCP'))
++idx = open(os.path.join(vault, '_wiki', 'index.md'), encoding='utf-8').read()
++check('index = 전체 (엔티티 2 · 개념 2)', '— 2개' in idx and '[[Claude Code]] | 2개' in idx and '[[바이브코딩]] | 3개' in idx and '[[Gemini]] | 1개' in idx, idx)
++e = page(vault, 'entities', 'Claude Code')
++check('엔티티 페이지: 역할별 절 + 관계', '## 🎯 주제로 다룬 영상 (1개)' in e and '## 🔧 도구로 다룬 영상 (1개)' in e and '- [[바이브코딩]] — 사용' in e, e)
++check('최신 업로드가 위', p.index('[[c1|') < p.index('[[a1|'))
++check('state concepts = 전체 카운트', state()['concepts'] == {'MCP': 1, '바이브코딩': 3}, state().get('concepts'))
++check('wiki_extract 3행 ok · source single', {k: (v['status'], v['source']) for k, v in rows().items()} == {k: ('ok', 'single') for k in ('rid-a', 'rid-b', 'rid-c')})
++h = tree_hash(os.path.join(vault, '_wiki'))
++code, out, r3 = run('--render-only')
++check('--render-only: Gemini 0회 · 파일 무변경(결정적 렌더)', len(CALLS) == 3 and tree_hash(os.path.join(vault, '_wiki')) == h and r3['entities_updated'] == 0 and r3['concepts_updated'] == 0, str(r3))
++log_md = open(os.path.join(vault, '_wiki', 'log.md'), encoding='utf-8').read()
++check('변화 없는 실행은 log.md 에 안 남김', log_md.count('## [') == 2, log_md.count('## ['))
++
++# 제목·파일명 변경(retitle)과 고아
++os.rename(os.path.join(vault, 'AI Claude', 'a1.md'), os.path.join(vault, 'AI Claude', 'a2.md'))
++note(vault, 'AI Claude', 'a2.md', '영상A 새 제목', 'rid-a')
++os.remove(os.path.join(vault, 'AI Claude', 'b1.md'))
++code, out, r4 = run('--render-only')
++p = page(vault, 'concepts', '바이브코딩')
++check('제목·파일명 변경이 페이지에 반영', '[[a2|영상A 새 제목]]' in p and '[[a1|' not in p, p)
++check('Vault 에서 빠진 소스는 페이지에서 빠짐 · 장부 행은 보존', '[[b1|' not in p and 'source_count: 2' in p and 'rid-b' in rows())
++check('항목 0개가 된 MCP 기존 페이지는 지우지 않음', os.path.exists(os.path.join(vault, '_wiki', 'concepts', 'MCP.md')))
++check('네트워크 0회', NET_CALLS == [])
++
++# ═══ 2. 응답 해석 실패 — ingested 에 넣지 않고 3회에서 포기 ═══
++root, vault = setup('fail')
++note(vault, 'AI Claude', 'x.md', '깨진응답', 'rid-x')
++SINGLE['깨진응답'] = '이건 JSON 이 아님'
++wc.ENV['WIKI_BACKFILL_DAILY_MAX'] = '0'
++code, out, r = run()
++check('실패 1회: ingested 에 없음 · failed 행 attempts 1', 'rid-x' not in state()['ingested'] and rows()['rid-x']['status'] == 'failed' and rows()['rid-x']['attempts'] == 1 and r['failed'] == 1, str(r))
++run(); code, out, r = run()
++check('실패 3회: 포기(ingested 표시) · attempts 3', 'rid-x' in state()['ingested'] and rows()['rid-x']['attempts'] == 3, rows().get('rid-x'))
++n = len(CALLS); run()
++check('포기 뒤엔 다시 태우지 않음', len(CALLS) == n)
++SINGLE['빈결과'] = json.dumps({'entities': [], 'concepts': []})
++note(vault, 'AI Claude', 'y.md', '빈결과', 'rid-y')
++run()
++check('정상 JSON 의 빈 결과는 ok (실패 아님)', rows()['rid-y']['status'] == 'ok' and 'rid-y' in state()['ingested'])
++SINGLE['목록밖'] = ok_json([('없는도구', '도구'), ('Claude', '이상한역할')], ['없는개념'])
++note(vault, 'AI Claude', 'z.md', '목록밖', 'rid-z')
++run()
++z = rows()['rid-z']
++check('목록 밖 이름은 버리고 역할은 관련으로', json.loads(z['entities']) == [{'name': 'Claude', 'insight': 'Claude 요점', 'role': '관련'}] and json.loads(z['concepts']) == [], z)
++
++# ═══ 3. 할당량 소진 — 남은 건 다음에, 렌더는 한다 ═══
++root, vault = setup('quota')
++note(vault, 'AI Claude', 'q1.md', 'Q1', 'rid-q1'); note(vault, 'AI Claude', 'q2.md', 'Q2', 'rid-q2')
++SINGLE['Q1'] = SINGLE['Q2'] = ok_json([], ['MCP'])
++_orig = wi.gemini_call
++def _quota_second(prompt, **k):
++    if len(CALLS) >= 1:
++        CALLS.append(('quota',)); raise wc.DailyQuotaExhausted('소진')
++    return fake_gemini(prompt, **k)
++wi.gemini_call = _quota_second
++json.dump({'ingested': {'rid-old': 'x'}}, open(wc.STATE_FILE, 'w', encoding='utf-8'))
++note(vault, 'AI Claude', 'old.md', '옛것', 'rid-old')
++code, out, r = run()
++wi.gemini_call = _orig
++done = [k for k in ('rid-q1', 'rid-q2') if k in state()['ingested']]
++check('소진: 1건만 기록 · 나머지 미처리 · 렌더 됨 · backfill 안 함', len(done) == 1 and set(rows()) == set(done) and 'source_count: 1' in page(vault, 'concepts', 'MCP') and r['backfill_calls'] == 0 and r['backfill_left'] is None and r['processed'] == 1, str(r))
++
++# ═══ 4. 씨앗 — 옛 페이지 항목을 wiki_extract 로 ═══
++root, vault = setup('seed')
++note(vault, 'AI Claude', 's1.md', 'S원1', 'rid-s1'); note(vault, 'AI Claude', 's2.md', 'S원2', 'rid-s2')
++note(vault, 'AI Claude', '채널 [Tech]_[한영자막] 제목_20260914.md', '[한영자막] 제목', 'rid-s3')
++open(os.path.join(vault, '_wiki', 'entities', 'Claude.md'), 'w', encoding='utf-8').write(
++    '---\ntype: entity\nname: "Claude"\nsource_count: 2\nlast_updated: 2026-10-01 00:00\n---\n\n# Claude\n\n> 총 **2개** 영상에서 언급됨\n\n'
++    '## 🎯 주제로 다룬 영상 (1개)\n\n- [[s1|S원1]] `채널` 2026-10-01\n  > 옛 인사이트1\n\n'
++    '## 🔧 도구로 다룬 영상 (1개)\n\n- [[없는파일|유령]] `채널` 2026-09-01\n  > 유령\n\n## 🔗 관련 엔티티/개념\n\n- [[MCP]] — 사용\n')
++open(os.path.join(vault, '_wiki', 'concepts', 'MCP.md'), 'w', encoding='utf-8').write(
++    '---\ntype: concept\nname: "MCP"\nsource_count: 2\n---\n\n# MCP\n\n## 📚 관련 영상\n\n'
++    '- [[s1|S원1]] `채널` 2026-10-01\n  > MCP 인사이트1\n- [[s2|S원2]] `채널` 2026-10-01\n  > MCP 인사이트2\n'
++    '- [[채널 [Tech]_[한영자막] 제목_20260914|[한영자막] 제목]] `채널 [Tech]` 2026-09-14\n  > 대괄호 파일명\n')
++open(os.path.join(vault, '_wiki', 'concepts', '없는개념.md'), 'w', encoding='utf-8').write('- [[s1|S원1]] `x` 1\n')
++db0 = open(ldb.DB_PATH, 'rb').read()
++buf = io.StringIO()
++with contextlib.redirect_stdout(buf):
++    wi.main(['--seed-from-pages'])
++sr = json.loads(re.search(r'SEED_RESULT:(\{.*\})', buf.getvalue()).group(1))
++check('씨앗 dry-run: 장부 무변경 · 페이지 2 · 항목 5 · 소스 3(파일명 대괄호 포함) · 매칭 실패 1', open(ldb.DB_PATH, 'rb').read() == db0 and (sr['pages'], sr['items'], sr['records'], sr['unmatched'], sr['written']) == (2, 5, 3, 1, 0), str(sr))
++with contextlib.redirect_stdout(io.StringIO()):
++    wi.main(['--seed-from-pages', '--apply'])
++rs = rows()
++check('씨앗 적용: seed 3행 · 역할·인사이트 보존', {k: v['status'] for k, v in rs.items()} == {'rid-s1': 'seed', 'rid-s2': 'seed', 'rid-s3': 'seed'}
++      and json.loads(rs['rid-s1']['entities']) == [{'name': 'Claude', 'insight': '옛 인사이트1', 'role': '주제'}]
++      and json.loads(rs['rid-s2']['concepts']) == [{'name': 'MCP', 'insight': 'MCP 인사이트2'}], rs)
++code, out, r = run('--render-only')
++mp = page(vault, 'concepts', 'MCP')
++check('씨앗 렌더: 옛 항목 그대로 다시 그림', '[[s1|S원1]]' in mp and '> MCP 인사이트2' in mp and '> 대괄호 파일명' in mp and 'source_count: 3' in mp, mp)
++check('씨앗 렌더: 매칭 안 된 항목은 빠짐', '유령' not in page(vault, 'entities', 'Claude'))
++with contextlib.redirect_stdout(io.StringIO()):
++    wi.main(['--seed-from-pages', '--apply'])
++check('씨앗 재적용: 그대로 3행 (멱등)', len(rows()) == 3)
++
++# ═══ 5. backfill — 처리됐지만 wiki_extract 에 없는/seed 뿐인 소스를 묶어서 ═══
++#   (위 seed 환경 이어서) s1·s2 = seed, 여기에 옛 ingested 45건 추가
++for i in range(45):
++    note(vault, 'AI Claude', f'old{i:02d}.md', f'옛영상{i:02d}', f'rid-old{i:02d}')
++st = {'ingested': {f'rid-old{i:02d}': 'x' for i in range(45)}}
++st['ingested'].update({'rid-s1': 'x', 'rid-s2': 'x', 'rid-s3': 'x'})
++json.dump(st, open(wc.STATE_FILE, 'w', encoding='utf-8'))
++wc.ENV['WIKI_BACKFILL_DAILY_MAX'] = '2'
++BATCH_DROP.add('옛영상03')
++CALLS.clear()
++code, out, r = run()
++check('backfill: 하루 상한 2회만 · 묶음 20건 · max_tokens 16000', [c for c in CALLS if c[0] == 'batch'] == [('batch', 16000), ('batch', 16000)] and r['backfill_calls'] == 2, CALLS)
++rs = rows()
++check('backfill: 39건 ok(batch) · 응답 빠진 1건 failed · 남은 대상 9', r['backfill_done'] == 39 and rs['rid-old03']['status'] == 'failed' and rs['rid-old03']['attempts'] == 1 and r['backfill_left'] == 9, str(r))
++check('backfill: 오늘 사용 2회 기록(태평양시 날짜)', state()['backfill'] == {'date': wc._today(), 'calls': 2}, state().get('backfill'))
++check('backfill 결과가 페이지에 들어감', 'BF 옛영상00' in page(vault, 'entities', 'Claude Code') and 'source_count: 39' in page(vault, 'concepts', '바이브코딩'))
++CALLS.clear(); run()
++check('같은 날 다시 실행: backfill 0회', CALLS == [])
++st = state(); st['backfill'] = {'date': '2000-01-01', 'calls': 9}; json.dump(st, open(wc.STATE_FILE, 'w', encoding='utf-8'))
++BATCH_DROP.clear(); CALLS.clear()
++code, out, r = run()
++rs = rows()
++check('다음 날: 남은 9건(seed 3 · 실패 1 포함) 1회로 끝', r['backfill_calls'] == 1 and r['backfill_left'] == 0 and rs['rid-s1']['status'] == 'ok' and rs['rid-old03']['status'] == 'ok', str(r))
++check('seed 가 batch 결과로 교체됨', json.loads(rs['rid-s1']['concepts']) == [{'name': '바이브코딩', 'insight': 'BF S원1'}])
++CALLS.clear(); run()
++check('대상 0이면 호출 0', CALLS == [])
++
++# --no-backfill · 신규 소스는 backfill 대상 아님
++root, vault = setup('nobf')
++note(vault, 'AI Claude', 'n1.md', 'N1', 'rid-n1')
++json.dump({'ingested': {'rid-n1': 'x'}}, open(wc.STATE_FILE, 'w', encoding='utf-8'))
++code, out, r = run('--no-backfill')
++check('--no-backfill: 호출 0 · 대상은 남음', CALLS == [] and r['backfill_calls'] == 0 and r['backfill_left'] is None, str(r))
++wc.ENV['WIKI_BACKFILL_DAILY_MAX'] = '0'
++code, out, r = run()
++check('WIKI_BACKFILL_DAILY_MAX=0: 호출 0', CALLS == [] and r['backfill_left'] == 1, str(r))
++wc.ENV['WIKI_BACKFILL_DAILY_MAX'] = '숫자아님'
++check('상한 값이 이상하면 기본 30', wi.backfill_max() == 30)
++wc.ENV['WIKI_BACKFILL_BATCH'] = '500'
++check('묶음 크기 상한 40 · 이상값은 기본 20', wi.batch_size() == 40 and (wc.ENV.update({'WIKI_BACKFILL_BATCH': 'x'}) or wi.batch_size() == 20))
++wc.ENV.pop('WIKI_BACKFILL_BATCH', None)
++wc.ENV['WIKI_BACKFILL_DAILY_MAX'] = '0'; os.environ['WIKI_BACKFILL_DAILY_MAX'] = '1'
++check('프로세스 환경변수가 .env 보다 먼저', wi.backfill_max() == 1)
++del os.environ['WIKI_BACKFILL_DAILY_MAX']
++
++# ═══ 6. 장부 없음·버전 다름 — Vault 를 건드리지 않는다 ═══
++root, vault = setup('nodb')
++note(vault, 'AI Claude', 'k.md', 'K', 'rid-k')
++os.remove(ldb.DB_PATH)
++h = tree_hash(vault)
++try:
++    run(); raised = False
++except FileNotFoundError:
++    raised = True
++check('장부 없음: 던짐 · 장부 안 만듦 · Vault 무변경', raised and not os.path.exists(ldb.DB_PATH) and tree_hash(vault) == h)
++
++# ═══ 7. migrate_library ═══
++root, vault = setup('mig')
++c = sqlite3.connect(ldb.DB_PATH)
++c.execute('DROP TABLE wiki_extract'); c.execute('PRAGMA user_version = 1'); c.commit(); c.close()
++try:
++    run(); raised = ''
++except RuntimeError as e:
++    raised = str(e)
++check('v1 장부를 v2 코드가 열면 던짐', 'user_version 1' in raised, raised)
++b0 = open(ldb.DB_PATH, 'rb').read()
++buf = io.StringIO()
++with contextlib.redirect_stdout(buf):
++    code = mig.main([])
++rj = json.loads(buf.getvalue().split('RESULT_JSON ')[1])
++check('migrate dry-run: 무변경 · missing [wiki_extract]', code == 0 and open(ldb.DB_PATH, 'rb').read() == b0 and rj['missing'] == ['wiki_extract'] and rj['dry_run'], str(rj))
++buf = io.StringIO()
++with contextlib.redirect_stdout(buf):
++    code = mig.main(['--apply'])
++rj = json.loads(buf.getvalue().split('RESULT_JSON ')[1])
++check('migrate --apply: user_version 2 · 행 수 그대로 · 백업 생김', code == 0 and rj['ok'] and rj['user_version'] == 2 and rj['rows'] == {'videos': 1, 'videos_dup': 0, 'tips': 0, 'meta': 0} and os.path.exists(rj['backup']), str(rj))
++bk = sqlite3.connect(rj['backup'])
++check('백업 사본은 v1 그대로', bk.execute('PRAGMA user_version').fetchone()[0] == 1); bk.close()
++code, out, r = run()
++check('이전 뒤 wiki_ingest 정상', code == 0 and r is not None)
++with contextlib.redirect_stdout(io.StringIO()):
++    code = mig.main(['--apply'])
++check('migrate 재실행: 이미 최신 exit 0', code == 0)
++c = sqlite3.connect(ldb.DB_PATH); c.execute('PRAGMA user_version = 7'); c.commit(); c.close()
++with contextlib.redirect_stdout(io.StringIO()):
++    code = mig.main(['--apply'])
++check('migrate: 범위 밖 버전은 거부 exit 1', code == 1)
++with contextlib.redirect_stdout(io.StringIO()):
++    code = mig.main(['--apply', '--db=' + os.path.join(root, '없음.db')])
++check('migrate: 장부 없으면 exit 1 · 안 만듦', code == 1 and not os.path.exists(os.path.join(root, '없음.db')))
++c = sqlite3.connect(':memory:'); c.executescript(ldb.schema_sql())
++check('스키마 파일 user_version = SCHEMA_VERSION', c.execute('PRAGMA user_version').fetchone()[0] == ldb.SCHEMA_VERSION == 2); c.close()
++
++# ═══ 마무리 ═══
++check('전체 네트워크 0회', NET_CALLS == [])
++check('실제 상태 파일·장부 경로는 건드리지 않음(경로 복원 전 확인)', REAL_STATE != wc.STATE_FILE and REAL_DB != ldb.DB_PATH)
++for k, v in REAL.items():
++    setattr(wi, k, v)
++wc.STATE_FILE, ldb.DB_PATH, wc._QUOTA_FILE = REAL_STATE, REAL_DB, REAL_QUOTA
++
++passed = sum(1 for _, ok in results if ok)
++print(f'\n{passed}/{len(results)} PASS')
++sys.exit(0 if passed == len(results) else 1)
+diff --git a/sync_obsidian.py b/sync_obsidian.py
+index 38539b0..456d82d 100644
+--- a/sync_obsidian.py
++++ b/sync_obsidian.py
+@@ -533,7 +533,7 @@ def main():
+         wiki_script = os.path.join(SCRIPT_DIR, 'wiki_ingest.py')
+         if os.path.exists(wiki_script):
+             wiki_result = subprocess.run(
+-                [sys.executable, wiki_script],
++                [sys.executable, wiki_script, '--no-backfill'],   # v4.5 backfill 은 launchd 17:30 실행만 (스케줄러 시간을 늘리지 않는다)
+                 capture_output=True, text=True
+             )
+             # ★ 캡처한 출력을 launchd 와 같은 로그에 흘려보낸다 (2026-09-10).
+diff --git a/wiki_ingest.py b/wiki_ingest.py
+index 82a6298..b1c42d5 100644
+--- a/wiki_ingest.py
++++ b/wiki_ingest.py
+@@ -1,22 +1,58 @@
+ #!/usr/bin/env python3
+ """
+ Karpathy LLM Wiki Ingest Engine
+-- Raw Source(.md) → Gemini 분석 → 엔티티/개념 페이지 합성
+-- 무료 티어 (15 RPM), Rate Limit 자동 준수
+-- 실행: python3 wiki_ingest.py [--full] [--limit=N]
++- Raw Source(.md) → Gemini 분석 → 엔티티/개념 추출 → 장부 wiki_extract 에 소스별 누적 (v4.5)
++- _wiki 개념·엔티티 페이지와 index.md 는 매 실행 끝에 wiki_extract 전체 + 현재 Vault(파일명·제목)로
++  다시 그린다(내용이 같으면 쓰지 않는다). Vault 에서 빠진 소스는 저절로 빠지고, 바뀐 제목은 저절로 따라간다.
++  ★ v4.4 까지는 그 실행분만으로 페이지를 통째로 다시 써서 페이지마다 마지막 실행분(1~10건)만 남았다.
++- 무료 티어 Rate Limit 자동 준수 (wiki_config.gemini_call)
++
++실행:
++  python3 wiki_ingest.py                     증분(신규 소스) → backfill(하루 WIKI_BACKFILL_DAILY_MAX 회, 기본 30) → 재렌더
++  python3 wiki_ingest.py --no-backfill       증분 → 재렌더 (sync_obsidian 경로)
++  python3 wiki_ingest.py --render-only       Gemini 호출 없이 재렌더만
++  python3 wiki_ingest.py --seed-from-pages [--apply]
++                                             지금 _wiki 페이지의 항목을 wiki_extract 씨앗(status=seed)으로 옮긴다. 기본 dry-run
++  python3 wiki_ingest.py --full | --limit=N  (종전) 전체 재분석 / 처리 상한 (둘 다 backfill 안 함)
++
++.env: WIKI_BACKFILL_DAILY_MAX(기본 30, 0 = 끔) · WIKI_BACKFILL_BATCH(기본 20)
+ """
+ 
+ import os, re, json, sys, time, unicodedata
+-from datetime import datetime
++from datetime import datetime, timezone, timedelta
+ from collections import defaultdict
++import wiki_config as wc
+ from wiki_config import (
+     VAULT, WIKI_DIR, ENTITIES_DIR, CONCEPTS_DIR, SYNTHESIS_DIR,
+     STATE_FILE, ENTITIES, CONCEPTS, nfc, gemini_call, load_state, save_state,
+     DailyQuotaExhausted
+ )
++SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
++sys.path.insert(0, os.path.join(SCRIPT_DIR, 'lib'))
++import library_db as ldb   # noqa: E402  v4.5 wiki_extract
++
++KST = timezone(timedelta(hours=9))
++ROLES = ('주제', '도구', '비교대상', '관련')
++MAX_FAILS = 3              # ok 가 아닌 행은 실패 3회에서 포기 (깨진 응답을 매일 다시 태우지 않는다)
++BATCH_SIZE = 20            # backfill 한 호출에 묶는 소스 수 (.env WIKI_BACKFILL_BATCH 로 1~40)
++BATCH_BODY_CHARS = 1500    # backfill 소스 본문 상한 (증분은 종전대로 3000)
++BATCH_MAX_TOKENS = 16000
++DEFAULT_BACKFILL_MAX = 30  # 하루(태평양시) backfill 호출 상한 — 같은 무료 키를 영상 요약이 쓴다
+ 
+ def log(msg): print(msg, flush=True)
+ 
++def now_iso():
++    t = datetime.now(timezone.utc)
++    return t.strftime('%Y-%m-%dT%H:%M:%S.') + f'{t.microsecond // 1000:03d}Z'
++
++def kst_label(iso):
++    """'2026-10-12T07:39:33.000Z' → '2026-10-12 16:39' (KST). 형식이 다르면 앞 16자."""
++    try:
++        dt = datetime.strptime(iso[:19], '%Y-%m-%dT%H:%M:%S').replace(tzinfo=timezone.utc)
++        return dt.astimezone(KST).strftime('%Y-%m-%d %H:%M')
++    except (ValueError, TypeError):
++        return str(iso or '')[:16]
++
+ # ══════════════════════════════════════
+ # 1. Raw Source 수집
+ # ══════════════════════════════════════
+@@ -98,8 +134,53 @@ EXTRACT_PROMPT = """당신은 AI 기술 Wiki 관리자입니다. 아래 YouTube
+   ]
+ }}"""
+ 
++def parse_json(raw):
++    """Gemini 응답 → dict. 못 읽으면 None (빈 결과와 구분한다)."""
++    if not raw:
++        return None
++    for cand in (raw, ):
++        try:
++            return json.loads(cand)
++        except (json.JSONDecodeError, TypeError):
++            pass
++    m = re.search(r'\{[\s\S]*\}', raw)
++    if not m:
++        return None
++    for cand in (m.group(0), re.sub(r',\s*([}\]])', r'\1', m.group(0))):
++        try:
++            return json.loads(cand)
++        except json.JSONDecodeError:
++            pass
++    return None
++
++def clean_result(data):
++    """목록 밖 이름·형식 오류를 걸러 {'entities','concepts','relations'}. dict 가 아니면 None."""
++    if not isinstance(data, dict):
++        return None
++    ents, cons, rels, seen_e, seen_c = [], [], [], set(), set()
++    for e in data.get('entities') or []:
++        if not isinstance(e, dict): continue
++        name = nfc(str(e.get('name', '')).strip())
++        if name not in ENTITIES or name in seen_e: continue
++        role = nfc(str(e.get('role', '관련')).strip())
++        ents.append({'name': name, 'insight': nfc(str(e.get('insight', '')).strip()),
++                     'role': role if role in ROLES else '관련'})
++        seen_e.add(name)
++    for c in data.get('concepts') or []:
++        if not isinstance(c, dict): continue
++        name = nfc(str(c.get('name', '')).strip())
++        if name not in CONCEPTS or name in seen_c: continue
++        cons.append({'name': name, 'insight': nfc(str(c.get('insight', '')).strip())})
++        seen_c.add(name)
++    for r in data.get('relations') or []:
++        if not isinstance(r, dict): continue
++        f, t = nfc(str(r.get('from', '')).strip()), nfc(str(r.get('to', '')).strip())
++        if f and t:
++            rels.append({'from': f, 'to': t, 'type': nfc(str(r.get('type', '관련')).strip()) or '관련'})
++    return {'entities': ents, 'concepts': cons, 'relations': rels}
++
+ def extract_from_source(source):
+-    """하나의 소스에서 엔티티/개념 추출"""
++    """하나의 소스에서 엔티티/개념 추출. 응답을 못 읽으면 None (v4.4 까지는 빈 결과로 성공 처리돼 조용히 빠졌다)."""
+     prompt = EXTRACT_PROMPT.format(
+         title=source['title'],
+         channel=source['channel'],
+@@ -109,171 +190,271 @@ def extract_from_source(source):
+         entity_list=', '.join(ENTITIES),
+         concept_list=', '.join(CONCEPTS),
+     )
+-    raw = gemini_call(prompt)
+-    empty = {'entities': [], 'concepts': [], 'relations': []}
+-    try:
+-        data = json.loads(raw)
+-    except json.JSONDecodeError:
+-        # 코드블록 감싸기 또는 깨진 JSON 복구
+-        m = re.search(r'\{[\s\S]*\}', raw)
+-        if not m:
+-            return empty
+-        try:
+-            data = json.loads(m.group(0))
+-        except json.JSONDecodeError:
+-            # 마지막 쉼표 제거 등 기본 수정 시도
+-            cleaned = re.sub(r',\s*([}\]])', r'\1', m.group(0))
++    return clean_result(parse_json(gemini_call(prompt)))
++
++BATCH_PROMPT = """당신은 AI 기술 Wiki 관리자입니다. 아래 YouTube 영상·링크 요약 {n}개 각각에서 엔티티와 개념을 추출하세요.
++
++## 추출 대상 엔티티 (아래 목록 중에서만 선택)
++{entity_list}
++
++## 추출 대상 개념 (아래 목록 중에서만 선택)
++{concept_list}
++
++## 규칙
++1. 각 소스가 **실질적으로 다루는** 엔티티/개념만 선택 (단순 언급 제외). 해당 없으면 빈 배열
++2. 각 항목에 대해 그 소스에서 얻을 수 있는 **핵심 정보 1~2문장** 작성
++3. 엔티티/개념 간 **관계**가 있으면 기술 (예: "Claude Code로 바이브코딩")
++4. 소스마다 결과를 하나씩, 소스의 id 를 그대로 붙여 **{n}개 모두** 출력
++
++## 소스
++{sources}
++
++## 출력 (JSON)
++{{
++  "results": [
++    {{
++      "id": "S1",
++      "entities": [{{"name": "엔티티명", "insight": "핵심 정보", "role": "주제|도구|비교대상"}}],
++      "concepts": [{{"name": "개념명", "insight": "핵심 정보"}}],
++      "relations": [{{"from": "A", "to": "B", "type": "사용|비교|통합|대체"}}]
++    }}
++  ]
++}}"""
++
++def extract_batch(batch):
++    """소스 여러 개를 한 호출로. 반환: {notion_id: 결과} (응답에 없거나 못 읽은 소스는 빠진다)."""
++    blocks = []
++    for i, s in enumerate(batch, 1):
++        blocks.append(f"### S{i}\n- 제목: {s['title']}\n- 채널: {s['channel']}\n- 폴더(주제): {s['folder']}\n"
++                      f"- 업로드일: {s['upload_date']}\n\n{s['body'][:BATCH_BODY_CHARS]}\n")
++    prompt = BATCH_PROMPT.format(n=len(batch), entity_list=', '.join(ENTITIES),
++                                 concept_list=', '.join(CONCEPTS), sources='\n'.join(blocks))
++    data = parse_json(gemini_call(prompt, max_tokens=BATCH_MAX_TOKENS))
++    out = {}
++    if not isinstance(data, dict):
++        return out
++    for item in data.get('results') or []:
++        if not isinstance(item, dict): continue
++        m = re.fullmatch(r'S?(\d+)', str(item.get('id', '')).strip())
++        if not m or not (1 <= int(m.group(1)) <= len(batch)): continue
++        res = clean_result(item)
++        if res is not None:
++            out.setdefault(batch[int(m.group(1)) - 1]['notion_id'], res)
++    return out
++
++# ══════════════════════════════════════
++# 3. 장부 wiki_extract (v4.5)
++# ══════════════════════════════════════
++def load_store(conn):
++    rows = {}
++    for r in conn.execute('SELECT * FROM wiki_extract'):
++        d = dict(r)
++        for k in ('entities', 'concepts', 'relations'):
+             try:
+-                data = json.loads(cleaned)
+-            except json.JSONDecodeError:
+-                return empty
+-    return data
++                v = json.loads(d[k] or '[]')
++                d[k] = v if isinstance(v, list) else []
++            except ValueError:
++                d[k] = []
++        rows[d['record_id']] = d
++    return rows
++
++def save_ok(conn, rid, res, source, status='ok'):
++    ts = now_iso()
++    with conn:
++        conn.execute(
++            'INSERT INTO wiki_extract (record_id, status, source, entities, concepts, relations, attempts, created_at, updated_at) '
++            'VALUES (?,?,?,?,?,?,0,?,?) ON CONFLICT(record_id) DO UPDATE SET status=excluded.status, source=excluded.source, '
++            'entities=excluded.entities, concepts=excluded.concepts, relations=excluded.relations, updated_at=excluded.updated_at',
++            (rid, status, source, json.dumps(res['entities'], ensure_ascii=False),
++             json.dumps(res['concepts'], ensure_ascii=False), json.dumps(res.get('relations', []), ensure_ascii=False), ts, ts))
++
++def save_fail(conn, rid, source):
++    """실패 1회 기록. 있는 행(seed 등)은 내용·status 를 그대로 두고 attempts 만 올린다. 반환: 누적 실패 횟수."""
++    ts = now_iso()
++    with conn:
++        conn.execute(
++            "INSERT INTO wiki_extract (record_id, status, source, attempts, created_at, updated_at) VALUES (?, 'failed', ?, 1, ?, ?) "
++            'ON CONFLICT(record_id) DO UPDATE SET attempts=attempts+1, updated_at=excluded.updated_at',
++            (rid, source, ts, ts))
++    return conn.execute('SELECT attempts FROM wiki_extract WHERE record_id=?', (rid,)).fetchone()[0]
++
++def needs_backfill(row):
++    return row is None or (row['status'] != 'ok' and row['attempts'] < MAX_FAILS)
+ 
+ # ══════════════════════════════════════
+-# 3. 엔티티/개념 페이지 생성·갱신
++# 4. 페이지 렌더 (wiki_extract 전체 + 현재 Vault)
+ # ══════════════════════════════════════
+-def update_entity_page(name, entries):
+-    """엔티티 페이지 생성 또는 갱신"""
+-    filepath = os.path.join(ENTITIES_DIR, nfc(f'{name}.md'))
+-    existing_sources = set()
+-    existing_content = ''
+-
+-    if os.path.exists(filepath):
+-        existing_content = open(filepath, encoding='utf-8').read()
+-        # 기존 소스 목록 추출
+-        for m in re.finditer(r'\[\[(.+?)(?:\|.+?)?\]\]', existing_content):
+-            existing_sources.add(m.group(1))
+-
+-    # 새 엔트리만 필터링
+-    new_entries = [e for e in entries if e['source_filename'] not in existing_sources]
+-    if not new_entries and os.path.exists(filepath):
+-        return False  # 변경 없음
+-
+-    # 모든 엔트리 (기존 + 신규)
+-    all_entries = entries  # 전체 재작성
+-
+-    # 역할별 분류
++def write_if_changed(path, text):
++    text = nfc(text)
++    if os.path.exists(path):
++        try:
++            if open(path, encoding='utf-8').read() == text:
++                return False
++        except OSError:
++            pass
++    open(path, 'w', encoding='utf-8').write(text)
++    return True
++
++def build_page_data(store, sources):
++    by_id = {}
++    for s in sources:
++        if s['notion_id']:
++            by_id.setdefault(s['notion_id'], s)
++    entity_data, concept_data = defaultdict(list), defaultdict(list)
++    for rid, row in store.items():
++        s = by_id.get(rid)
++        if not s:
++            continue   # Vault 에서 빠진 소스(고아) — 페이지에 싣지 않는다
++        ref = {'source_filename': s['filename'][:-3], 'title': s['title'], 'channel': s['channel'],
++               'upload_date': s['upload_date'], 'updated_at': row['updated_at']}
++        for e in row['entities']:
++            if isinstance(e, dict) and e.get('name') in ENTITIES:
++                entity_data[e['name']].append({**ref, 'insight': e.get('insight', ''), 'role': e.get('role', '관련'),
++                                               'relations': row['relations']})
++        for c in row['concepts']:
++            if isinstance(c, dict) and c.get('name') in CONCEPTS:
++                concept_data[c['name']].append({**ref, 'insight': c.get('insight', '')})
++    return entity_data, concept_data
++
++def _sorted(entries):
++    return sorted(entries, key=lambda x: (str(x.get('upload_date', '')), x['source_filename']), reverse=True)
++
++def _item_lines(e):
++    date = str(e.get('upload_date', ''))[:10]
++    return [f"- [[{e['source_filename']}|{e['title']}]] `{e['channel']}` {date}", f"  > {e['insight']}"]
++
++def render_entity_page(name, entries):
++    last = kst_label(max(e['updated_at'] for e in entries))
+     by_role = defaultdict(list)
+-    for e in all_entries:
+-        by_role[e.get('role', '관련')].append(e)
+-
+-    lines = [
+-        f'---',
+-        f'type: entity',
+-        f'name: "{name}"',
+-        f'source_count: {len(all_entries)}',
+-        f'last_updated: {datetime.now().strftime("%Y-%m-%d %H:%M")}',
+-        f'---',
+-        f'',
+-        f'# {name}',
+-        f'',
+-        f'> 총 **{len(all_entries)}개** 영상에서 언급됨',
+-        f'',
+-    ]
+-
+-    # 역할별 섹션
++    for e in entries:
++        by_role[e.get('role') if e.get('role') in ROLES else '관련'].append(e)
++    lines = ['---', 'type: entity', f'name: "{name}"', f'source_count: {len(entries)}', f'last_updated: {last}', '---', '',
++             f'# {name}', '', f'> 총 **{len(entries)}개** 영상에서 언급됨', '']
+     role_icon = {'주제': '🎯', '도구': '🔧', '비교대상': '⚖️', '관련': '🔗'}
+-    for role in ['주제', '도구', '비교대상', '관련']:
++    for role in ROLES:
+         role_entries = by_role.get(role, [])
+         if not role_entries: continue
+-        icon = role_icon.get(role, '📌')
+-        lines.append(f'## {icon} {role}로 다룬 영상 ({len(role_entries)}개)')
++        lines.append(f'## {role_icon[role]} {role}로 다룬 영상 ({len(role_entries)}개)')
+         lines.append('')
+-        for e in sorted(role_entries, key=lambda x: x.get('upload_date', ''), reverse=True):
+-            date = str(e.get('upload_date', ''))[:10]
+-            lines.append(f"- [[{e['source_filename']}|{e['title']}]] `{e['channel']}` {date}")
+-            lines.append(f"  > {e['insight']}")
++        for e in _sorted(role_entries):
++            lines.extend(_item_lines(e))
+         lines.append('')
+-
+-    # 관계 섹션
+-    relations = [e.get('relations', []) for e in all_entries]
+-    flat_rels = [r for rels in relations for r in rels if r.get('from') == name or r.get('to') == name]
+-    if flat_rels:
+-        lines.append('## 🔗 관련 엔티티/개념')
+-        lines.append('')
+-        seen = set()
+-        for r in flat_rels:
++    rels, seen = [], set()
++    for e in _sorted(entries):
++        for r in e.get('relations', []):
++            if not isinstance(r, dict) or name not in (r.get('from'), r.get('to')): continue
+             other = r['to'] if r['from'] == name else r['from']
+-            rel_type = r.get('type', '관련')
+-            key = f"{other}-{rel_type}"
+-            if key not in seen:
+-                lines.append(f"- [[{other}]] — {rel_type}")
++            key = f"{other}-{r.get('type', '관련')}"
++            if other and other != name and key not in seen:
++                rels.append(f"- [[{other}]] — {r.get('type', '관련')}")
+                 seen.add(key)
+-        lines.append('')
+-
+-    open(filepath, 'w', encoding='utf-8').write(nfc('\n'.join(lines)))
+-    return True
+-
+-def update_concept_page(name, entries):
+-    """개념 페이지 생성 또는 갱신"""
+-    filepath = os.path.join(CONCEPTS_DIR, nfc(f'{name}.md'))
+-
+-    lines = [
+-        f'---',
+-        f'type: concept',
+-        f'name: "{name}"',
+-        f'source_count: {len(entries)}',
+-        f'last_updated: {datetime.now().strftime("%Y-%m-%d %H:%M")}',
+-        f'---',
+-        f'',
+-        f'# {name}',
+-        f'',
+-        f'> 총 **{len(entries)}개** 영상에서 다룸',
+-        f'',
+-        f'## 📚 관련 영상',
+-        f'',
+-    ]
+-
+-    for e in sorted(entries, key=lambda x: x.get('upload_date', ''), reverse=True):
+-        date = str(e.get('upload_date', ''))[:10]
+-        lines.append(f"- [[{e['source_filename']}|{e['title']}]] `{e['channel']}` {date}")
+-        lines.append(f"  > {e['insight']}")
+-
++    if rels:
++        lines += ['## 🔗 관련 엔티티/개념', ''] + rels + ['']
++    return '\n'.join(lines)
++
++def render_concept_page(name, entries):
++    last = kst_label(max(e['updated_at'] for e in entries))
++    lines = ['---', 'type: concept', f'name: "{name}"', f'source_count: {len(entries)}', f'last_updated: {last}', '---', '',
++             f'# {name}', '', f'> 총 **{len(entries)}개** 영상에서 다룸', '', '## 📚 관련 영상', '']
++    for e in _sorted(entries):
++        lines.extend(_item_lines(e))
+     lines.append('')
+-    open(filepath, 'w', encoding='utf-8').write(nfc('\n'.join(lines)))
+-    return True
++    return '\n'.join(lines)
++
++def render_index(entity_data, concept_data):
++    stamps = [e['updated_at'] for d in (entity_data, concept_data) for es in d.values() for e in es]
++    now = kst_label(max(stamps)) if stamps else ''
++    lines = ['# 🧠 AI LLM Wiki — Knowledge Index', '', f'> 마지막 갱신: {now}', '> Karpathy LLM Wiki 패턴 기반 지식 합성 시스템',
++             '', '---', '', f'## 📦 엔티티 (AI 도구/서비스) — {len(entity_data)}개', '',
++             '| 엔티티 | 소스 수 | 최근 갱신 |', '|--------|---------|-----------|']
++    for name in sorted(entity_data):
++        latest = max((str(e.get('upload_date', '')) for e in entity_data[name]), default='')[:10]
++        lines.append(f'| [[{name}]] | {len(entity_data[name])}개 | {latest} |')
++    lines += ['', f'## 💡 개념 (기술/방법론) — {len(concept_data)}개', '', '| 개념 | 소스 수 | 최근 갱신 |', '|------|---------|-----------|']
++    for name in sorted(concept_data):
++        latest = max((str(e.get('upload_date', '')) for e in concept_data[name]), default='')[:10]
++        lines.append(f'| [[{name}]] | {len(concept_data[name])}개 | {latest} |')
++    lines += ['', '---', '', '*이 파일은 `wiki_ingest.py` 실행 시 자동 갱신됩니다 (장부 wiki_extract 전체 기준).*']
++    return '\n'.join(lines)
++
++def render_all(conn, sources):
++    """반환: (entity_data, concept_data, 쓴 엔티티 수, 쓴 개념 수, index 를 썼는가). 항목 0개인 이름의 기존 페이지는 건드리지 않는다."""
++    os.makedirs(ENTITIES_DIR, exist_ok=True)
++    os.makedirs(CONCEPTS_DIR, exist_ok=True)
++    entity_data, concept_data = build_page_data(load_store(conn), sources)
++    ent_w = sum(write_if_changed(os.path.join(ENTITIES_DIR, nfc(f'{n}.md')), render_entity_page(n, es)) for n, es in entity_data.items())
++    con_w = sum(write_if_changed(os.path.join(CONCEPTS_DIR, nfc(f'{n}.md')), render_concept_page(n, es)) for n, es in concept_data.items())
++    idx_w = write_if_changed(os.path.join(WIKI_DIR, 'index.md'), render_index(entity_data, concept_data))
++    return entity_data, concept_data, ent_w, con_w, idx_w
+ 
+ # ══════════════════════════════════════
+-# 4. Wiki Index 갱신
++# 5. 옛 페이지 → 씨앗 (v4.5 1회)
+ # ══════════════════════════════════════
+-def build_wiki_index(entity_data, concept_data):
+-    """_wiki/index.md 생성"""
+-    now = datetime.now().strftime('%Y-%m-%d %H:%M')
+-    lines = [
+-        f'# 🧠 AI LLM Wiki — Knowledge Index',
+-        f'',
+-        f'> 마지막 갱신: {now}',
+-        f'> Karpathy LLM Wiki 패턴 기반 지식 합성 시스템',
+-        f'',
+-        f'---',
+-        f'',
+-        f'## 📦 엔티티 (AI 도구/서비스) — {len(entity_data)}개',
+-        f'',
+-        f'| 엔티티 | 소스 수 | 최근 갱신 |',
+-        f'|--------|---------|-----------|',
+-    ]
+-    for name in sorted(entity_data.keys()):
+-        entries = entity_data[name]
+-        latest = max((e.get('upload_date', '') for e in entries), default='')[:10]
+-        lines.append(f'| [[{name}]] | {len(entries)}개 | {latest} |')
+-
+-    lines.extend([
+-        f'',
+-        f'## 💡 개념 (기술/방법론) — {len(concept_data)}개',
+-        f'',
+-        f'| 개념 | 소스 수 | 최근 갱신 |',
+-        f'|------|---------|-----------|',
+-    ])
+-    for name in sorted(concept_data.keys()):
+-        entries = concept_data[name]
+-        latest = max((e.get('upload_date', '') for e in entries), default='')[:10]
+-        lines.append(f'| [[{name}]] | {len(entries)}개 | {latest} |')
+-
+-    lines.extend(['', f'---', f'', f'*이 파일은 `wiki_ingest.py` 실행 시 자동 갱신됩니다.*'])
+-    open(os.path.join(WIKI_DIR, 'index.md'), 'w', encoding='utf-8').write(nfc('\n'.join(lines)))
++ITEM_RE = re.compile(r'^- \[\[([^|]+?)\|.*\]\] ')   # 파일명에 [ ] 가 들어간다([한영자막]·[Tech he'Story]). | 는 없다
++ROLE_HEAD_RE = re.compile(r'^## \S+ (주제|도구|비교대상|관련)로 다룬 영상')
++
++def parse_page(path, kind):
++    """페이지의 영상 항목 → [{'file','role','insight'}]."""
++    items, cur, role, in_list = [], None, '관련', False
++    for line in nfc(open(path, encoding='utf-8').read()).split('\n'):
++        if line.startswith('## '):
++            m = ROLE_HEAD_RE.match(line)
++            if kind == 'entity':
++                in_list, role = bool(m), (m.group(1) if m else '관련')
++            else:
++                in_list = '관련 영상' in line
++            cur = None
++            continue
++        if not in_list:
++            continue
++        m = ITEM_RE.match(line)
++        if m:
++            cur = {'file': m.group(1), 'role': role, 'insight': ''}
++            items.append(cur)
++        elif cur is not None and line.startswith('  > '):
++            cur['insight'] = line[4:].strip()
++    return items
++
++def seed_from_pages(conn, sources, apply):
++    by_file = {s['filename'][:-3]: s['notion_id'] for s in sources if s['notion_id']}
++    store = load_store(conn)
++    seeds = defaultdict(lambda: {'entities': [], 'concepts': [], 'relations': []})
++    pages = items = 0
++    unmatched = []
++    for kind, folder, names, key in (('entity', ENTITIES_DIR, ENTITIES, 'entities'), ('concept', CONCEPTS_DIR, CONCEPTS, 'concepts')):
++        if not os.path.isdir(folder): continue
++        for fn in sorted(os.listdir(folder)):
++            name = nfc(fn)[:-3]
++            if not fn.endswith('.md') or name not in names: continue
++            pages += 1
++            for it in parse_page(os.path.join(folder, fn), kind):
++                items += 1
++                rid = by_file.get(it['file'])
++                if not rid:
++                    unmatched.append(f"{name} ← {it['file']}")
++                    continue
++                lst = seeds[rid][key]
++                if any(x['name'] == name for x in lst): continue
++                entry = {'name': name, 'insight': it['insight']}
++                if kind == 'entity': entry['role'] = it['role']
++                lst.append(entry)
++    skipped_ok = [rid for rid in seeds if store.get(rid, {}).get('status') == 'ok']
++    todo = {rid: v for rid, v in seeds.items() if rid not in skipped_ok}
++    log(f'🌱 씨앗: 페이지 {pages}개 · 항목 {items}건 · 소스 {len(seeds)}건 (이미 ok {len(skipped_ok)}건 제외 → {len(todo)}건) · 매칭 실패 {len(unmatched)}건')
++    for u in unmatched[:10]:
++        log(f'   - 매칭 실패: {u}')
++    if apply:
++        for rid, res in todo.items():
++            save_ok(conn, rid, res, 'seed', status='seed')
++        log(f'  ✅ wiki_extract 에 seed {len(todo)}건 기록')
++    else:
++        log('  (dry-run — 쓰지 않음. 적용은 --apply)')
++    print('SEED_RESULT:' + json.dumps({'pages': pages, 'items': items, 'records': len(seeds), 'skipped_ok': len(skipped_ok),
++                                       'written': len(todo) if apply else 0, 'unmatched': len(unmatched), 'apply': bool(apply)},
++                                      ensure_ascii=False))
+ 
+ # ══════════════════════════════════════
+-# 5. Wiki Log 기록
++# 6. Wiki Log 기록
+ # ══════════════════════════════════════
+ def write_wiki_log(event, summary, details=None):
+     log_path = os.path.join(WIKI_DIR, 'log.md')
+@@ -302,156 +483,190 @@ def write_wiki_log(event, summary, details=None):
+ # ══════════════════════════════════════
+ # 메인 실행
+ # ══════════════════════════════════════
+-def main():
+-    log('🧠 Karpathy LLM Wiki Ingest 시작\n')
+-    start = time.time()
++def _setting(key, default):
++    """프로세스 환경변수가 .env 보다 먼저 (1회 시험 실행용: WIKI_BACKFILL_DAILY_MAX=1 python3 wiki_ingest.py)"""
++    return os.environ.get(key) or wc.ENV.get(key, default)
+ 
+-    # 옵션 파싱
+-    full_mode = '--full' in sys.argv
++def backfill_max():
++    try:
++        return max(0, int(_setting('WIKI_BACKFILL_DAILY_MAX', DEFAULT_BACKFILL_MAX)))
++    except (TypeError, ValueError):
++        return DEFAULT_BACKFILL_MAX
++
++def batch_size():
++    try:
++        return min(40, max(1, int(_setting('WIKI_BACKFILL_BATCH', BATCH_SIZE))))
++    except (TypeError, ValueError):
++        return BATCH_SIZE
++
++def main(argv=None):
++    argv = sys.argv[1:] if argv is None else argv
++    full_mode = '--full' in argv
++    render_only = '--render-only' in argv
++    seed_mode = '--seed-from-pages' in argv
++    no_backfill = '--no-backfill' in argv
+     limit = None
+-    for arg in sys.argv:
++    for arg in argv:
+         if arg.startswith('--limit='):
+             limit = int(arg.split('=')[1])
+ 
+-    # 상태 로드
++    log('🧠 Karpathy LLM Wiki Ingest 시작\n')
++    start = time.time()
+     state = load_state()
+-    ingested = state.get('ingested', {})
++    ingested = state.setdefault('ingested', {})
+ 
+-    # 소스 수집
+     log('📂 Raw Source 수집 중...')
+     sources = collect_sources()
+     log(f'  총 {len(sources)}개 소스 파일\n')
+ 
+-    # 미처리 소스 필터링
+-    if full_mode:
+-        pending = sources
+-        log('🔄 전체 재분석 모드 (--full)\n')
+-    else:
+-        pending = [s for s in sources if s['notion_id'] not in ingested]
+-        log(f'✨ 신규/미처리: {len(pending)}개\n')
+-
+-    if limit:
+-        pending = pending[:limit]
+-        log(f'📊 처리 제한: {limit}개\n')
+-
+-    if not pending:
+-        log('ℹ️  처리할 소스 없음 — 종료')
+-        return
+-
+-    # 엔티티/개념 데이터 수집
+-    entity_data = defaultdict(list)  # name → [entry, ...]
+-    concept_data = defaultdict(list)
+-
+-    processed = 0
+-    errors = 0
+-    consecutive_429_errors = 0
+-
+-    for i, source in enumerate(pending):
+-        try:
+-            log(f'  [{i+1}/{len(pending)}] {source["title"][:50]}...')
+-            result = extract_from_source(source)
+-
+-            source_ref = {
+-                'source_filename': source['filename'][:-3],
+-                'title': source['title'],
+-                'channel': source['channel'],
+-                'upload_date': source['upload_date'],
+-            }
+-
+-            for ent in result.get('entities', []):
+-                name = ent.get('name', '')
+-                if name not in ENTITIES: continue
+-                entry = {**source_ref, 'insight': ent.get('insight', ''), 'role': ent.get('role', '관련'), 'relations': result.get('relations', [])}
+-                entity_data[name].append(entry)
+-
+-            for con in result.get('concepts', []):
+-                name = con.get('name', '')
+-                if name not in CONCEPTS: continue
+-                entry = {**source_ref, 'insight': con.get('insight', '')}
+-                concept_data[name].append(entry)
+-
+-            # 상태 저장 (점진적)
+-            if source['notion_id']:
+-                ingested[source['notion_id']] = datetime.now().isoformat()
+-
+-            processed += 1
+-            consecutive_429_errors = 0 # 성공 시 에러 카운트 초기화
+-
+-            # 10개마다 중간 저장
+-            if processed % 10 == 0:
+-                state['ingested'] = ingested
+-                save_state(state)
+-                log(f'  💾 중간 저장 ({processed}개 처리)')
+-
+-        except DailyQuotaExhausted as e:
+-            log(f'\n  ⏸  {e}')
+-            log(f'  💾 진행상황 저장 중... ({processed}개 처리 완료)')
+-            state['ingested'] = ingested
+-            save_state(state)
+-            log(f'  ℹ️  내일 다시 실행하면 자동으로 이어서 처리됩니다.')
+-            break
+-        except Exception as e:
+-            log(f'  ❌ 오류: {e}')
+-            errors += 1
+-            # Rate limit 오류 시 대기
+-            if '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e):
+-                consecutive_429_errors += 1
+-                if consecutive_429_errors >= 3:
+-                    log('\n  🚨 연속적인 429 에러 발생. 일일 할당량이 소진된 것으로 간주하고 종료합니다.')
++    conn = ldb.open_existing()   # 장부가 없거나 user_version 이 다르면 던진다 (Vault 는 건드리지 않음)
++    try:
++        if seed_mode:
++            seed_from_pages(conn, sources, '--apply' in argv)
++            return 0
++        return run(conn, state, ingested, sources, full_mode, render_only, no_backfill, limit, start)
++    finally:
++        conn.close()
++
++def run(conn, state, ingested, sources, full_mode, render_only, no_backfill, limit, start):
++    processed = errors = failed = 0
++    bf_calls = bf_done = 0
++    quota_out = False
++    no_id = sum(1 for s in sources if not s['notion_id'])
++    if no_id:
++        log(f'  ⚠️  notion_id 없는 소스 {no_id}개 — 건너뜀')
++
++    if not render_only:
++        if full_mode:
++            pending = [s for s in sources if s['notion_id']]
++            log('🔄 전체 재분석 모드 (--full)\n')
++        else:
++            pending = [s for s in sources if s['notion_id'] and s['notion_id'] not in ingested]
++            log(f'✨ 신규/미처리: {len(pending)}개\n')
++        if limit:
++            pending = pending[:limit]
++            log(f'📊 처리 제한: {limit}개\n')
++
++        consecutive_429_errors = 0
++        for i, source in enumerate(pending):
++            rid = source['notion_id']
++            try:
++                log(f'  [{i+1}/{len(pending)}] {source["title"][:50]}...')
++                res = extract_from_source(source)
++                if res is None:
++                    n = save_fail(conn, rid, 'single')
++                    failed += 1
++                    if n >= MAX_FAILS:
++                        ingested[rid] = datetime.now().isoformat()   # 포기 — 더 태우지 않는다
++                        log(f'  ⚠️  응답 해석 실패 {n}회 — 포기')
++                    else:
++                        log(f'  ⚠️  응답 해석 실패 ({n}/{MAX_FAILS}) — 다음 실행에서 다시')
++                else:
++                    save_ok(conn, rid, res, 'single')
++                    ingested[rid] = datetime.now().isoformat()
++                    processed += 1
++                consecutive_429_errors = 0
++                if (processed + failed) % 10 == 0:
+                     state['ingested'] = ingested
+                     save_state(state)
+-                    break
+-                log('  ⏸  Rate limit — 60초 대기...')
+-                time.sleep(60)
+-
+-    # 페이지 생성/갱신
+-    log(f'\n📝 Wiki 페이지 생성 중...')
+-
+-    ent_updated = 0
+-    for name, entries in entity_data.items():
+-        if update_entity_page(name, entries):
+-            ent_updated += 1
+-            log(f'  ✅ 엔티티: {name} ({len(entries)}개 소스)')
+-
+-    con_updated = 0
+-    for name, entries in concept_data.items():
+-        if update_concept_page(name, entries):
+-            con_updated += 1
+-            log(f'  ✅ 개념: {name} ({len(entries)}개 소스)')
+-
+-    # 인덱스 갱신
+-    build_wiki_index(entity_data, concept_data)
+-    log('  ✅ index.md 갱신')
+-
+-    # 상태 저장
++            except DailyQuotaExhausted as e:
++                log(f'\n  ⏸  {e}')
++                log(f'  ℹ️  내일 다시 실행하면 자동으로 이어서 처리됩니다.')
++                quota_out = True
++                break
++            except Exception as e:
++                log(f'  ❌ 오류: {e}')
++                errors += 1
++                if '429' in str(e) or 'RESOURCE_EXHAUSTED' in str(e):
++                    consecutive_429_errors += 1
++                    if consecutive_429_errors >= 3:
++                        log('\n  🚨 연속적인 429 에러 발생. 일일 할당량이 소진된 것으로 간주하고 종료합니다.')
++                        quota_out = True
++                        break
++                    log('  ⏸  Rate limit — 60초 대기...')
++                    time.sleep(60)
++        state['ingested'] = ingested
++        save_state(state)
++
++    # ── backfill (v4.5): 예전에 처리됐지만 wiki_extract 에 없는(또는 seed 뿐인) 소스를 묶어서 다시 추출 ──
++    bf_left = None
++    if not (render_only or full_mode or no_backfill or quota_out or limit):
++        cap = backfill_max()
++        today = wc._today()
++        bf = state.get('backfill') or {}
++        if bf.get('date') != today:
++            bf = {'date': today, 'calls': 0}
++        store = load_store(conn)
++        targets = [s for s in sources if s['notion_id'] and s['notion_id'] in ingested and needs_backfill(store.get(s['notion_id']))]
++        log(f'\n🧩 backfill: 대상 {len(targets)}건 · 오늘 {bf["calls"]}/{cap}회 사용')
++        while targets and bf['calls'] < cap:
++            bs = batch_size()
++            batch, targets = targets[:bs], targets[bs:]
++            try:
++                got = extract_batch(batch)
++            except DailyQuotaExhausted as e:
++                log(f'  ⏸  {e}')
++                targets = batch + targets
++                break
++            except Exception as e:
++                log(f'  ❌ backfill 오류: {e} — 이번 실행 backfill 중단')
++                errors += 1
++                targets = batch + targets
++                break
++            bf['calls'] += 1
++            bf_calls += 1
++            for s in batch:
++                res = got.get(s['notion_id'])
++                if res is None:
++                    save_fail(conn, s['notion_id'], 'batch')
++                    failed += 1
++                else:
++                    save_ok(conn, s['notion_id'], res, 'batch')
++                    bf_done += 1
++            state['backfill'] = bf
++            save_state(state)
++            log(f'  [{bf["calls"]}/{cap}] {len(got)}/{len(batch)}건 기록')
++        store = load_store(conn)
++        bf_left = sum(1 for s in sources if s['notion_id'] and s['notion_id'] in ingested and needs_backfill(store.get(s['notion_id'])))
++        state['backfill'] = bf
++        log(f'  backfill 남은 대상 {bf_left}건')
++
++    # ── 페이지 재렌더 (wiki_extract 전체 기준, 내용 같으면 안 씀) ──
++    log(f'\n📝 Wiki 페이지 렌더 중...')
++    entity_data, concept_data, ent_updated, con_updated, idx_w = render_all(conn, sources)
++    log(f'  엔티티 {len(entity_data)}개 중 {ent_updated}개 · 개념 {len(concept_data)}개 중 {con_updated}개 · index {"갱신" if idx_w else "그대로"}')
++
+     state['ingested'] = ingested
+     state['last_run'] = datetime.now().isoformat()
+-    state['entities'] = {k: len(v) for k, v in entity_data.items()}
+-    state['concepts'] = {k: len(v) for k, v in concept_data.items()}
++    state['entities'] = {k: len(v) for k, v in sorted(entity_data.items())}
++    state['concepts'] = {k: len(v) for k, v in sorted(concept_data.items())}
+     save_state(state)
+ 
+     elapsed = round(time.time() - start)
+     log(f'\n🎉 Wiki Ingest 완료!')
+-    log(f'  처리: {processed}개 | 오류: {errors}개')
+-    log(f'  엔티티: {ent_updated}개 | 개념: {con_updated}개')
++    log(f'  처리: {processed}개 | 해석 실패: {failed}개 | 오류: {errors}개 | backfill: {bf_calls}회 {bf_done}건')
+     log(f'  소요시간: {elapsed}초')
+ 
+-    # 로그 기록
+-    write_wiki_log('ingest', f'{processed}개 소스 처리', {
+-        '처리': f'{processed}개',
+-        '오류': f'{errors}개',
+-        '엔티티 갱신': f'{ent_updated}개',
+-        '개념 갱신': f'{con_updated}개',
+-        '소요시간': f'{elapsed}초',
+-        '모드': '전체' if full_mode else '증분',
+-    })
+-
+-    # JSON 결과 출력 (파이프라인 연동용)
++    if processed or failed or bf_calls or ent_updated or con_updated:
++        write_wiki_log('ingest', f'{processed}개 소스 처리' + (f' · backfill {bf_done}건' if bf_calls else ''), {
++            '처리': f'{processed}개',
++            '해석 실패': f'{failed}개',
++            '오류': f'{errors}개',
++            'backfill': f'{bf_calls}회 {bf_done}건' + (f' (남은 {bf_left}건)' if bf_left is not None else ''),
++            '엔티티 갱신': f'{ent_updated}/{len(entity_data)}개',
++            '개념 갱신': f'{con_updated}/{len(concept_data)}개',
++            '소요시간': f'{elapsed}초',
++            '모드': '렌더만' if render_only else ('전체' if full_mode else '증분'),
++        })
++
+     print('WIKI_RESULT:' + json.dumps({
+-        'processed': processed, 'errors': errors,
++        'processed': processed, 'errors': errors, 'failed': failed,
+         'entities_updated': ent_updated, 'concepts_updated': con_updated,
++        'entities': len(entity_data), 'concepts': len(concept_data),
++        'backfill_calls': bf_calls, 'backfill_done': bf_done, 'backfill_left': bf_left,
+         'elapsed': elapsed,
+     }))
++    return 0
+ 
+ if __name__ == '__main__':
+-    main()
++    sys.exit(main())
