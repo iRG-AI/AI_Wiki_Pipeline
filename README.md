@@ -40,7 +40,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 
 ---
 
-## 🏗️ 시스템 아키텍처 (v4.0)
+## 🏗️ 시스템 아키텍처 (v4.2)
 
 ### 전체 데이터 흐름
 
@@ -65,10 +65,11 @@ flowchart TD
     subgraph YT["🎬 ① YouTube 인제스트 (scheduler.js, Node)"]
         ENTRY["processMasterIngest()"]
         FETCH["영상 메타 조회 (Data API v3)\n+ 장부 캐시 · 중복 체크"]
-        GEMINI["lib/classifier.js\nGemini 2.5 Flash · thinkingBudget 0\n4섹션 요약 + 토픽 1~5개"]
+        GEMINI["geminiSummarize() — scheduler.js\nGemini 2.5 Flash · thinkingBudget 0\n4섹션 요약"]
+        CLS["lib/classifier.js\nGemini · 토픽 1~5개 분류"]
         LSAVE["saveToLibrary()\nlib/library.js (node:sqlite)"]
-        YSAVE["lib/youtube_oauth.js\nplaylistItems.insert (50유닛)"]
-        ENTRY --> FETCH --> GEMINI --> LSAVE --> YSAVE
+        YSAVE["lib/youtube_oauth.js\nplaylistItems.insert (50유닛)\nYOUTUBE_PLAYLIST_SYNC=true 일 때만"]
+        ENTRY --> FETCH --> GEMINI --> CLS --> LSAVE --> YSAVE
     end
     MASTER -->|Data API v3| FETCH
 
@@ -85,7 +86,7 @@ flowchart TD
     KDEDUP --> LIB
     YSAVE -->|"quota 여유"| YT_PL[("📺 YouTube 토픽 재생목록 33개")]
     YSAVE -->|"quota 초과·실패"| PENDING[("⏳ pending_playlist_adds.json\n(dead-letter 격리 · 연속실패 10회 차단)")]
-    PENDING -->|"다음 실행 시 소진"| YT_PL
+    PENDING -->|"다음 실행 시작 때 먼저 소진\n(YOUTUBE_PLAYLIST_SYNC=true 일 때만)"| YT_PL
 
     subgraph MIR["📗 ③ 구글 시트 미러 (sheet_mirror.py → Apps Script 웹앱)"]
         SM["updated_at 워터마크 이후 행만\n200행씩 POST · 토큰은 본문\n401/403 즉시 중단 · 5xx 백오프"]
@@ -93,6 +94,13 @@ flowchart TD
         SM --> GS
     end
     LIB --> SM
+
+    subgraph BK["🛟 ③-b 장부 백업 (v4.1)"]
+        BKP["backup_library.py\n오늘(KST) 파일이 없을 때만 = 하루 1회\n온라인 백업 → 무결성 검사 → gzip → sha256 대조"]
+        BKD[("data/backups/ + 구글 드라이브 폴더\nlibrary-YYYYMMDD.db.gz · 최신 7 + 주별 4")]
+        BKP --> BKD
+    end
+    LIB --> BKP
 
     subgraph OBS["📓 ④ Obsidian LLM Wiki (Python, 두 소스 공유)"]
         SYNC["sync_obsidian.py (장부 읽기 전용)"]
@@ -110,14 +118,20 @@ flowchart TD
 
     VAULT --> TG["📱 Telegram 통합 알림 (1개 메시지)\nYouTube 결과 + 꿀팁 신규 + 시트 + Obsidian 결과"]
     YT_PL --> TG
+
+    RS[("🚨 .run_state.json (v4.2)\n실행마다 결과 기록")]
+    SCHED -.->|"시작: 직전 실행 점검\n끝: 결과 기록"| RS
+    RS -.->|"[직전 실행 점검] · [실행 실패]\n· [장부 백업 실패] 는 따로"| TG
 ```
 
 ### 한 사이클(6시간)에서 실제로 일어나는 일
 
 | 순서 | 단계 | 실행 주체 | 입력 | 출력 | 아무 것도 없을 때 |
 |:--:|---|---|---|---|---|
-| 1 | YouTube 마스터 인제스트 | `scheduler.js` | 'AI 영상목록' 신규 영상 | 장부 `videos` 행 + 토픽 재생목록 추가 | 장부 캐시 대조 후 0건 처리 |
-| 2 | 대기 큐 소진 | `scheduler.js:flushPendingQueue()` | `pending_playlist_adds.json` | 재생목록 추가 (quota 한도 내) | 큐 비어 있으면 생략 |
+| 0 | 직전 실행 점검 (v4.2) | `scheduler.js` | `.run_state.json` | 못 보낸 실패·끝나지 못한 실행·9시간 넘는 간격이면 `[직전 실행 점검]` 텔레그램 | 첫 실행·정상이면 생략 |
+| 1 | 대기 큐 소진 | `scheduler.js:flushPendingQueue()` | `pending_playlist_adds.json` | 재생목록 추가 (quota 한도 내) | 큐 비어 있으면 생략. `YOUTUBE_PLAYLIST_SYNC=false` 면 건너뜀 |
+| 2 | YouTube 마스터 인제스트 | `scheduler.js` | 'AI 영상목록' 신규 영상 | 요약(`geminiSummarize`) → 토픽 분류(`lib/classifier.js`) → 장부 `videos` 행 → 토픽 재생목록 추가(`YOUTUBE_PLAYLIST_SYNC=true` 일 때만) | 장부 캐시 대조 후 0건 처리 |
+| 2b | 실행 결과 기록 (v4.2) | `scheduler.js` | 1·2 결과 | `.run_state.json` · 저장 0 · Skip 0 · 오류 ≥1 이면 `[실행 실패]` 텔레그램 | 정상이면 기록만 |
 | 3 | 카톡 인제스트 | `kakao_ingest.py --apply --if-new` | `~/Downloads` 최신 CSV | 장부 `tips` 신규 행 | 같은 CSV(mtime)면 장부 조회 없이 즉시 종료 |
 | 4 | 시트 미러 (v4.0) | `sheet_mirror.py` | 장부 중 `updated_at` > 워터마크 | 시트 '영상'·'꿀팁' 탭 덮어쓰기/추가 | 바뀐 행 0이면 요청 0. `.env` 미설정이면 건너뜀 |
 | 4b | 장부 백업 (v4.1) | `backup_library.py` | 장부 전체 (읽기 전용) | `data/backups/`·드라이브 폴더의 `library-YYYYMMDD.db.gz` | 오늘(KST) 파일이 있으면 건너뜀 → 실제로는 하루 1회. 실패는 텔레그램 별도 알림 |
@@ -126,7 +140,7 @@ flowchart TD
 | 7 | 꿀팁 노트 동기화 | `sync_obsidian.py:sync_tips()` | 장부 `tips` | `VAULT/AI 꿀팁/*.md` | 0건 |
 | 8 | MOC·키워드 재구성 | `build_obsidian_wiki.py` | Vault 전체 | `_MOC/*.md`, 노트 하단 관련 항목 | 내용이 같으면 파일을 쓰지 않음 (v4.0) |
 | 9 | Wiki 합성 | `wiki_ingest.py` | 미처리 노트 | `_wiki/entities`, `_wiki/concepts` | 신규 노트 없으면 생략 |
-| 10 | 알림 | `scheduler.js` | 1·3·4·5~9 결과 | Telegram 1개 메시지 | 변경 0이면 발송 생략 (시트 실패는 알림 · 백업 실패는 별도 알림) |
+| 10 | 알림 | `scheduler.js` | 2·3·4·5~9 결과 | Telegram 1개 메시지 | 변경 0이면 발송 생략 (시트 실패는 알림 · 백업 실패는 별도 알림 · 실패 알림은 0·2b) |
 
 ### 두 소스의 격리 원칙
 
@@ -155,6 +169,7 @@ Youtube_Notion_Grap/
 ├── .env                               # API 키 (gitignore — 절대 커밋 금지)
 ├── data/library.db                    # (v4.0) 로컬 원본 장부 — SQLite (gitignore, 개인 요약 전체)
 ├── data/backups/                      # (v4.1) 장부 백업 library-YYYYMMDD.db.gz — 최신 7 + 주별 4 (gitignore)
+├── .run_state.json                    # (v4.2) 직전 실행 결과 — 다음 실행이 실패·빠진 실행을 알리는 근거 (gitignore, 지워도 무해)
 ├── favicon.svg                        # 브라우저 탭 아이콘
 ├── oauth_setup.js                     # YouTube OAuth refresh_token 1회 발급 도구
 ├── kakao_ingest.py                    # 카톡 CSV → 장부 tips (기본 dry-run, --apply / --if-new)
@@ -169,8 +184,12 @@ Youtube_Notion_Grap/
 ├── wiki_lan_server.js                 # (v3.2) 집 안 전용 읽기 전용 Wiki 검색 서버 (포트 3100)
 ├── wiki.html                          # Wiki 검색 화면 (server.js·wiki_lan_server.js 공용)
 ├── wiki_mcp.js                        # Wiki 검색 stdio MCP (search_wiki, read_note)
-├── com.irichgreen.*.plist             # launchd 원본 (server · ytsummarizer · wiki-ingest · wiki-lan)
-├── install-*.sh                       # launchd 설치 스크립트
+├── com.irichgreen.*.plist             # launchd 원본 (server · ytsummarizer · wiki-ingest · wiki-lan) — 설치본과 같게 유지
+├── install-*.sh                       # launchd 설치 스크립트 (server · scheduler · wiki-ingest)
+├── deploy.sh                          # (옛) GitHub 일괄 업로드 스크립트 — 지금은 쓰지 않는다 (커밋·push 는 작업지시서로)
+├── SKILL_SAFETY.md                    # 구글 API 안전 코딩 가이드 (401/403 즉시 중단 · 지수 백오프) — CLAUDE.md 보안 원칙의 원문
+├── spec_sheet.html                    # (옛) v2.1 기술 명세서 — 기록용
+├── google_ai_pro_policy_analysis.html # (옛) Google AI Pro 한도 변경 분석 리포트(2026-05) — 기록용
 ├── lib/
 │   ├── library.js                     # (v4.0) 장부 Node 헬퍼 (openLibrary·insertVideo·addTopic·updateStats)
 │   ├── library_db.py                  # (v4.0) 장부 Python 헬퍼 (open_existing — 없으면 만들지 않음)
@@ -188,6 +207,7 @@ Youtube_Notion_Grap/
 │   └── test_*.{js,py}                 # 회귀 테스트 7종 (네트워크 0회)
 ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
 ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
+├── docs/cowork-project-instructions.md # (옛) Cowork 프로젝트 인수인계 사본 (2026-08-17) — 현재 원본은 Cowork 프로젝트 설정
 ├── CLAUDE.md                          # 구조·제약·안전장치 — 코드 질문은 여기부터 (AGENTS.md 는 같은 내용)
 └── README.md                          # 이 문서 (README.html 은 만들지 않는다)
 ```
@@ -250,7 +270,7 @@ YOUTUBE_OAUTH_CLIENT_ID=...
 YOUTUBE_OAUTH_CLIENT_SECRET=...
 YOUTUBE_OAUTH_REFRESH_TOKEN=...
 YOUTUBE_MASTER_PLAYLIST_ID=PLxxxxxxxxxxxxxxxxxxxxxxxx
-YOUTUBE_PLAYLIST_SYNC=true
+YOUTUBE_PLAYLIST_SYNC=true                          # false 면 토픽 재생목록 추가·대기 큐 재시도를 건너뛴다 (요약·분류·장부 저장은 그대로). 현재 운영값 false
 
 # (보관) 노션 — scripts/notion_to_sqlite.py 만 읽는다. 앱은 쓰지 않는다. 노션 해지 때 함께 지운다
 NOTION_TOKEN=ntn_...
@@ -263,7 +283,7 @@ NOTION_TIPS_DB_ID=...
 ## 📦 설치 및 실행
 
 ### 1. 사전 요구사항
-- Node.js 22.5 이상 (`node:sqlite`), Python 3
+- Node.js 22.13 이상 (`node:sqlite` 를 플래그 없이 쓰는 버전. 데몬은 Homebrew `/opt/homebrew/bin/node`), Python 3 (Homebrew `/opt/homebrew/bin/python3`)
 - YouTube Data API v3 키, Google Gemini API 키
 - 장부 `data/library.db` (원본 — 새로 만들지 않는다. 없으면 백업에서 복원)
 
@@ -275,7 +295,19 @@ node server.js
 # Mac 자동 시작 등록
 bash install-server.sh
 bash install-scheduler.sh
+bash install-wiki-ingest.sh
 ```
+
+launchd 데몬 4개 (설치본 = `~/Library/LaunchAgents/`, 원본 = 레포 루트 plist):
+
+| 라벨 | 실행 대상 | 스케줄 | 설치 |
+|---|---|---|---|
+| `com.irichgreen.server` | `server.js` (127.0.0.1:3000) | 상주 (로그인 시 시작) | `install-server.sh` |
+| `com.irichgreen.ytsummarizer` | `scheduler.js` | 00 / 06 / 12 / 18시 | `install-scheduler.sh` |
+| `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분) | 매일 17:30 (Gemini 일 한도 리셋 직후) | `install-wiki-ingest.sh` |
+| `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | 상주 | 아래 「6. Wiki 검색」 |
+
+로그는 `~/Library/Logs/irichgreen/` (스케줄러 상세 로그는 레포 루트 `scheduler.log`).
 
 ### 3. 카카오톡 링크 인제스트
 
@@ -362,9 +394,9 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 | 테이블 | 내용 | 시트 탭 |
 |---|---|---|
 | `videos` | 영상 1건 1행. `record_id`(노션에서 옮긴 행 = 노션 page id, 새 행 = uuid4 = Obsidian `notion_id`) · `video_id`(UNIQUE) · 제목 · 채널 · `topics` · 업로드일 · 조회수 · 구독자 · URL · `summary`(Gemini 요약 마크다운) | **영상** |
-| `tips` | 카톡 링크 1건 1행. 제목 · URL · `url_key`(중복 판정) · 출처(호스트) · `tags` · 카테고리 · 상태 · 중요도 · 저장일 · 메모 | **꿀팁** |
+| `tips` | 카톡 링크 1건 1행. 제목 · URL · `url_key`(중복 판정) · 출처(호스트) · `tags` · 카테고리 · 상태 · 중요도 · 저장일 · 메모 · `body_md`(본문) | **꿀팁** |
 | `videos_dup` | 1단계 적재 때 같은 video_id 로 겹친 노션 페이지 보관본 (지우지 않음) | — |
-| `meta` | `switched_at`(장부 원본 확정 시각) · `sheet_wm_videos`·`sheet_wm_tips`(시트에 보낸 마지막 `updated_at`) · `sheet_target` · `sheet_last_ok` | — |
+| `meta` | `switched_at`(장부 원본 확정 시각) · `sheet_wm_videos`·`sheet_wm_tips`(시트에 보낸 마지막 `updated_at`) · `sheet_target` · `sheet_last_ok` · 1단계 적재 기록(`source`·`loaded_at`·`schema_version`·`notion_video_pages`·`notion_tip_pages`) | — |
 
 시트 열 — **영상**: record_id · 업로드일 · 채널 · 제목 · 주제 · 조회수 · 구독자 · URL · 요약 · 저장 · 수정 / **꿀팁**: record_id · 저장일 · 제목 · URL · 출처 · 카테고리 · 태그 · 중요도 · 상태 · 메모 · 본문 · 저장 · 수정 (저장·수정은 KST).
 
@@ -375,6 +407,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 본 프로젝트는 **`v[Major].[Minor]`** 형식의 단순화된 버전 규칙을 따릅니다.
 - **Major**: 핵심 엔진 교체, 아키텍처 개편 등 대규모 변화
 - **Minor**: 기능 개선, 버그 수정, 프롬프트 튜닝 등 마이너한 변화
+- (예외) 기존 버전의 긴급 안정성 수정은 세 번째 자리를 쓴 적이 있다 — v3.2.1. 문서만 고친 변경은 버전을 올리지 않는다.
 
 ### 📌 요약 이력 (Summary Table)
 
@@ -415,6 +448,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 | 텔레그램 | `sendTelegram` 이 true/false 를 돌려줌(reject 없음). JSON 아닌 응답에 프로세스가 죽던 잠복 결함 수정, 20초 무응답이면 끊음 |
 | 테스트 | `test_scheduler_guards.js` 29/29(+7). 사본 폴더에서 가짜 https·하위 스크립트로 `main()` 모의 실행 10종(전면 다운 → 복구, 연속 실패 누적, 빠진 실행, 도중 종료, 겹친 실행, 장부 없음, 치명적 오류) |
 | 지시서 | `docs/tasks/2026-10-12-run-failure-alert.md` |
+| 문서 현행화 (같은 날, 버전 유지) | README 전수 대조: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·실행 상태 추가), 사이클 표 순서(대기 큐가 인제스트보다 먼저), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 표, 프로젝트 구조 누락 파일, 장부 `meta`·`tips` 열. 레포 `com.irichgreen.wiki-ingest.plist` 를 실제 설치본(17:30 · Homebrew python3 · 증분)과 같게 맞춤 — 그전 원본(03:00 · `/usr/bin/python3` · `--full`)으로 재설치하면 라이브러리가 갈리고 Gemini 무료 한도를 소진했다. 설치·배포 스크립트의 낡은 문구(노션·03:00·00:30) 정리. 지시서 `docs/tasks/2026-10-12-docs-sync.md` |
 
 #### [v4.1] — 2026-10-12 (🛟 장부 자동 백업)
 
@@ -439,7 +473,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 | 1 | 노션 두 DB → 장부 적재(노션 읽기 전용). 영상 페이지 3,189 → `videos` 2,986 · `videos_dup` 203 · `tips` 135. 같은 video_id 중복(빈 캐시 사고분)은 Obsidian 노트가 가리키는 페이지를 남기고 나머지는 보관 | `c1025dc` · `2026-10-11-v4-notion-to-sqlite.md` |
 | 2-a | 쓰기 전환 — `scheduler.js`(`lib/library.js`, `node:sqlite`)·`kakao_ingest.py` 가 노션 대신 장부에 쓴다. 장부가 없으면 만들지 않고 던진다(fail-closed) | `b9fa138` · `2026-10-11-v4-sqlite-switch-a.md` |
 | 2-b | 읽기 전환 — `sync_obsidian.py` 가 장부를 읽기 전용으로 읽어 노트를 만든다. 노션 프록시·브라우저 직접 처리 제거, 노션 전제 스크립트 5개 `legacy_scripts/` | `114d3cb` · `2026-10-11-v4-sqlite-switch-b.md` |
-| 3 | 구글 시트 미러, 앱의 노션 코드 정리, `/api/sync-obsidian` 제거, 재구성 시 같은 내용 안 쓰기, 문서 전면 갱신 | 이 커밋 · `2026-10-12-v4-sheet-mirror-cleanup.md` |
+| 3 | 구글 시트 미러, 앱의 노션 코드 정리, `/api/sync-obsidian` 제거, 재구성 시 같은 내용 안 쓰기, 문서 전면 갱신 | `9e272be` · `2026-10-12-v4-sheet-mirror-cleanup.md` |
 
 **3단계 — 구글 시트 미러.**
 - `sheet_mirror.py`(보내는 쪽) + `gas/sheet_mirror.gs`(구글 시트에 붙인 Apps Script 웹앱, 받는 쪽). 탭 '영상'·'꿀팁', 1열 `record_id` 기준 있으면 제자리 덮어쓰기·없으면 추가.
@@ -455,7 +489,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 **검증.** 회귀 테스트 6종 — `test_scheduler_guards.js` 19/19 · `test_notion_to_sqlite.py` 37/37 · `test_kakao_ingest.py` 18/18 · `test_sync_obsidian.py` 23/23 · `test_sheet_mirror.py` 45/45(가짜 Apps Script 서버가 `gas/sheet_mirror.gs` 원본을 그대로 실행) · `test_build_wiki_index.py` 10/10. 맥 네이티브(데몬 node v26.10.0 · Homebrew Python 3.14) 동일. 실데이터: 시트 행 영상 2,986 · 꿀팁 135, 최대 셀 3,253자, 요청 1회 최대 782KB.
 
-**확인하지 못한 것.** 구글 Workspace 관리 설정에 따라 웹앱 액세스 "모든 사용자"가 막혀 있을 수 있다(그때 응답이 로그인 화면 HTML → 미러가 auth 로 멈춘다). 실제 구글 시트로의 첫 전송은 설치 후 `--check` 로 판정한다.
+**확인하지 못한 것 → 해소(10-12).** 구글 Workspace 관리 설정에 따라 웹앱 액세스 "모든 사용자"가 막혀 있을 수 있었다(그때 응답이 로그인 화면 HTML → 미러가 auth 로 멈춘다). 10-12 웹앱 배포·첫 전체 전송 후 `--check` 영상 2,988 · 꿀팁 135 일치, 같은 날 06:00 자동 실행의 변경분 전송도 정상이었다.
 
 #### [v3.2.1] — 2026-10-05 (🛡️ 스케줄러 네트워크 안전장치)
 

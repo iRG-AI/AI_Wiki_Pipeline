@@ -2,13 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>LANG</key>
+		<string>ko_KR.UTF-8</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+	</dict>
 	<key>Label</key>
 	<string>com.irichgreen.wiki-ingest</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>/usr/bin/python3</string>
+		<string>/opt/homebrew/bin/python3</string>
 		<string>/Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap/wiki_ingest.py</string>
-		<string>--full</string>
 	</array>
 	<key>RunAtLoad</key>
 	<false/>
@@ -19,9 +25,9 @@
 	<key>StartCalendarInterval</key>
 	<dict>
 		<key>Hour</key>
-		<integer>3</integer>
+		<integer>17</integer>
 		<key>Minute</key>
-		<integer>0</integer>
+		<integer>30</integer>
 	</dict>
 	<key>WorkingDirectory</key>
 	<string>/Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap</string>
