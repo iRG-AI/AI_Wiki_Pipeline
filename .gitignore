@@ -24,6 +24,7 @@ pending_playlist_adds*
 .wiki_quota.json
 .wiki_state.json
 .kakao_state.json
+.run_state.json*
 
 # Python 캐시
 __pycache__/

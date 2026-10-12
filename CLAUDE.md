@@ -2,10 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**현재 버전: v4.1** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
+**현재 버전: v4.2** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+> v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
 
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
@@ -52,7 +53,7 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
 # 회귀 테스트 7종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
-/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 22/22  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅
+/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
 /opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py   # 37/37  (보관 스크립트) 적재·--verify
 /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
 /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
@@ -80,6 +81,7 @@ node -e "require('./lib/youtube_oauth').getAccessToken().then(t => console.log('
 
 # 상태 스냅샷 (진단 1순위)
 cat .quota_state.json
+cat .run_state.json            # (v4.2) 직전 실행이 어떻게 끝났나 — outcome·reason·notified·pending
 node -e "for(const f of ['pending_playlist_adds.json','pending_playlist_adds.dead.json'])console.log(f, JSON.parse(require('fs').readFileSync(f)).length)"
 # Wiki 검색 (v3.2) — 입구는 여럿, 엔진은 lib/wiki_search.js 하나
 #   이 맥    http://localhost:3000/wiki          server.js (127.0.0.1 전용)
@@ -157,7 +159,7 @@ YouTube "AI 영상목록" (마스터 모드)
 | `legacy_scripts/` | (v4.0) 은퇴한 노션 전제 스크립트 보관(`migrate_classify.js`·`check_duplicates.py`·`cleanup_duplicates.py`·`fix_nfc_topics.js`·`notion_to_obsidian.js`). 실행 대상 아님 — `legacy_scripts/README.md`. |
 | `playlists.json` | 33개 토픽 재생목록 목록. 분류기의 허용 토픽 소스이기도 함. gitignore 대상. |
 | `scripts/clean_pending_queue.js` | (v2.5) 큐 중복 제거 + dead-letter 격리. 기본 dry-run, `--apply` 필요. |
-| `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. |
+| `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. (v4.2) 실행 실패 알림(판정·점검 문구·상태 파일·`sendTelegram` 반환값) 포함. |
 | `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. |
 | `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
 | `lib/tips_notion.py` | (보관) 노션 「AI 꿀팁」 래퍼. **앱은 import 하지 않는다** — `scripts/notion_to_sqlite.py` 만 쓴다. 노션 해지 때 함께 삭제. |
@@ -258,6 +260,23 @@ scheduler.js (시트 미러 뒤, Obsidian 동기화 앞) → runLibraryBackup() 
 - 스케줄러 훅 `runLibraryBackup` 은 **reject 하지 않고 네트워크를 쓰지 않는다**. 실패하면 main 이 `⚠️ [장부 백업 실패]` 텔레그램을 따로 보낸다(저장 0건 실행에도). 드라이브가 빠진 날은 실행마다(최대 4회) 알린다 — 의도.
 - 복원 절차는 README 「장부 백업」. 복원 후에는 그 날짜 이후 영상이 장부에 없으므로 `sync_obsidian.py --orphans-dry-run` 부터 보고, 시트는 `sheet_mirror.py --full`.
 - 타임머신(외장 디스크)은 이 백업과 별개다 — 디스크가 연결돼 있을 때만 돈다.
+
+### 실행 실패 알림 (v4.2) — 그 자리에서 + 다음 실행이
+
+```
+main 시작  → .run_state.json 읽기 → runNotices(직전 기록, 지금)
+             [직전이 running 이고 3시간↑ = 끝을 기록하지 못한 실행 · 직전이 fail 이고 notified=false = 못 보낸 실패 · 간격 9시간↑ = 빠진 정시 실행]
+           → 이번 실행 시작 기록(outcome=running, pending=점검 문구) → 있으면 [직전 실행 점검] 텔레그램 → 보냈으면 pending 비움
+"완료!" 뒤 → 저장 0 · Skip 0 · 오류 ≥1 이면 [실행 실패] 텔레그램(장부 로드 실패는 이미 알렸으므로 다시 보내지 않음) → outcome=fail/ok 기록
+main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 → 보냈으면 notified=true
+```
+
+- **네트워크가 죽은 실행은 그 자리에서 알림도 못 보낸다.** 그래서 `notified` 를 `sendTelegram` 의 실제 결과(true/false)로 남기고, 다음 실행이 다시 알린다. `sendTelegram` 은 reject 하지 않고 성공 여부만 돌려준다 — JSON 이 아닌 응답에도 죽지 않고, 20초에 끊는다.
+- 판정은 `isWholeRunFailure`·`runNotices`(순수 함수, `scheduler.js`)가 한다. 기준 상수 `RUN_STALE_H = 3`(이보다 짧은 running 은 겹친 실행일 수 있어 알리지 않음)·`RUN_GAP_ALERT_H = 9`(정시 6시간 + 지연 3시간)·`RUN_PENDING_MAX = 10`.
+- 상태 파일 기록이 실패해도 실행은 계속한다(로그만). `.run_state.json*` 는 gitignore. 지워도 무해하다 — 다음 실행이 "처음"으로 시작한다.
+- Gemini 401/403 경로의 `process.exit(1)`(자체 텔레그램을 보냄)은 상태를 running 으로 남긴다 → 다음 실행이 "끝을 기록하지 못했습니다" 를 한 번 더 알린다(의도 — 멈춘 실행은 두 번 알려도 된다).
+- 겹친 실행(수동 실행이 정시 실행과 겹침)은 나중에 끝난 쪽 기록이 남는다. 그 정도의 부정확은 받아들인다.
+- `.env`·`lib/youtube_oauth` 로드 실패로 마스터 인제스트를 통째로 건너뛰면 "저장 0 · Skip 0 · 오류 0" 이라 이 판정에 걸리지 않는다(빈 재생목록과 구분 불가). 범위 밖.
 
 ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
 
@@ -441,7 +460,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ### 보안 — 절대 커밋 금지
 
-`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`). 장부 백업도 상태 파일이 없고(오늘 날짜 파일 유무로 판단) 백업은 `data/backups/` 라 `data/` 패턴에 들어간다.
+`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `.run_state.json*`(v4.2), `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`). 장부 백업도 상태 파일이 없고(오늘 날짜 파일 유무로 판단) 백업은 `data/backups/` 라 `data/` 패턴에 들어간다.
 
 > ⚠️ **새 상태 파일을 만들면 `.gitignore` 패턴을 반드시 재확인한다.**
 > `pending_playlist_adds.json*` 패턴이 `.dead.json`·`.backup.*.json`을 못 잡아 커밋될 뻔한 사고가 있었다(2026-08-17). 현재는 `pending_playlist_adds*`로 수정됨.
@@ -473,6 +492,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-12 (v4.2 — 실행 실패 알림)** — 10-04 ~ 10-12 실행 35회 재집계: 프로세스가 죽은 실행 0, "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2(10-04 06:00·10-05 00:00 ENOTFOUND), 아예 돌지 않은 정시 실행 1(10-09 12:00) — 셋 다 텔레그램 없이 지나갔다(`hasNewOrUpdated` 에 안 걸리고, `main().catch` 는 로그만). `scheduler.js`: 통째 실패면 `[실행 실패]` 텔레그램, `main().catch` 도 기록 후 알림, 실행 상태 파일 `.run_state.json` 으로 못 보낸 실패·끝나지 못한 실행·9시간 넘는 간격을 다음 실행이 `[직전 실행 점검]` 으로 알림(못 보내면 pending 으로 넘김, 최대 10줄). `sendTelegram` 이 성공 여부(true/false)를 돌려주고 JSON 아닌 응답에 죽던 잠복 결함·무응답 대기를 막음(20초). `.gitignore` 에 `.run_state.json*`. 테스트: `test_scheduler_guards.js` 29/29(+7), 사본 폴더 `main()` 모의 실행 10종(가짜 https·하위 스크립트). 지시서 `docs/tasks/2026-10-12-run-failure-alert.md`.
 - **2026-10-12 (v4.1 — 장부 자동 백업)** — `backup_library.py` 신설: 장부를 하루 1회(KST 날짜 파일 유무로 판단, 상태 파일 없음) SQLite 온라인 백업 → `integrity_check`·`user_version`·`videos≥1` 검사 → gzip → 압축 해제 sha256 대조 후 `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브 데스크톱 앱 폴더)에 저장, 최신 7개 + 주별 4개 보관(형식 맞는 이름만 정리). 드라이브 부모 폴더가 없으면 만들지 않고 실패. 장부는 읽기 전용. `scheduler.js:runLibraryBackup()`(reject 없음, 실패는 텔레그램 별도). 배경: 타임머신 디스크 미마운트·iCloud 동기화 꺼짐으로 장부 사본이 같은 디스크의 `.bak` 하나뿐이었다. 테스트: 신규 `test_backup_library.py` 50/50, `test_scheduler_guards.js` 22/22(+3). 지시서 `docs/tasks/2026-10-12-library-backup.md`.
 - **2026-10-12 (v4.0 3단계 — v4.0 완료)** — 구글 시트 미러: `sheet_mirror.py`(장부 → 시트, `updated_at` 워터마크로 변경분만, 401/403·토큰·HTML 응답 즉시 중단, 5xx 지수 백오프) + `gas/sheet_mirror.gs`(Apps Script 웹앱, 토큰·탭 화이트리스트·머리글 대조·수식 방지), `scheduler.js:runSheetMirror()`(reject 없음, 실패는 텔레그램). 노션 정리: `kakao_ingest.py` 의 `tips_notion` import → `lib/env_util.py`, `block_to_md` → `scripts/notion_to_sqlite.py`(보관) — 앱은 노션 모듈을 import 하지 않는다. `lib/tips_notion.py`·`notion_to_sqlite.py`·`.env` `NOTION_*` 는 노션 해지 때 삭제. `server.js` `/api/sync-obsidian` 제거. `build_search_index.py` 프론트매터 한정(실 Vault 3,121 노트 옛 코드와 동일). `build_obsidian_wiki.py` 내용 같으면 안 쓰기(실 Vault 사본 재구성 2회차 쓰기 0 — 10-11 의 Vault 전체 mtime 갱신 해소) + 프론트매터 없는 파일에 관련 항목이 쌓이던 잠복 결함 수정. 문서 전면 갱신(README v4.0, 이 파일의 카톡 절·명령·파일 표, AGENTS.md 를 이 파일과 같은 내용으로). 테스트: `test_scheduler_guards.js` 19/19(+3), `test_kakao_ingest.py` 18/18(+1), 신규 `test_sheet_mirror.py` 45/45 · `test_build_wiki_index.py` 10/10, 기존 37/37 · 23/23. 지시서 `docs/tasks/2026-10-12-v4-sheet-mirror-cleanup.md`.
 - **2026-10-11 (v4.0 2단계-b)** — 읽기 전환. `sync_obsidian.py` 가 장부(읽기 전용)를 읽어 노트를 만든다 — 노션 호출 0, 본문은 `summary` 마크다운(노션 시절 노트와 같은 모양). `notion_id`·`video_url` 은 프론트매터 안의 것만 센다. 고아 격리 3중 안전장치 유지, 꿀팁 고아는 보고만. `--dry-run` 신설. `server.js`·`index.html` 노션 프록시·토큰 테스트·브라우저 직접 처리 제거. `migrate_classify.js` 등 5개 → `legacy_scripts/`. 테스트: 신규 `test_sync_obsidian.py` 23/23, `test_notion_to_sqlite.py` 37/37(vault_ignored 1 → 0). 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-b.md`.

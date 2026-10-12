@@ -1,0 +1,583 @@
+diff --git a/.gitignore b/.gitignore
+index 3657b97..9db4289 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -24,6 +24,7 @@ pending_playlist_adds*
+ .wiki_quota.json
+ .wiki_state.json
+ .kakao_state.json
++.run_state.json*
+ 
+ # Python 캐시
+ __pycache__/
+diff --git a/AGENTS.md b/AGENTS.md
+index 7a896c8..bc93d6c 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -4,10 +4,11 @@
+ > 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
+ > (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
+ 
+-**현재 버전: v4.1** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
++**현재 버전: v4.2** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
++> v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -54,7 +55,7 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+ # 회귀 테스트 7종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+-/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 22/22  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅
++/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
+ /opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py   # 37/37  (보관 스크립트) 적재·--verify
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
+@@ -82,6 +83,7 @@ node -e "require('./lib/youtube_oauth').getAccessToken().then(t => console.log('
+ 
+ # 상태 스냅샷 (진단 1순위)
+ cat .quota_state.json
++cat .run_state.json            # (v4.2) 직전 실행이 어떻게 끝났나 — outcome·reason·notified·pending
+ node -e "for(const f of ['pending_playlist_adds.json','pending_playlist_adds.dead.json'])console.log(f, JSON.parse(require('fs').readFileSync(f)).length)"
+ # Wiki 검색 (v3.2) — 입구는 여럿, 엔진은 lib/wiki_search.js 하나
+ #   이 맥    http://localhost:3000/wiki          server.js (127.0.0.1 전용)
+@@ -159,7 +161,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `legacy_scripts/` | (v4.0) 은퇴한 노션 전제 스크립트 보관(`migrate_classify.js`·`check_duplicates.py`·`cleanup_duplicates.py`·`fix_nfc_topics.js`·`notion_to_obsidian.js`). 실행 대상 아님 — `legacy_scripts/README.md`. |
+ | `playlists.json` | 33개 토픽 재생목록 목록. 분류기의 허용 토픽 소스이기도 함. gitignore 대상. |
+ | `scripts/clean_pending_queue.js` | (v2.5) 큐 중복 제거 + dead-letter 격리. 기본 dry-run, `--apply` 필요. |
+-| `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. |
++| `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. (v4.2) 실행 실패 알림(판정·점검 문구·상태 파일·`sendTelegram` 반환값) 포함. |
+ | `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. |
+ | `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
+ | `lib/tips_notion.py` | (보관) 노션 「AI 꿀팁」 래퍼. **앱은 import 하지 않는다** — `scripts/notion_to_sqlite.py` 만 쓴다. 노션 해지 때 함께 삭제. |
+@@ -261,6 +263,23 @@ scheduler.js (시트 미러 뒤, Obsidian 동기화 앞) → runLibraryBackup()
+ - 복원 절차는 README 「장부 백업」. 복원 후에는 그 날짜 이후 영상이 장부에 없으므로 `sync_obsidian.py --orphans-dry-run` 부터 보고, 시트는 `sheet_mirror.py --full`.
+ - 타임머신(외장 디스크)은 이 백업과 별개다 — 디스크가 연결돼 있을 때만 돈다.
+ 
++### 실행 실패 알림 (v4.2) — 그 자리에서 + 다음 실행이
++
++```
++main 시작  → .run_state.json 읽기 → runNotices(직전 기록, 지금)
++             [직전이 running 이고 3시간↑ = 끝을 기록하지 못한 실행 · 직전이 fail 이고 notified=false = 못 보낸 실패 · 간격 9시간↑ = 빠진 정시 실행]
++           → 이번 실행 시작 기록(outcome=running, pending=점검 문구) → 있으면 [직전 실행 점검] 텔레그램 → 보냈으면 pending 비움
++"완료!" 뒤 → 저장 0 · Skip 0 · 오류 ≥1 이면 [실행 실패] 텔레그램(장부 로드 실패는 이미 알렸으므로 다시 보내지 않음) → outcome=fail/ok 기록
++main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 → 보냈으면 notified=true
++```
++
++- **네트워크가 죽은 실행은 그 자리에서 알림도 못 보낸다.** 그래서 `notified` 를 `sendTelegram` 의 실제 결과(true/false)로 남기고, 다음 실행이 다시 알린다. `sendTelegram` 은 reject 하지 않고 성공 여부만 돌려준다 — JSON 이 아닌 응답에도 죽지 않고, 20초에 끊는다.
++- 판정은 `isWholeRunFailure`·`runNotices`(순수 함수, `scheduler.js`)가 한다. 기준 상수 `RUN_STALE_H = 3`(이보다 짧은 running 은 겹친 실행일 수 있어 알리지 않음)·`RUN_GAP_ALERT_H = 9`(정시 6시간 + 지연 3시간)·`RUN_PENDING_MAX = 10`.
++- 상태 파일 기록이 실패해도 실행은 계속한다(로그만). `.run_state.json*` 는 gitignore. 지워도 무해하다 — 다음 실행이 "처음"으로 시작한다.
++- Gemini 401/403 경로의 `process.exit(1)`(자체 텔레그램을 보냄)은 상태를 running 으로 남긴다 → 다음 실행이 "끝을 기록하지 못했습니다" 를 한 번 더 알린다(의도 — 멈춘 실행은 두 번 알려도 된다).
++- 겹친 실행(수동 실행이 정시 실행과 겹침)은 나중에 끝난 쪽 기록이 남는다. 그 정도의 부정확은 받아들인다.
++- `.env`·`lib/youtube_oauth` 로드 실패로 마스터 인제스트를 통째로 건너뛰면 "저장 0 · Skip 0 · 오류 0" 이라 이 판정에 걸리지 않는다(빈 재생목록과 구분 불가). 범위 밖.
++
+ ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
+ 
+ 장부 `videos` 에 없는 notion_id 를 가진 영상 노트를 **삭제하지 않고** `VAULT/_trash/<타임스탬프>/`로 이동합니다 (v4.0 전에는 "Notion에서 삭제된 페이지").
+@@ -443,7 +462,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ### 보안 — 절대 커밋 금지
+ 
+-`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`). 장부 백업도 상태 파일이 없고(오늘 날짜 파일 유무로 판단) 백업은 `data/backups/` 라 `data/` 패턴에 들어간다.
++`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `.run_state.json*`(v4.2), `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`). 장부 백업도 상태 파일이 없고(오늘 날짜 파일 유무로 판단) 백업은 `data/backups/` 라 `data/` 패턴에 들어간다.
+ 
+ > ⚠️ **새 상태 파일을 만들면 `.gitignore` 패턴을 반드시 재확인한다.**
+ > `pending_playlist_adds.json*` 패턴이 `.dead.json`·`.backup.*.json`을 못 잡아 커밋될 뻔한 사고가 있었다(2026-08-17). 현재는 `pending_playlist_adds*`로 수정됨.
+@@ -475,6 +494,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-12 (v4.2 — 실행 실패 알림)** — 10-04 ~ 10-12 실행 35회 재집계: 프로세스가 죽은 실행 0, "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2(10-04 06:00·10-05 00:00 ENOTFOUND), 아예 돌지 않은 정시 실행 1(10-09 12:00) — 셋 다 텔레그램 없이 지나갔다(`hasNewOrUpdated` 에 안 걸리고, `main().catch` 는 로그만). `scheduler.js`: 통째 실패면 `[실행 실패]` 텔레그램, `main().catch` 도 기록 후 알림, 실행 상태 파일 `.run_state.json` 으로 못 보낸 실패·끝나지 못한 실행·9시간 넘는 간격을 다음 실행이 `[직전 실행 점검]` 으로 알림(못 보내면 pending 으로 넘김, 최대 10줄). `sendTelegram` 이 성공 여부(true/false)를 돌려주고 JSON 아닌 응답에 죽던 잠복 결함·무응답 대기를 막음(20초). `.gitignore` 에 `.run_state.json*`. 테스트: `test_scheduler_guards.js` 29/29(+7), 사본 폴더 `main()` 모의 실행 10종(가짜 https·하위 스크립트). 지시서 `docs/tasks/2026-10-12-run-failure-alert.md`.
+ - **2026-10-12 (v4.1 — 장부 자동 백업)** — `backup_library.py` 신설: 장부를 하루 1회(KST 날짜 파일 유무로 판단, 상태 파일 없음) SQLite 온라인 백업 → `integrity_check`·`user_version`·`videos≥1` 검사 → gzip → 압축 해제 sha256 대조 후 `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브 데스크톱 앱 폴더)에 저장, 최신 7개 + 주별 4개 보관(형식 맞는 이름만 정리). 드라이브 부모 폴더가 없으면 만들지 않고 실패. 장부는 읽기 전용. `scheduler.js:runLibraryBackup()`(reject 없음, 실패는 텔레그램 별도). 배경: 타임머신 디스크 미마운트·iCloud 동기화 꺼짐으로 장부 사본이 같은 디스크의 `.bak` 하나뿐이었다. 테스트: 신규 `test_backup_library.py` 50/50, `test_scheduler_guards.js` 22/22(+3). 지시서 `docs/tasks/2026-10-12-library-backup.md`.
+ - **2026-10-12 (v4.0 3단계 — v4.0 완료)** — 구글 시트 미러: `sheet_mirror.py`(장부 → 시트, `updated_at` 워터마크로 변경분만, 401/403·토큰·HTML 응답 즉시 중단, 5xx 지수 백오프) + `gas/sheet_mirror.gs`(Apps Script 웹앱, 토큰·탭 화이트리스트·머리글 대조·수식 방지), `scheduler.js:runSheetMirror()`(reject 없음, 실패는 텔레그램). 노션 정리: `kakao_ingest.py` 의 `tips_notion` import → `lib/env_util.py`, `block_to_md` → `scripts/notion_to_sqlite.py`(보관) — 앱은 노션 모듈을 import 하지 않는다. `lib/tips_notion.py`·`notion_to_sqlite.py`·`.env` `NOTION_*` 는 노션 해지 때 삭제. `server.js` `/api/sync-obsidian` 제거. `build_search_index.py` 프론트매터 한정(실 Vault 3,121 노트 옛 코드와 동일). `build_obsidian_wiki.py` 내용 같으면 안 쓰기(실 Vault 사본 재구성 2회차 쓰기 0 — 10-11 의 Vault 전체 mtime 갱신 해소) + 프론트매터 없는 파일에 관련 항목이 쌓이던 잠복 결함 수정. 문서 전면 갱신(README v4.0, 이 파일의 카톡 절·명령·파일 표, AGENTS.md 를 이 파일과 같은 내용으로). 테스트: `test_scheduler_guards.js` 19/19(+3), `test_kakao_ingest.py` 18/18(+1), 신규 `test_sheet_mirror.py` 45/45 · `test_build_wiki_index.py` 10/10, 기존 37/37 · 23/23. 지시서 `docs/tasks/2026-10-12-v4-sheet-mirror-cleanup.md`.
+ - **2026-10-11 (v4.0 2단계-b)** — 읽기 전환. `sync_obsidian.py` 가 장부(읽기 전용)를 읽어 노트를 만든다 — 노션 호출 0, 본문은 `summary` 마크다운(노션 시절 노트와 같은 모양). `notion_id`·`video_url` 은 프론트매터 안의 것만 센다. 고아 격리 3중 안전장치 유지, 꿀팁 고아는 보고만. `--dry-run` 신설. `server.js`·`index.html` 노션 프록시·토큰 테스트·브라우저 직접 처리 제거. `migrate_classify.js` 등 5개 → `legacy_scripts/`. 테스트: 신규 `test_sync_obsidian.py` 23/23, `test_notion_to_sqlite.py` 37/37(vault_ignored 1 → 0). 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-b.md`.
+diff --git a/CLAUDE.md b/CLAUDE.md
+index f0c252b..72cb704 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -2,10 +2,11 @@
+ 
+ This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+ 
+-**현재 버전: v4.1** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
++**현재 버전: v4.2** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
++> v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -52,7 +53,7 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+ # 회귀 테스트 7종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+-/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 22/22  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅
++/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
+ /opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py   # 37/37  (보관 스크립트) 적재·--verify
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
+@@ -80,6 +81,7 @@ node -e "require('./lib/youtube_oauth').getAccessToken().then(t => console.log('
+ 
+ # 상태 스냅샷 (진단 1순위)
+ cat .quota_state.json
++cat .run_state.json            # (v4.2) 직전 실행이 어떻게 끝났나 — outcome·reason·notified·pending
+ node -e "for(const f of ['pending_playlist_adds.json','pending_playlist_adds.dead.json'])console.log(f, JSON.parse(require('fs').readFileSync(f)).length)"
+ # Wiki 검색 (v3.2) — 입구는 여럿, 엔진은 lib/wiki_search.js 하나
+ #   이 맥    http://localhost:3000/wiki          server.js (127.0.0.1 전용)
+@@ -157,7 +159,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `legacy_scripts/` | (v4.0) 은퇴한 노션 전제 스크립트 보관(`migrate_classify.js`·`check_duplicates.py`·`cleanup_duplicates.py`·`fix_nfc_topics.js`·`notion_to_obsidian.js`). 실행 대상 아님 — `legacy_scripts/README.md`. |
+ | `playlists.json` | 33개 토픽 재생목록 목록. 분류기의 허용 토픽 소스이기도 함. gitignore 대상. |
+ | `scripts/clean_pending_queue.js` | (v2.5) 큐 중복 제거 + dead-letter 격리. 기본 dry-run, `--apply` 필요. |
+-| `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. |
++| `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. (v4.2) 실행 실패 알림(판정·점검 문구·상태 파일·`sendTelegram` 반환값) 포함. |
+ | `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. |
+ | `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
+ | `lib/tips_notion.py` | (보관) 노션 「AI 꿀팁」 래퍼. **앱은 import 하지 않는다** — `scripts/notion_to_sqlite.py` 만 쓴다. 노션 해지 때 함께 삭제. |
+@@ -259,6 +261,23 @@ scheduler.js (시트 미러 뒤, Obsidian 동기화 앞) → runLibraryBackup()
+ - 복원 절차는 README 「장부 백업」. 복원 후에는 그 날짜 이후 영상이 장부에 없으므로 `sync_obsidian.py --orphans-dry-run` 부터 보고, 시트는 `sheet_mirror.py --full`.
+ - 타임머신(외장 디스크)은 이 백업과 별개다 — 디스크가 연결돼 있을 때만 돈다.
+ 
++### 실행 실패 알림 (v4.2) — 그 자리에서 + 다음 실행이
++
++```
++main 시작  → .run_state.json 읽기 → runNotices(직전 기록, 지금)
++             [직전이 running 이고 3시간↑ = 끝을 기록하지 못한 실행 · 직전이 fail 이고 notified=false = 못 보낸 실패 · 간격 9시간↑ = 빠진 정시 실행]
++           → 이번 실행 시작 기록(outcome=running, pending=점검 문구) → 있으면 [직전 실행 점검] 텔레그램 → 보냈으면 pending 비움
++"완료!" 뒤 → 저장 0 · Skip 0 · 오류 ≥1 이면 [실행 실패] 텔레그램(장부 로드 실패는 이미 알렸으므로 다시 보내지 않음) → outcome=fail/ok 기록
++main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 → 보냈으면 notified=true
++```
++
++- **네트워크가 죽은 실행은 그 자리에서 알림도 못 보낸다.** 그래서 `notified` 를 `sendTelegram` 의 실제 결과(true/false)로 남기고, 다음 실행이 다시 알린다. `sendTelegram` 은 reject 하지 않고 성공 여부만 돌려준다 — JSON 이 아닌 응답에도 죽지 않고, 20초에 끊는다.
++- 판정은 `isWholeRunFailure`·`runNotices`(순수 함수, `scheduler.js`)가 한다. 기준 상수 `RUN_STALE_H = 3`(이보다 짧은 running 은 겹친 실행일 수 있어 알리지 않음)·`RUN_GAP_ALERT_H = 9`(정시 6시간 + 지연 3시간)·`RUN_PENDING_MAX = 10`.
++- 상태 파일 기록이 실패해도 실행은 계속한다(로그만). `.run_state.json*` 는 gitignore. 지워도 무해하다 — 다음 실행이 "처음"으로 시작한다.
++- Gemini 401/403 경로의 `process.exit(1)`(자체 텔레그램을 보냄)은 상태를 running 으로 남긴다 → 다음 실행이 "끝을 기록하지 못했습니다" 를 한 번 더 알린다(의도 — 멈춘 실행은 두 번 알려도 된다).
++- 겹친 실행(수동 실행이 정시 실행과 겹침)은 나중에 끝난 쪽 기록이 남는다. 그 정도의 부정확은 받아들인다.
++- `.env`·`lib/youtube_oauth` 로드 실패로 마스터 인제스트를 통째로 건너뛰면 "저장 0 · Skip 0 · 오류 0" 이라 이 판정에 걸리지 않는다(빈 재생목록과 구분 불가). 범위 밖.
++
+ ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
+ 
+ 장부 `videos` 에 없는 notion_id 를 가진 영상 노트를 **삭제하지 않고** `VAULT/_trash/<타임스탬프>/`로 이동합니다 (v4.0 전에는 "Notion에서 삭제된 페이지").
+@@ -441,7 +460,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ### 보안 — 절대 커밋 금지
+ 
+-`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`). 장부 백업도 상태 파일이 없고(오늘 날짜 파일 유무로 판단) 백업은 `data/backups/` 라 `data/` 패턴에 들어간다.
++`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `.run_state.json*`(v4.2), `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`). 장부 백업도 상태 파일이 없고(오늘 날짜 파일 유무로 판단) 백업은 `data/backups/` 라 `data/` 패턴에 들어간다.
+ 
+ > ⚠️ **새 상태 파일을 만들면 `.gitignore` 패턴을 반드시 재확인한다.**
+ > `pending_playlist_adds.json*` 패턴이 `.dead.json`·`.backup.*.json`을 못 잡아 커밋될 뻔한 사고가 있었다(2026-08-17). 현재는 `pending_playlist_adds*`로 수정됨.
+@@ -473,6 +492,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-12 (v4.2 — 실행 실패 알림)** — 10-04 ~ 10-12 실행 35회 재집계: 프로세스가 죽은 실행 0, "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2(10-04 06:00·10-05 00:00 ENOTFOUND), 아예 돌지 않은 정시 실행 1(10-09 12:00) — 셋 다 텔레그램 없이 지나갔다(`hasNewOrUpdated` 에 안 걸리고, `main().catch` 는 로그만). `scheduler.js`: 통째 실패면 `[실행 실패]` 텔레그램, `main().catch` 도 기록 후 알림, 실행 상태 파일 `.run_state.json` 으로 못 보낸 실패·끝나지 못한 실행·9시간 넘는 간격을 다음 실행이 `[직전 실행 점검]` 으로 알림(못 보내면 pending 으로 넘김, 최대 10줄). `sendTelegram` 이 성공 여부(true/false)를 돌려주고 JSON 아닌 응답에 죽던 잠복 결함·무응답 대기를 막음(20초). `.gitignore` 에 `.run_state.json*`. 테스트: `test_scheduler_guards.js` 29/29(+7), 사본 폴더 `main()` 모의 실행 10종(가짜 https·하위 스크립트). 지시서 `docs/tasks/2026-10-12-run-failure-alert.md`.
+ - **2026-10-12 (v4.1 — 장부 자동 백업)** — `backup_library.py` 신설: 장부를 하루 1회(KST 날짜 파일 유무로 판단, 상태 파일 없음) SQLite 온라인 백업 → `integrity_check`·`user_version`·`videos≥1` 검사 → gzip → 압축 해제 sha256 대조 후 `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브 데스크톱 앱 폴더)에 저장, 최신 7개 + 주별 4개 보관(형식 맞는 이름만 정리). 드라이브 부모 폴더가 없으면 만들지 않고 실패. 장부는 읽기 전용. `scheduler.js:runLibraryBackup()`(reject 없음, 실패는 텔레그램 별도). 배경: 타임머신 디스크 미마운트·iCloud 동기화 꺼짐으로 장부 사본이 같은 디스크의 `.bak` 하나뿐이었다. 테스트: 신규 `test_backup_library.py` 50/50, `test_scheduler_guards.js` 22/22(+3). 지시서 `docs/tasks/2026-10-12-library-backup.md`.
+ - **2026-10-12 (v4.0 3단계 — v4.0 완료)** — 구글 시트 미러: `sheet_mirror.py`(장부 → 시트, `updated_at` 워터마크로 변경분만, 401/403·토큰·HTML 응답 즉시 중단, 5xx 지수 백오프) + `gas/sheet_mirror.gs`(Apps Script 웹앱, 토큰·탭 화이트리스트·머리글 대조·수식 방지), `scheduler.js:runSheetMirror()`(reject 없음, 실패는 텔레그램). 노션 정리: `kakao_ingest.py` 의 `tips_notion` import → `lib/env_util.py`, `block_to_md` → `scripts/notion_to_sqlite.py`(보관) — 앱은 노션 모듈을 import 하지 않는다. `lib/tips_notion.py`·`notion_to_sqlite.py`·`.env` `NOTION_*` 는 노션 해지 때 삭제. `server.js` `/api/sync-obsidian` 제거. `build_search_index.py` 프론트매터 한정(실 Vault 3,121 노트 옛 코드와 동일). `build_obsidian_wiki.py` 내용 같으면 안 쓰기(실 Vault 사본 재구성 2회차 쓰기 0 — 10-11 의 Vault 전체 mtime 갱신 해소) + 프론트매터 없는 파일에 관련 항목이 쌓이던 잠복 결함 수정. 문서 전면 갱신(README v4.0, 이 파일의 카톡 절·명령·파일 표, AGENTS.md 를 이 파일과 같은 내용으로). 테스트: `test_scheduler_guards.js` 19/19(+3), `test_kakao_ingest.py` 18/18(+1), 신규 `test_sheet_mirror.py` 45/45 · `test_build_wiki_index.py` 10/10, 기존 37/37 · 23/23. 지시서 `docs/tasks/2026-10-12-v4-sheet-mirror-cleanup.md`.
+ - **2026-10-11 (v4.0 2단계-b)** — 읽기 전환. `sync_obsidian.py` 가 장부(읽기 전용)를 읽어 노트를 만든다 — 노션 호출 0, 본문은 `summary` 마크다운(노션 시절 노트와 같은 모양). `notion_id`·`video_url` 은 프론트매터 안의 것만 센다. 고아 격리 3중 안전장치 유지, 꿀팁 고아는 보고만. `--dry-run` 신설. `server.js`·`index.html` 노션 프록시·토큰 테스트·브라우저 직접 처리 제거. `migrate_classify.js` 등 5개 → `legacy_scripts/`. 테스트: 신규 `test_sync_obsidian.py` 23/23, `test_notion_to_sqlite.py` 37/37(vault_ignored 1 → 0). 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-b.md`.
+diff --git a/README.md b/README.md
+index 94d7e15..d7a10f0 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
+ 
+-**현재 버전: v4.1** (2026-10-12)
++**현재 버전: v4.2** (2026-10-12)
+ 
+ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
+ 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
+@@ -8,6 +8,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카
+ 
+ > v4.0 에서 노션을 뺐습니다. 원본 = 장부(`data/library.db`), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없습니다.
+ > v4.1: 장부를 하루 1회 로컬(`data/backups/`)과 구글 드라이브에 자동 백업합니다(최신 7개 + 주별 4개).
++> v4.2: 실행이 통째로 실패하거나, 알림을 못 보냈거나, 정시 실행이 빠지면 텔레그램으로 알립니다(못 보낸 알림은 다음 실행이 보냄).
+ > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
+ 
+ ---
+@@ -34,6 +35,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카
+ - 🔗 **Wiki 링크 자동 구성** — 재생목록별 MOC, 채널별 목차, 키워드 링크 자동 생성 (내용이 같으면 파일을 다시 쓰지 않음)
+ - 🔎 **Wiki 검색 (v3.2)** — 이 맥·집 안 다른 컴퓨터·Claude(MCP)에서 의미 검색 + AI 답변
+ - 📱 **텔레그램 알림** — 장부 저장·카톡·시트·Obsidian 결과 통합 전송
++- 🚨 **실행 실패 알림 (v4.2)** — 영상을 하나도 확인하지 못한 실행·치명적 오류는 바로, 네트워크가 죽어 못 보낸 알림·도중에 멈춘 실행·빠진 정시 실행은 다음 실행이 알림 (`.run_state.json`)
+ - ⏰ **launchd 자동 스케줄링** — Mac 로그인 시 서버 자동 시작, 6시간 간격 스케줄러 실행
+ 
+ ---
+@@ -378,6 +380,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ | 버전 | 날짜 | 주요 내용 요약 |
+ | :-- | :--- | :--- |
++| **v4.2** | 2026-10-12 | **실행 실패 알림**: "저장 0 · Skip 0 · 오류 ≥1"(영상을 하나도 확인하지 못한 실행)과 치명적 오류가 텔레그램 없이 지나가던 구멍을 막음. 실행 상태 파일 `.run_state.json` 으로 네트워크가 죽어 못 보낸 실패·끝을 기록하지 못한 실행·9시간 넘게 빈 간격(빠진 정시 실행)을 다음 실행이 `[직전 실행 점검]` 으로 알림. `sendTelegram` 이 성공 여부를 돌려주고 JSON 아닌 응답에 죽지 않음 |
+ | **v4.1** | 2026-10-12 | **장부 자동 백업**: 장부(`data/library.db`)를 하루 1회 SQLite 온라인 백업 → 무결성 검사 → gzip 해 로컬 `data/backups/` 와 구글 드라이브 폴더(`.env LIBRARY_BACKUP_DIR`)에 저장(`backup_library.py`). 최신 7개 + 주별 4개 보관. 장부는 읽기 전용으로만 연다. 스케줄러 훅은 reject 없음, 실패는 텔레그램. 회귀 테스트 7종 |
+ | **v4.0** | 2026-10-12 | **노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러**: 원본을 노션에서 맥의 SQLite 장부 `data/library.db` 로 옮김(1단계 적재 · 2단계 쓰기/읽기 전환 · 3단계 정리, 단계마다 실데이터 판정). 파이프라인 노션 호출 0. 장부 → 구글 시트(탭 영상·꿀팁) 단방향 미러 `sheet_mirror.py` + Apps Script 웹앱 `gas/sheet_mirror.gs`(변경분만, 인증 오류 즉시 중단). 앱의 노션 코드 의존 제거, `/api/sync-obsidian` 제거, 재구성 시 내용 같은 파일 안 쓰기(Vault 전체 mtime 갱신 해소). 회귀 테스트 6종 |
+ | **v3.2.1** | 2026-10-05 | **스케줄러 네트워크 안전장치 — 빈 캐시 중복 저장 차단**: Notion 캐시 첫 조회가 네트워크 오류로 실패하면 재시도 없이 빈 캐시로 진행해 재생목록 앞 15편을 다시 저장하던 결함 수정(08-12 이후 13회·중복 195건). 캐시는 "전부 읽었거나, 던지거나"로 바꾸고 실패한 실행은 영상 처리를 건너뜀(fail-closed), Notion 401/403 은 즉시 종료. YouTube 조회에 일시 오류 지수 백오프 재시도 추가(오류 한 번에 실행이 통째 실패하던 비율 28%). 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450회)에서 50개 배치 순차(9회)로 교체. 회귀 테스트 `scripts/test_scheduler_guards.js` 신설 |
+@@ -401,6 +404,18 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ ### 📝 상세 변경 내역 (Detailed Change Log)
+ 
++#### [v4.2] — 2026-10-12 (🚨 실행 실패 알림)
++
++**배경.** 10-04 ~ 10-12 실행 35회를 다시 세었다. 프로세스가 죽은 실행은 0회(v3.2.1 재시도가 흡수)였지만, 마스터 인제스트가 ENOTFOUND 로 통째 실패해 "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2회(10-04 06:00, 10-05 00:00)와 아예 돌지 않은 정시 실행 1회(10-09 12:00)가 **텔레그램 없이** 지나갔다. 완료 알림은 신규·갱신이 있을 때만 보내고, `main().catch` 는 로그만 남겼다. 네트워크가 죽은 실행은 그 자리에서 알림도 못 보내므로 "다음 실행이 알리는" 길이 함께 필요했다.
++
++| 항목 | 내용 |
++|---|---|
++| 그 자리에서 | "저장 0 · Skip 0 · 오류 ≥1" 이면 `🚨 [실행 실패]`(원인 첫 줄 포함). 장부 로드 실패는 기존 `[장부 로드 실패]` 하나만. `main().catch` 도 기록 후 `🚨 [실행 실패]` |
++| 다음 실행이 | 실행 상태 파일 `.run_state.json`(gitignore)을 시작할 때 읽어 `⚠️ [직전 실행 점검]` — 못 보낸 실패(`notified=false`) · 끝을 기록하지 못한 실행(3시간 넘은 `running`) · 9시간 넘는 간격(빠진 정시 실행). 못 보내면 다음 실행으로 넘김(최대 10줄) |
++| 텔레그램 | `sendTelegram` 이 true/false 를 돌려줌(reject 없음). JSON 아닌 응답에 프로세스가 죽던 잠복 결함 수정, 20초 무응답이면 끊음 |
++| 테스트 | `test_scheduler_guards.js` 29/29(+7). 사본 폴더에서 가짜 https·하위 스크립트로 `main()` 모의 실행 10종(전면 다운 → 복구, 연속 실패 누적, 빠진 실행, 도중 종료, 겹친 실행, 장부 없음, 치명적 오류) |
++| 지시서 | `docs/tasks/2026-10-12-run-failure-alert.md` |
++
+ #### [v4.1] — 2026-10-12 (🛟 장부 자동 백업)
+ 
+ **배경.** v4.0 으로 원본이 맥의 장부 파일 하나가 됐다. 10-12 점검에서 타임머신 백업 디스크가 마운트되지 않아 백업 기록이 없었고 iCloud Drive 동기화도 꺼져 있었다 — 장부 사본은 같은 디스크의 `.bak` 하나뿐이었다. 구글 시트 미러는 영상·꿀팁 본문은 담지만 `meta`·`videos_dup` 이 없어 복원용이 아니다.
+diff --git a/scheduler.js b/scheduler.js
+index 9229151..b7bf556 100644
+--- a/scheduler.js
++++ b/scheduler.js
+@@ -1,4 +1,4 @@
+-// ===== YouTube AI 요약기 자동 스케줄러 (v4.0: 저장 = 로컬 장부 data/library.db) =====
++// ===== YouTube AI 요약기 자동 스케줄러 (v4.0: 저장 = 로컬 장부 data/library.db · v4.2: 실행 실패 알림) =====
+ // Mac launchd에 의해 6시간 간격으로 자동 실행됩니다.
+ // 직접 실행: node scheduler.js
+ 
+@@ -81,9 +81,11 @@ const CONFIG = {
+ // ══════════════════════════════════
+ // 텔레그램 알림 전송
+ // ══════════════════════════════════
++// (v4.2) 보냈으면 true, 꺼져 있거나 실패하면 false 로 끝난다(reject 없음).
++//   실행 상태 파일(.run_state.json)이 "실패 알림이 실제로 나갔는지" 를 이 값으로 기록한다.
+ function sendTelegram(message) {
+   return new Promise((resolve) => {
+-    if (!CONFIG.telegram.enabled) return resolve();
++    if (!CONFIG.telegram.enabled) return resolve(false);
+     const text = encodeURIComponent(message);
+     const url = `/bot${CONFIG.telegram.botToken}/sendMessage?chat_id=${CONFIG.telegram.chatId}&text=${text}&parse_mode=HTML`;
+     const req = https.request(
+@@ -92,14 +94,18 @@ function sendTelegram(message) {
+         let data = [];
+         res.on('data', c => data.push(c));
+         res.on('end', () => {
+-          const body = JSON.parse(Buffer.concat(data).toString('utf8'));
+-          if (body.ok) log('📱 텔레그램 알림 전송 완료');
+-          else log('⚠️  텔레그램 전송 실패: ' + body.description);
+-          resolve();
++          // JSON 이 아닌 응답(게이트웨이 502 HTML 등)에 JSON.parse 가 던지면 이벤트 핸들러 밖으로 새 프로세스가 죽었다(v4.2 에서 막음)
++          let body = null;
++          try { body = JSON.parse(Buffer.concat(data).toString('utf8')); } catch {}
++          if (body && body.ok) { log('📱 텔레그램 알림 전송 완료'); return resolve(true); }
++          log('⚠️  텔레그램 전송 실패: ' + (body ? body.description : `HTTP ${res.statusCode} (JSON 아닌 응답)`));
++          resolve(false);
+         });
+       }
+     );
+-    req.on('error', (e) => { log('⚠️  텔레그램 오류: ' + e.message); resolve(); });
++    // 응답이 없으면 20초에 끊는다 — 알림이 실행 종료를 붙잡지 않게
++    req.setTimeout(20000, () => req.destroy(new Error('timeout 20s')));
++    req.on('error', (e) => { log('⚠️  텔레그램 오류: ' + e.message); resolve(false); });
+     req.end();
+   });
+ }
+@@ -183,6 +189,69 @@ function runLibraryBackup(python3) {
+   });
+ }
+ 
++// ── (v4.2) 실행 상태 파일 — 통째 실패·끝나지 못한 실행·빠진 정시 실행을 알린다 ──
++// 네트워크가 죽은 실행은 그 자리에서 텔레그램도 못 보낸다. 그래서 실행마다 "어떻게 끝났는지" 를 파일에 남기고,
++// 다음 실행이 시작할 때 읽어 못 보낸 실패 알림·끝을 기록하지 못한 실행·간격이 너무 긴 실행을 한 번에 알린다.
++// 파일: .run_state.json (gitignore). 기록 실패는 실행을 막지 않는다(로그만 남긴다).
++//   { v, started_at, finished_at, outcome: 'running'|'ok'|'fail', reason, notified, pending: [못 보낸 점검 문구] }
++const RUN_STATE_FILE  = path.join(__dirname, '.run_state.json');
++const RUN_STALE_H     = 3;    // 'running' 으로 남은 직전 실행이 이보다 오래면 도중에 죽은 것. 짧으면 겹친 실행일 수 있어 알리지 않는다
++const RUN_GAP_ALERT_H = 9;    // 정시 간격 6시간 + 지연 3시간까지 허용. 넘으면 정시 실행이 하나 이상 빠진 것
++const RUN_PENDING_MAX = 10;   // 못 보낸 점검 문구 보관 상한 (텔레그램이 계속 꺼져 있어도 파일이 자라지 않게)
++let runState = null;          // main 이 시작할 때 만든다. main().catch 도 쓴다
++
++function escapeHtml(s) {
++  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
++}
++function fmtKst(ms) {
++  return new Date(ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
++}
++// 오류 메시지 첫 줄만, 300자까지 (스택·긴 본문이 상태 파일과 텔레그램을 채우지 않게)
++function shortReason(e) {
++  return String(e && e.message !== undefined ? e.message : e).split('\n')[0].slice(0, 300);
++}
++function readRunState(file = RUN_STATE_FILE) {
++  try {
++    const st = JSON.parse(fs.readFileSync(file, 'utf8'));
++    return st && typeof st === 'object' && !Array.isArray(st) ? st : null;
++  } catch (e) {
++    if (e.code !== 'ENOENT') log(`⚠️ 실행 상태 파일을 읽지 못함 (${e.message}) — 직전 실행 점검 없이 진행`);
++    return null;
++  }
++}
++function writeRunState(st, file = RUN_STATE_FILE) {
++  try {
++    const tmp = file + '.tmp';
++    fs.writeFileSync(tmp, JSON.stringify(st, null, 2) + '\n', 'utf8');
++    fs.renameSync(tmp, file);
++    return true;
++  } catch (e) {
++    log(`⚠️ 실행 상태 파일 쓰기 실패: ${e.message}`);
++    return false;
++  }
++}
++// 영상을 하나도 확인하지 못한 실행 = 저장 0 · Skip 0 · 오류 ≥ 1 (10-04 06:00, 10-05 00:00 ENOTFOUND 가 이 모양이었다)
++function isWholeRunFailure({ saved, skip, error }) {
++  return saved === 0 && skip === 0 && error > 0;
++}
++// 직전 실행 기록 → 이번 실행이 알릴 문구 (순수 함수, 텔레그램 HTML)
++function runNotices(prev, nowMs) {
++  if (!prev || !prev.started_at) return [];
++  const startedMs = Date.parse(prev.started_at);
++  if (!Number.isFinite(startedMs)) return [];
++  const gapH = (nowMs - startedMs) / 3600000;
++  const out = [];
++  if (prev.outcome === 'running') {
++    if (gapH >= RUN_STALE_H) out.push(`🛑 ${fmtKst(startedMs)} 실행이 끝을 기록하지 못했습니다 — 도중에 멈췄거나 강제 종료됨 (scheduler.log 확인)`);
++  } else if (prev.outcome === 'fail' && !prev.notified) {
++    out.push(`🚨 ${fmtKst(startedMs)} 실행 실패 — 그때 알림을 보내지 못했습니다\n   원인: ${escapeHtml(prev.reason || '기록 없음')}`);
++  }
++  if (gapH >= RUN_GAP_ALERT_H) {
++    out.push(`⏰ 직전 실행 ${fmtKst(startedMs)} → 이번 실행까지 ${gapH.toFixed(1)}시간 — 그 사이 정시 실행이 빠졌습니다 (맥 잠자기·전원·launchd 확인)`);
++  }
++  return out;
++}
++
+ // ══════════════════════════════════
+ // 이메일 알림 전송 (Gmail SMTP over TLS)
+ // ══════════════════════════════════
+@@ -1181,21 +1250,41 @@ async function main() {
+     log(`📋 레거시 모드 — 총 ${playlists.length}개 재생목록 처리`);
+   }
+ 
++  // ── (v4.2) 직전 실행 점검 + 이번 실행 시작 기록 ──
++  // 시작 기록을 먼저 쓴다 — 점검 문구를 보내다 죽어도 pending 에 남아 다음 실행이 다시 보낸다.
++  const prevRun = readRunState();
++  const notices = [
++    ...(prevRun && Array.isArray(prevRun.pending) ? prevRun.pending : []),
++    ...runNotices(prevRun, Date.now()),
++  ].slice(-RUN_PENDING_MAX);
++  runState = { v: 1, started_at: new Date().toISOString(), finished_at: null, outcome: 'running', reason: '', notified: false, pending: notices };
++  writeRunState(runState);
++  if (notices.length) {
++    for (const n of notices) log(`⚠️ 직전 실행 점검: ${n.replace(/\n\s*/g, ' ')}`);
++    if (await sendTelegram(`⚠️ <b>[직전 실행 점검]</b>\n${notices.join('\n')}`)) {
++      runState.pending = [];
++      writeRunState(runState);
++    }
++  }
++
+   // ── 장부(data/library.db) 열기 + 전체 캐시 ──
+   // 장부가 없거나·버전이 다르거나·0건이면 중복 판정을 못 한다. 이번 실행은 영상 처리·큐 재시도를 건너뛴다(fail-closed).
+   let libCache = null;
++  let libLoadError = '', libAlertSent = false;   // (v4.2) 실행 상태 기록용
+   try {
+     libDb = library.openLibrary();
+     libCache = loadLibraryCache(libDb);
+   } catch (e) {
+     log(`❌ 장부 로드 실패 — 중복 저장을 막기 위해 이번 실행은 영상 처리를 건너뜁니다: ${e.message}`);
+-    await sendTelegram(`🚨 <b>[장부 로드 실패]</b>\n${e.message}\n이번 실행은 영상 처리를 건너뛰었습니다.`);
++    libLoadError = shortReason(e);
++    libAlertSent = await sendTelegram(`🚨 <b>[장부 로드 실패]</b>\n${e.message}\n이번 실행은 영상 처리를 건너뛰었습니다.`);
+   }
+ 
+   // ── pending 큐 소진 (quota 여유분 내에서) ──
+   if (libCache) await flushPendingQueue();
+ 
+   let totalSaved = 0, totalSkip = 0, totalError = 0;
++  let runFailReason = '';   // (v4.2) 통째 실패 알림에 넣을 마지막 오류 (첫 줄)
+   const results = [];
+ 
+   if (!libCache) {
+@@ -1212,6 +1301,7 @@ async function main() {
+     } catch (e) {
+       const errMsg = e instanceof Error ? (e.stack || e.message) : String(e);
+       log(`❌ 마스터 인제스트 오류:\n${errMsg}`);
++      runFailReason = `마스터 인제스트 오류: ${shortReason(e)}`;
+       totalError += 1;
+       results.push({ name: 'AI 영상목록 (마스터)', saved: 0, skip: 0, error: 1 });
+     }
+@@ -1229,6 +1319,7 @@ async function main() {
+       } catch (e) {
+         const errMsg = e instanceof Error ? (e.stack || e.message) : String(e);
+         log(`❌ 재생목록 처리 중 오류:\n${errMsg}`);
++        runFailReason = `재생목록 처리 오류 (${pl.name}): ${shortReason(e)}`;
+         totalError += 1;
+         results.push({ name: pl.name, saved: 0, skip: 0, error: 1 });
+       }
+@@ -1247,6 +1338,26 @@ async function main() {
+   log(line2);
+   log(finishLine);
+ 
++  // ── (v4.2) 통째 실패 알림 + 실행 결과 기록 ──
++  // 저장 0 · Skip 0 · 오류 ≥1 은 예전에 아래 hasNewOrUpdated 에 걸리지 않아 텔레그램 없이 지나갔다.
++  if (isWholeRunFailure({ saved: totalSaved, skip: totalSkip, error: totalError })) {
++    runState.outcome = 'fail';
++    if (!libCache) {
++      // 장부 로드 실패는 위에서 이미 [장부 로드 실패] 로 알렸다 — 두 번 보내지 않는다
++      runState.reason = `장부 로드 실패: ${libLoadError}`;
++      runState.notified = libAlertSent;
++    } else {
++      runState.reason = runFailReason || `오류 ${totalError}건`;
++      runState.notified = await sendTelegram(
++        `🚨 <b>[실행 실패]</b>\n저장 0 · Skip 0 · 오류 ${fmtNum(totalError)} — 이번 실행은 영상을 하나도 확인하지 못했습니다.\n` +
++        `원인: ${escapeHtml(runState.reason)}\n다음 정시 실행이 다시 시도합니다.`);
++    }
++  } else {
++    runState.outcome = 'ok';
++  }
++  runState.finished_at = new Date().toISOString();
++  writeRunState(runState);
++
+   // ── 전체 완료 알림 전송 ──
+   const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+ 
+@@ -1426,13 +1537,21 @@ async function main() {
+ 
+ // 직접 실행할 때만 main 을 돈다. require 하면 아래 함수만 내보낸다(scripts/test_scheduler_guards.js·읽기 전용 점검용).
+ if (require.main === module) {
+-  main().catch(e => {
++  main().catch(async e => {
+     log(`❌ 치명적 오류: ${e.message}`);
++    // (v4.2) 끝을 먼저 기록하고 알린다. 알림이 실패하면(네트워크 다운) notified=false 로 남아 다음 실행이 다시 알린다.
++    const reason = `치명적 오류: ${shortReason(e)}`;
++    const st = { ...(runState || { v: 1, started_at: new Date().toISOString(), pending: [] }),
++      outcome: 'fail', reason, notified: false, finished_at: new Date().toISOString() };
++    writeRunState(st);
++    st.notified = await sendTelegram(`🚨 <b>[실행 실패]</b>\n${escapeHtml(reason)}\n실행이 중간에 멈췄습니다. 다음 정시 실행이 다시 시도합니다.`);
++    if (st.notified) writeRunState(st);
+     process.exit(1);
+   });
+ } else {
+   module.exports = {
+     ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror, runLibraryBackup,
++    sendTelegram, readRunState, writeRunState, runNotices, isWholeRunFailure, escapeHtml,   // (v4.2) 실행 실패 알림
+     _setLibDb: (db) => { libDb = db; },   // 테스트 전용 (scripts/test_scheduler_guards.js)
+   };
+ }
+diff --git a/scripts/test_scheduler_guards.js b/scripts/test_scheduler_guards.js
+index 226f9ac..dd1e084 100644
+--- a/scripts/test_scheduler_guards.js
++++ b/scripts/test_scheduler_guards.js
+@@ -11,6 +11,8 @@
+ //   4) 장부 쓰기(저장·주제 추가·통계 갱신)는 같은 video_id 를 덮어쓰지 않고, 네트워크 요청을 하나도 만들지 않는다
+ //   5) (v4.0 3단계) 시트 미러 훅은 실패해도 reject 하지 않는다 — 오류를 결과로 돌려줄 뿐 Obsidian 동기화를 막지 않는다
+ //   6) (v4.1) 장부 백업 훅도 같다 — 실패해도 reject 하지 않고, 네트워크 요청을 만들지 않는다(텔레그램은 main 이 보낸다)
++//   7) (v4.2) 실행 실패 알림 — 통째 실패 판정, 직전 실행 점검 문구(끝나지 못한 실행·못 보낸 실패·빠진 정시 실행),
++//      상태 파일 읽기·쓰기, sendTelegram 은 성공/실패를 true/false 로 돌려주고 JSON 아닌 응답에도 죽지 않는다
+ 
+ const https = require('https');
+ const fs = require('fs');
+@@ -25,6 +27,10 @@ global.setTimeout = (fn, _ms, ...args) => realSetTimeout(fn, 0, ...args);
+ const out = (s) => process.stdout.write(s + '\n');
+ console.log = () => {};
+ delete process.env.LIBRARY_ALLOW_EMPTY;
++// (v4.2) sendTelegram 테스트용 — scheduler.js 의 loadEnv 는 이미 있는 값을 덮지 않는다. 실제 봇 토큰·대화방은 쓰지 않는다
++process.env.TELEGRAM_ENABLED = 'true';
++process.env.TELEGRAM_BOT_TOKEN = 'TEST_TOKEN';
++process.env.TELEGRAM_CHAT_ID = 'TEST_CHAT';
+ 
+ // ── 가짜 https.request ──
+ let script = [];   // [{ netErr: 'ENOTFOUND' } | { status: 200, body: {...} }]
+@@ -33,6 +39,7 @@ let unscripted = 0;
+ https.request = (options, onResponse) => {
+   const req = new EventEmitter();
+   req.write = () => {};
++  req.setTimeout = () => req;   // (v4.2) sendTelegram 이 부른다
+   req.end = () => {
+     calls.push({ host: options.hostname, path: options.path });
+     const step = script.shift();
+@@ -53,7 +60,7 @@ https.request = (options, onResponse) => {
+       const res = new EventEmitter();
+       res.statusCode = step.status;
+       onResponse(res);
+-      res.emit('data', Buffer.from(JSON.stringify(step.body || {}), 'utf8'));
++      res.emit('data', Buffer.from(step.raw !== undefined ? step.raw : JSON.stringify(step.body || {}), 'utf8'));
+       res.emit('end');
+     }, 0);
+   };
+@@ -68,6 +75,7 @@ if (!fs.readFileSync(SCHEDULER, 'utf8').includes('require.main === module')) {
+ }
+ const sched = require(SCHEDULER);
+ const { ytFetch, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, _setLibDb } = sched;
++const { sendTelegram, readRunState, writeRunState, runNotices, isWholeRunFailure } = sched;
+ const library = require(path.join(__dirname, '..', 'lib', 'library'));
+ const { DatabaseSync } = library.loadSqlite();   // ExperimentalWarning 한 줄을 삼키는 로더
+ 
+@@ -262,6 +270,63 @@ const cases = [
+     const r = await sched.runLibraryBackup(fake);
+     assert(r && r.skipped === 'already_done' && !r.error, '결과가 다르다: ' + JSON.stringify(r));
+   }],
++  // ── (v4.2) 실행 실패 알림 ──
++  ['isWholeRunFailure: 저장 0 · Skip 0 · 오류 ≥1 만 통째 실패', async () => {
++    assert(isWholeRunFailure({ saved: 0, skip: 0, error: 1 }) === true, '0/0/1 을 못 잡았다');
++    assert(isWholeRunFailure({ saved: 0, skip: 1539, error: 0 }) === false, '평소 실행(0/1539/0)을 실패로 봤다');
++    assert(isWholeRunFailure({ saved: 0, skip: 1537, error: 2 }) === false, '일부 오류(0/1537/2)를 통째 실패로 봤다');
++    assert(isWholeRunFailure({ saved: 3, skip: 0, error: 1 }) === false, '저장이 있는데 실패로 봤다');
++    assert(isWholeRunFailure({ saved: 0, skip: 0, error: 0 }) === false, '빈 목록(0/0/0)을 실패로 봤다');
++  }],
++  ['runNotices: 기록 없음·깨진 시각이면 알리지 않는다', async () => {
++    const now = Date.parse('2026-10-12T03:00:00Z');
++    assert(runNotices(null, now).length === 0, 'null');
++    assert(runNotices({}, now).length === 0, '빈 객체');
++    assert(runNotices({ started_at: 'garbage', outcome: 'running' }, now).length === 0, '깨진 시각');
++  }],
++  ['runNotices: 정상 실행 6시간 뒤 → 없음, 12시간 뒤 → 빠진 실행 1줄', async () => {
++    const prev = { started_at: '2026-10-09T21:00:00.000Z', outcome: 'ok', notified: false };   // KST 10-10 06:00
++    assert(runNotices(prev, Date.parse('2026-10-10T03:00:30Z')).length === 0, '6시간 간격을 알렸다');
++    assert(runNotices(prev, Date.parse('2026-10-10T05:59:00Z')).length === 0, '9시간 미만(지연)을 알렸다');
++    const n = runNotices(prev, Date.parse('2026-10-10T09:00:00Z'));
++    assert(n.length === 1 && n[0].includes('12.0시간') && n[0].includes('빠졌습니다'), '빠진 실행 문구가 다르다: ' + JSON.stringify(n));
++  }],
++  ['runNotices: 못 보낸 실패만 알리고, 원인의 < > & 는 이스케이프한다', async () => {
++    const at = '2026-10-04T21:00:00.000Z', now = Date.parse('2026-10-05T03:00:00Z');
++    const n = runNotices({ started_at: at, outcome: 'fail', notified: false, reason: '마스터 인제스트 오류: getaddrinfo ENOTFOUND <x&y>' }, now);
++    assert(n.length === 1 && n[0].includes('ENOTFOUND') && n[0].includes('&lt;x&amp;y&gt;') && !n[0].includes('<x'), '실패 문구가 다르다: ' + JSON.stringify(n));
++    assert(runNotices({ started_at: at, outcome: 'fail', notified: true, reason: 'x' }, now).length === 0, '이미 알린 실패를 또 알렸다');
++  }],
++  ['runNotices: running 으로 남은 실행 — 3시간 이상이면 알리고, 짧으면(겹친 실행) 알리지 않는다', async () => {
++    const prev = { started_at: '2026-10-12T03:00:00.000Z', outcome: 'running' };
++    assert(runNotices(prev, Date.parse('2026-10-12T04:00:00Z')).length === 0, '1시간 전 running 을 알렸다');
++    const n = runNotices(prev, Date.parse('2026-10-12T09:00:00Z'));
++    assert(n.length === 1 && n[0].includes('끝을 기록하지 못했습니다'), 'running 문구가 다르다: ' + JSON.stringify(n));
++    const both = runNotices(prev, Date.parse('2026-10-12T15:00:00Z'));
++    assert(both.length === 2, '끝나지 못함 + 12시간 간격 2줄이어야 한다: ' + both.length);
++  }],
++  ['readRunState/writeRunState: 쓰고 다시 읽는다 · 없거나 깨지면 null · .tmp 를 남기지 않는다', async () => {
++    const f = path.join(TMP, 'run_state.json');
++    assert(readRunState(f) === null, '없는 파일이 null 이 아니다');
++    const st = { v: 1, started_at: '2026-10-12T03:00:00.000Z', outcome: 'ok', pending: ['a'] };
++    assert(writeRunState(st, f) === true, '쓰기 실패');
++    const back = readRunState(f);
++    assert(back && back.outcome === 'ok' && back.pending[0] === 'a', '다시 읽은 값이 다르다');
++    assert(!fs.existsSync(f + '.tmp'), '.tmp 가 남았다');
++    fs.writeFileSync(f, '{ 깨진', 'utf8');
++    assert(readRunState(f) === null, '깨진 파일이 null 이 아니다');
++    fs.writeFileSync(f, '[1,2]', 'utf8');
++    assert(readRunState(f) === null, '배열을 상태로 받았다');
++    assert(writeRunState(st, path.join(TMP, 'no-such-dir', 'x.json')) === false, '못 쓰는 경로에서 true');
++  }],
++  ['sendTelegram: ok 면 true · 실패 응답·JSON 아닌 응답·네트워크 오류는 false (던지지 않는다)', async () => {
++    script = [http(200, { ok: true }), http(400, { ok: false, description: 'Bad Request' }), { status: 502, raw: '<html>Bad Gateway</html>' }, net('ENOTFOUND')];
++    assert(await sendTelegram('a') === true, 'ok 응답이 true 가 아니다');
++    assert(await sendTelegram('b') === false, '실패 응답이 false 가 아니다');
++    assert(await sendTelegram('c') === false, 'JSON 아닌 응답이 false 가 아니다');
++    assert(await sendTelegram('d') === false, '네트워크 오류가 false 가 아니다');
++    assert(calls.length === 4 && calls.every(c => c.host === 'api.telegram.org'), '요청 수·호스트가 다르다');
++  }],
+   ['updateStats: 업로드일을 안 주면 기존 날짜를 지킨다', async () => {
+     const db = library.openLibrary(makeLibrary(SEED));
+     try {
+@@ -281,7 +346,7 @@ const cases = [
+     script = []; calls = []; unscripted = 0;
+     try {
+       await fn();
+-      assert(calls.length === 0 || /^(ytFetch|getBatchSubs)/.test(name), `장부 테스트가 네트워크 요청 ${calls.length}회를 만들었다`);
++      assert(calls.length === 0 || /^(ytFetch|getBatchSubs|sendTelegram)/.test(name), `장부 테스트가 네트워크 요청 ${calls.length}회를 만들었다`);
+       assert(unscripted === 0, `대본에 없는 요청 ${unscripted}회`);
+       pass++;
+       out(`PASS  ${name}`);

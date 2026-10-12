@@ -11,6 +11,8 @@
 //   4) 장부 쓰기(저장·주제 추가·통계 갱신)는 같은 video_id 를 덮어쓰지 않고, 네트워크 요청을 하나도 만들지 않는다
 //   5) (v4.0 3단계) 시트 미러 훅은 실패해도 reject 하지 않는다 — 오류를 결과로 돌려줄 뿐 Obsidian 동기화를 막지 않는다
 //   6) (v4.1) 장부 백업 훅도 같다 — 실패해도 reject 하지 않고, 네트워크 요청을 만들지 않는다(텔레그램은 main 이 보낸다)
+//   7) (v4.2) 실행 실패 알림 — 통째 실패 판정, 직전 실행 점검 문구(끝나지 못한 실행·못 보낸 실패·빠진 정시 실행),
+//      상태 파일 읽기·쓰기, sendTelegram 은 성공/실패를 true/false 로 돌려주고 JSON 아닌 응답에도 죽지 않는다
 
 const https = require('https');
 const fs = require('fs');
@@ -25,6 +27,10 @@ global.setTimeout = (fn, _ms, ...args) => realSetTimeout(fn, 0, ...args);
 const out = (s) => process.stdout.write(s + '\n');
 console.log = () => {};
 delete process.env.LIBRARY_ALLOW_EMPTY;
+// (v4.2) sendTelegram 테스트용 — scheduler.js 의 loadEnv 는 이미 있는 값을 덮지 않는다. 실제 봇 토큰·대화방은 쓰지 않는다
+process.env.TELEGRAM_ENABLED = 'true';
+process.env.TELEGRAM_BOT_TOKEN = 'TEST_TOKEN';
+process.env.TELEGRAM_CHAT_ID = 'TEST_CHAT';
 
 // ── 가짜 https.request ──
 let script = [];   // [{ netErr: 'ENOTFOUND' } | { status: 200, body: {...} }]
@@ -33,6 +39,7 @@ let unscripted = 0;
 https.request = (options, onResponse) => {
   const req = new EventEmitter();
   req.write = () => {};
+  req.setTimeout = () => req;   // (v4.2) sendTelegram 이 부른다
   req.end = () => {
     calls.push({ host: options.hostname, path: options.path });
     const step = script.shift();
@@ -53,7 +60,7 @@ https.request = (options, onResponse) => {
       const res = new EventEmitter();
       res.statusCode = step.status;
       onResponse(res);
-      res.emit('data', Buffer.from(JSON.stringify(step.body || {}), 'utf8'));
+      res.emit('data', Buffer.from(step.raw !== undefined ? step.raw : JSON.stringify(step.body || {}), 'utf8'));
       res.emit('end');
     }, 0);
   };
@@ -68,6 +75,7 @@ if (!fs.readFileSync(SCHEDULER, 'utf8').includes('require.main === module')) {
 }
 const sched = require(SCHEDULER);
 const { ytFetch, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, _setLibDb } = sched;
+const { sendTelegram, readRunState, writeRunState, runNotices, isWholeRunFailure } = sched;
 const library = require(path.join(__dirname, '..', 'lib', 'library'));
 const { DatabaseSync } = library.loadSqlite();   // ExperimentalWarning 한 줄을 삼키는 로더
 
@@ -262,6 +270,63 @@ const cases = [
     const r = await sched.runLibraryBackup(fake);
     assert(r && r.skipped === 'already_done' && !r.error, '결과가 다르다: ' + JSON.stringify(r));
   }],
+  // ── (v4.2) 실행 실패 알림 ──
+  ['isWholeRunFailure: 저장 0 · Skip 0 · 오류 ≥1 만 통째 실패', async () => {
+    assert(isWholeRunFailure({ saved: 0, skip: 0, error: 1 }) === true, '0/0/1 을 못 잡았다');
+    assert(isWholeRunFailure({ saved: 0, skip: 1539, error: 0 }) === false, '평소 실행(0/1539/0)을 실패로 봤다');
+    assert(isWholeRunFailure({ saved: 0, skip: 1537, error: 2 }) === false, '일부 오류(0/1537/2)를 통째 실패로 봤다');
+    assert(isWholeRunFailure({ saved: 3, skip: 0, error: 1 }) === false, '저장이 있는데 실패로 봤다');
+    assert(isWholeRunFailure({ saved: 0, skip: 0, error: 0 }) === false, '빈 목록(0/0/0)을 실패로 봤다');
+  }],
+  ['runNotices: 기록 없음·깨진 시각이면 알리지 않는다', async () => {
+    const now = Date.parse('2026-10-12T03:00:00Z');
+    assert(runNotices(null, now).length === 0, 'null');
+    assert(runNotices({}, now).length === 0, '빈 객체');
+    assert(runNotices({ started_at: 'garbage', outcome: 'running' }, now).length === 0, '깨진 시각');
+  }],
+  ['runNotices: 정상 실행 6시간 뒤 → 없음, 12시간 뒤 → 빠진 실행 1줄', async () => {
+    const prev = { started_at: '2026-10-09T21:00:00.000Z', outcome: 'ok', notified: false };   // KST 10-10 06:00
+    assert(runNotices(prev, Date.parse('2026-10-10T03:00:30Z')).length === 0, '6시간 간격을 알렸다');
+    assert(runNotices(prev, Date.parse('2026-10-10T05:59:00Z')).length === 0, '9시간 미만(지연)을 알렸다');
+    const n = runNotices(prev, Date.parse('2026-10-10T09:00:00Z'));
+    assert(n.length === 1 && n[0].includes('12.0시간') && n[0].includes('빠졌습니다'), '빠진 실행 문구가 다르다: ' + JSON.stringify(n));
+  }],
+  ['runNotices: 못 보낸 실패만 알리고, 원인의 < > & 는 이스케이프한다', async () => {
+    const at = '2026-10-04T21:00:00.000Z', now = Date.parse('2026-10-05T03:00:00Z');
+    const n = runNotices({ started_at: at, outcome: 'fail', notified: false, reason: '마스터 인제스트 오류: getaddrinfo ENOTFOUND <x&y>' }, now);
+    assert(n.length === 1 && n[0].includes('ENOTFOUND') && n[0].includes('&lt;x&amp;y&gt;') && !n[0].includes('<x'), '실패 문구가 다르다: ' + JSON.stringify(n));
+    assert(runNotices({ started_at: at, outcome: 'fail', notified: true, reason: 'x' }, now).length === 0, '이미 알린 실패를 또 알렸다');
+  }],
+  ['runNotices: running 으로 남은 실행 — 3시간 이상이면 알리고, 짧으면(겹친 실행) 알리지 않는다', async () => {
+    const prev = { started_at: '2026-10-12T03:00:00.000Z', outcome: 'running' };
+    assert(runNotices(prev, Date.parse('2026-10-12T04:00:00Z')).length === 0, '1시간 전 running 을 알렸다');
+    const n = runNotices(prev, Date.parse('2026-10-12T09:00:00Z'));
+    assert(n.length === 1 && n[0].includes('끝을 기록하지 못했습니다'), 'running 문구가 다르다: ' + JSON.stringify(n));
+    const both = runNotices(prev, Date.parse('2026-10-12T15:00:00Z'));
+    assert(both.length === 2, '끝나지 못함 + 12시간 간격 2줄이어야 한다: ' + both.length);
+  }],
+  ['readRunState/writeRunState: 쓰고 다시 읽는다 · 없거나 깨지면 null · .tmp 를 남기지 않는다', async () => {
+    const f = path.join(TMP, 'run_state.json');
+    assert(readRunState(f) === null, '없는 파일이 null 이 아니다');
+    const st = { v: 1, started_at: '2026-10-12T03:00:00.000Z', outcome: 'ok', pending: ['a'] };
+    assert(writeRunState(st, f) === true, '쓰기 실패');
+    const back = readRunState(f);
+    assert(back && back.outcome === 'ok' && back.pending[0] === 'a', '다시 읽은 값이 다르다');
+    assert(!fs.existsSync(f + '.tmp'), '.tmp 가 남았다');
+    fs.writeFileSync(f, '{ 깨진', 'utf8');
+    assert(readRunState(f) === null, '깨진 파일이 null 이 아니다');
+    fs.writeFileSync(f, '[1,2]', 'utf8');
+    assert(readRunState(f) === null, '배열을 상태로 받았다');
+    assert(writeRunState(st, path.join(TMP, 'no-such-dir', 'x.json')) === false, '못 쓰는 경로에서 true');
+  }],
+  ['sendTelegram: ok 면 true · 실패 응답·JSON 아닌 응답·네트워크 오류는 false (던지지 않는다)', async () => {
+    script = [http(200, { ok: true }), http(400, { ok: false, description: 'Bad Request' }), { status: 502, raw: '<html>Bad Gateway</html>' }, net('ENOTFOUND')];
+    assert(await sendTelegram('a') === true, 'ok 응답이 true 가 아니다');
+    assert(await sendTelegram('b') === false, '실패 응답이 false 가 아니다');
+    assert(await sendTelegram('c') === false, 'JSON 아닌 응답이 false 가 아니다');
+    assert(await sendTelegram('d') === false, '네트워크 오류가 false 가 아니다');
+    assert(calls.length === 4 && calls.every(c => c.host === 'api.telegram.org'), '요청 수·호스트가 다르다');
+  }],
   ['updateStats: 업로드일을 안 주면 기존 날짜를 지킨다', async () => {
     const db = library.openLibrary(makeLibrary(SEED));
     try {
@@ -281,7 +346,7 @@ const cases = [
     script = []; calls = []; unscripted = 0;
     try {
       await fn();
-      assert(calls.length === 0 || /^(ytFetch|getBatchSubs)/.test(name), `장부 테스트가 네트워크 요청 ${calls.length}회를 만들었다`);
+      assert(calls.length === 0 || /^(ytFetch|getBatchSubs|sendTelegram)/.test(name), `장부 테스트가 네트워크 요청 ${calls.length}회를 만들었다`);
       assert(unscripted === 0, `대본에 없는 요청 ${unscripted}회`);
       pass++;
       out(`PASS  ${name}`);

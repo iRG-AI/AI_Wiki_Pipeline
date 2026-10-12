@@ -1,4 +1,4 @@
-// ===== YouTube AI 요약기 자동 스케줄러 (v4.0: 저장 = 로컬 장부 data/library.db) =====
+// ===== YouTube AI 요약기 자동 스케줄러 (v4.0: 저장 = 로컬 장부 data/library.db · v4.2: 실행 실패 알림) =====
 // Mac launchd에 의해 6시간 간격으로 자동 실행됩니다.
 // 직접 실행: node scheduler.js
 
@@ -81,9 +81,11 @@ const CONFIG = {
 // ══════════════════════════════════
 // 텔레그램 알림 전송
 // ══════════════════════════════════
+// (v4.2) 보냈으면 true, 꺼져 있거나 실패하면 false 로 끝난다(reject 없음).
+//   실행 상태 파일(.run_state.json)이 "실패 알림이 실제로 나갔는지" 를 이 값으로 기록한다.
 function sendTelegram(message) {
   return new Promise((resolve) => {
-    if (!CONFIG.telegram.enabled) return resolve();
+    if (!CONFIG.telegram.enabled) return resolve(false);
     const text = encodeURIComponent(message);
     const url = `/bot${CONFIG.telegram.botToken}/sendMessage?chat_id=${CONFIG.telegram.chatId}&text=${text}&parse_mode=HTML`;
     const req = https.request(
@@ -92,14 +94,18 @@ function sendTelegram(message) {
         let data = [];
         res.on('data', c => data.push(c));
         res.on('end', () => {
-          const body = JSON.parse(Buffer.concat(data).toString('utf8'));
-          if (body.ok) log('📱 텔레그램 알림 전송 완료');
-          else log('⚠️  텔레그램 전송 실패: ' + body.description);
-          resolve();
+          // JSON 이 아닌 응답(게이트웨이 502 HTML 등)에 JSON.parse 가 던지면 이벤트 핸들러 밖으로 새 프로세스가 죽었다(v4.2 에서 막음)
+          let body = null;
+          try { body = JSON.parse(Buffer.concat(data).toString('utf8')); } catch {}
+          if (body && body.ok) { log('📱 텔레그램 알림 전송 완료'); return resolve(true); }
+          log('⚠️  텔레그램 전송 실패: ' + (body ? body.description : `HTTP ${res.statusCode} (JSON 아닌 응답)`));
+          resolve(false);
         });
       }
     );
-    req.on('error', (e) => { log('⚠️  텔레그램 오류: ' + e.message); resolve(); });
+    // 응답이 없으면 20초에 끊는다 — 알림이 실행 종료를 붙잡지 않게
+    req.setTimeout(20000, () => req.destroy(new Error('timeout 20s')));
+    req.on('error', (e) => { log('⚠️  텔레그램 오류: ' + e.message); resolve(false); });
     req.end();
   });
 }
@@ -181,6 +187,69 @@ function runLibraryBackup(python3) {
         resolve(r);
       });
   });
+}
+
+// ── (v4.2) 실행 상태 파일 — 통째 실패·끝나지 못한 실행·빠진 정시 실행을 알린다 ──
+// 네트워크가 죽은 실행은 그 자리에서 텔레그램도 못 보낸다. 그래서 실행마다 "어떻게 끝났는지" 를 파일에 남기고,
+// 다음 실행이 시작할 때 읽어 못 보낸 실패 알림·끝을 기록하지 못한 실행·간격이 너무 긴 실행을 한 번에 알린다.
+// 파일: .run_state.json (gitignore). 기록 실패는 실행을 막지 않는다(로그만 남긴다).
+//   { v, started_at, finished_at, outcome: 'running'|'ok'|'fail', reason, notified, pending: [못 보낸 점검 문구] }
+const RUN_STATE_FILE  = path.join(__dirname, '.run_state.json');
+const RUN_STALE_H     = 3;    // 'running' 으로 남은 직전 실행이 이보다 오래면 도중에 죽은 것. 짧으면 겹친 실행일 수 있어 알리지 않는다
+const RUN_GAP_ALERT_H = 9;    // 정시 간격 6시간 + 지연 3시간까지 허용. 넘으면 정시 실행이 하나 이상 빠진 것
+const RUN_PENDING_MAX = 10;   // 못 보낸 점검 문구 보관 상한 (텔레그램이 계속 꺼져 있어도 파일이 자라지 않게)
+let runState = null;          // main 이 시작할 때 만든다. main().catch 도 쓴다
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function fmtKst(ms) {
+  return new Date(ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+}
+// 오류 메시지 첫 줄만, 300자까지 (스택·긴 본문이 상태 파일과 텔레그램을 채우지 않게)
+function shortReason(e) {
+  return String(e && e.message !== undefined ? e.message : e).split('\n')[0].slice(0, 300);
+}
+function readRunState(file = RUN_STATE_FILE) {
+  try {
+    const st = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return st && typeof st === 'object' && !Array.isArray(st) ? st : null;
+  } catch (e) {
+    if (e.code !== 'ENOENT') log(`⚠️ 실행 상태 파일을 읽지 못함 (${e.message}) — 직전 실행 점검 없이 진행`);
+    return null;
+  }
+}
+function writeRunState(st, file = RUN_STATE_FILE) {
+  try {
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(st, null, 2) + '\n', 'utf8');
+    fs.renameSync(tmp, file);
+    return true;
+  } catch (e) {
+    log(`⚠️ 실행 상태 파일 쓰기 실패: ${e.message}`);
+    return false;
+  }
+}
+// 영상을 하나도 확인하지 못한 실행 = 저장 0 · Skip 0 · 오류 ≥ 1 (10-04 06:00, 10-05 00:00 ENOTFOUND 가 이 모양이었다)
+function isWholeRunFailure({ saved, skip, error }) {
+  return saved === 0 && skip === 0 && error > 0;
+}
+// 직전 실행 기록 → 이번 실행이 알릴 문구 (순수 함수, 텔레그램 HTML)
+function runNotices(prev, nowMs) {
+  if (!prev || !prev.started_at) return [];
+  const startedMs = Date.parse(prev.started_at);
+  if (!Number.isFinite(startedMs)) return [];
+  const gapH = (nowMs - startedMs) / 3600000;
+  const out = [];
+  if (prev.outcome === 'running') {
+    if (gapH >= RUN_STALE_H) out.push(`🛑 ${fmtKst(startedMs)} 실행이 끝을 기록하지 못했습니다 — 도중에 멈췄거나 강제 종료됨 (scheduler.log 확인)`);
+  } else if (prev.outcome === 'fail' && !prev.notified) {
+    out.push(`🚨 ${fmtKst(startedMs)} 실행 실패 — 그때 알림을 보내지 못했습니다\n   원인: ${escapeHtml(prev.reason || '기록 없음')}`);
+  }
+  if (gapH >= RUN_GAP_ALERT_H) {
+    out.push(`⏰ 직전 실행 ${fmtKst(startedMs)} → 이번 실행까지 ${gapH.toFixed(1)}시간 — 그 사이 정시 실행이 빠졌습니다 (맥 잠자기·전원·launchd 확인)`);
+  }
+  return out;
 }
 
 // ══════════════════════════════════
@@ -1181,21 +1250,41 @@ async function main() {
     log(`📋 레거시 모드 — 총 ${playlists.length}개 재생목록 처리`);
   }
 
+  // ── (v4.2) 직전 실행 점검 + 이번 실행 시작 기록 ──
+  // 시작 기록을 먼저 쓴다 — 점검 문구를 보내다 죽어도 pending 에 남아 다음 실행이 다시 보낸다.
+  const prevRun = readRunState();
+  const notices = [
+    ...(prevRun && Array.isArray(prevRun.pending) ? prevRun.pending : []),
+    ...runNotices(prevRun, Date.now()),
+  ].slice(-RUN_PENDING_MAX);
+  runState = { v: 1, started_at: new Date().toISOString(), finished_at: null, outcome: 'running', reason: '', notified: false, pending: notices };
+  writeRunState(runState);
+  if (notices.length) {
+    for (const n of notices) log(`⚠️ 직전 실행 점검: ${n.replace(/\n\s*/g, ' ')}`);
+    if (await sendTelegram(`⚠️ <b>[직전 실행 점검]</b>\n${notices.join('\n')}`)) {
+      runState.pending = [];
+      writeRunState(runState);
+    }
+  }
+
   // ── 장부(data/library.db) 열기 + 전체 캐시 ──
   // 장부가 없거나·버전이 다르거나·0건이면 중복 판정을 못 한다. 이번 실행은 영상 처리·큐 재시도를 건너뛴다(fail-closed).
   let libCache = null;
+  let libLoadError = '', libAlertSent = false;   // (v4.2) 실행 상태 기록용
   try {
     libDb = library.openLibrary();
     libCache = loadLibraryCache(libDb);
   } catch (e) {
     log(`❌ 장부 로드 실패 — 중복 저장을 막기 위해 이번 실행은 영상 처리를 건너뜁니다: ${e.message}`);
-    await sendTelegram(`🚨 <b>[장부 로드 실패]</b>\n${e.message}\n이번 실행은 영상 처리를 건너뛰었습니다.`);
+    libLoadError = shortReason(e);
+    libAlertSent = await sendTelegram(`🚨 <b>[장부 로드 실패]</b>\n${e.message}\n이번 실행은 영상 처리를 건너뛰었습니다.`);
   }
 
   // ── pending 큐 소진 (quota 여유분 내에서) ──
   if (libCache) await flushPendingQueue();
 
   let totalSaved = 0, totalSkip = 0, totalError = 0;
+  let runFailReason = '';   // (v4.2) 통째 실패 알림에 넣을 마지막 오류 (첫 줄)
   const results = [];
 
   if (!libCache) {
@@ -1212,6 +1301,7 @@ async function main() {
     } catch (e) {
       const errMsg = e instanceof Error ? (e.stack || e.message) : String(e);
       log(`❌ 마스터 인제스트 오류:\n${errMsg}`);
+      runFailReason = `마스터 인제스트 오류: ${shortReason(e)}`;
       totalError += 1;
       results.push({ name: 'AI 영상목록 (마스터)', saved: 0, skip: 0, error: 1 });
     }
@@ -1229,6 +1319,7 @@ async function main() {
       } catch (e) {
         const errMsg = e instanceof Error ? (e.stack || e.message) : String(e);
         log(`❌ 재생목록 처리 중 오류:\n${errMsg}`);
+        runFailReason = `재생목록 처리 오류 (${pl.name}): ${shortReason(e)}`;
         totalError += 1;
         results.push({ name: pl.name, saved: 0, skip: 0, error: 1 });
       }
@@ -1246,6 +1337,26 @@ async function main() {
   log(line1);
   log(line2);
   log(finishLine);
+
+  // ── (v4.2) 통째 실패 알림 + 실행 결과 기록 ──
+  // 저장 0 · Skip 0 · 오류 ≥1 은 예전에 아래 hasNewOrUpdated 에 걸리지 않아 텔레그램 없이 지나갔다.
+  if (isWholeRunFailure({ saved: totalSaved, skip: totalSkip, error: totalError })) {
+    runState.outcome = 'fail';
+    if (!libCache) {
+      // 장부 로드 실패는 위에서 이미 [장부 로드 실패] 로 알렸다 — 두 번 보내지 않는다
+      runState.reason = `장부 로드 실패: ${libLoadError}`;
+      runState.notified = libAlertSent;
+    } else {
+      runState.reason = runFailReason || `오류 ${totalError}건`;
+      runState.notified = await sendTelegram(
+        `🚨 <b>[실행 실패]</b>\n저장 0 · Skip 0 · 오류 ${fmtNum(totalError)} — 이번 실행은 영상을 하나도 확인하지 못했습니다.\n` +
+        `원인: ${escapeHtml(runState.reason)}\n다음 정시 실행이 다시 시도합니다.`);
+    }
+  } else {
+    runState.outcome = 'ok';
+  }
+  runState.finished_at = new Date().toISOString();
+  writeRunState(runState);
 
   // ── 전체 완료 알림 전송 ──
   const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
@@ -1426,13 +1537,21 @@ async function main() {
 
 // 직접 실행할 때만 main 을 돈다. require 하면 아래 함수만 내보낸다(scripts/test_scheduler_guards.js·읽기 전용 점검용).
 if (require.main === module) {
-  main().catch(e => {
+  main().catch(async e => {
     log(`❌ 치명적 오류: ${e.message}`);
+    // (v4.2) 끝을 먼저 기록하고 알린다. 알림이 실패하면(네트워크 다운) notified=false 로 남아 다음 실행이 다시 알린다.
+    const reason = `치명적 오류: ${shortReason(e)}`;
+    const st = { ...(runState || { v: 1, started_at: new Date().toISOString(), pending: [] }),
+      outcome: 'fail', reason, notified: false, finished_at: new Date().toISOString() };
+    writeRunState(st);
+    st.notified = await sendTelegram(`🚨 <b>[실행 실패]</b>\n${escapeHtml(reason)}\n실행이 중간에 멈췄습니다. 다음 정시 실행이 다시 시도합니다.`);
+    if (st.notified) writeRunState(st);
     process.exit(1);
   });
 } else {
   module.exports = {
     ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror, runLibraryBackup,
+    sendTelegram, readRunState, writeRunState, runNotices, isWholeRunFailure, escapeHtml,   // (v4.2) 실행 실패 알림
     _setLibDb: (db) => { libDb = db; },   // 테스트 전용 (scripts/test_scheduler_guards.js)
   };
 }
