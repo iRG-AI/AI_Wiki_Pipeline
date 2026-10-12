@@ -121,6 +121,8 @@ subscriber_count: 5678
 video_url: https://www.youtube.com/watch?v=VVVVVVVVVV3
 thumbnail: https://i.ytimg.com/vi/VVVVVVVVVV3/mqdefault.jpg
 status: 완료
+grade: null
+summary_src: app
 notion_id: rec-3
 ---
 
@@ -170,7 +172,10 @@ def main():
           rj['orphans_removed']) == (2, 1, 1, 1), (code, rj, out[-400:]))
     p3 = os.path.join(vault, 'AI 에이전트', '새채널_새 영상 _따옴표__20261010.md')
     got = open(p3, encoding='utf-8').read() if os.path.exists(p3) else ''
-    check('새 노트: 첫 topic 폴더 · 파일명 규칙 · 노션 시절과 같은 모양', got == EXPECT_REC3, got[:600] or os.listdir(vault))
+    check('새 노트: 첫 topic 폴더 · 파일명 규칙 · 노션 시절과 같은 모양(+ v4.6 grade·summary_src)', got == EXPECT_REC3, got[:600] or os.listdir(vault))
+    mdx = so.video_note_md({'record_id': 'rx', 'topics': ['AI Claude'], 'title': 't', 'grade': 'exclude', 'summary_src': 'video'})
+    check('(v4.6) 영상 요약·제외 등급 노트 프론트매터: grade: exclude · summary_src: video (notion_id 바로 위)',
+          '\nstatus: \ngrade: exclude\nsummary_src: video\nnotion_id: rx\n---' in mdx, mdx[:400])
     t1 = open(os.path.join(vault, 'AI Claude/ch_v1_20260901.md'), encoding='utf-8').read()
     check('rec-1 tags 만 바뀌고 본문은 그대로', 'tags: ["AI Claude", "AI 에이전트"]' in t1 and '기존 본문' in t1, t1[:300])
     moved = [os.path.relpath(os.path.join(d, f), so.TRASH_DIR) for d, _, fs in os.walk(so.TRASH_DIR) for f in fs]

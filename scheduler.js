@@ -6,6 +6,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const library = require('./lib/library');   // v4.0 로컬 장부 (node:sqlite)
+const videoSummary = require('./lib/video_summary');   // v4.6 실제 영상 요약 + 품질 신호
 
 // ══════════════════════════════════
 // ★ .env 파일에서 환경변수 로드 ★
@@ -424,7 +425,8 @@ async function getBatchDetails(videoIds) {
   // 50개씩 나눠서 배치 조회
   for (let i = 0; i < videoIds.length; i += 50) {
     const batch = videoIds.slice(i, i + 50);
-    const d = await ytFetch(`videos?part=statistics,snippet&id=${batch.join(',')}`);
+    // (v4.6) contentDetails·status 를 같이 받는다 — videos.list 는 part 수와 무관하게 1유닛
+    const d = await ytFetch(`videos?part=statistics,snippet,contentDetails,status&id=${batch.join(',')}`);
     for (const it of (d.items || [])) {
       map[it.id] = {
         viewCount:       parseInt(it?.statistics?.viewCount || 0),
@@ -433,6 +435,8 @@ async function getBatchDetails(videoIds) {
         realChannelTitle: it?.snippet?.channelTitle || '',
         realChannelId:   it?.snippet?.channelId || '',
         realPublishedAt: it?.snippet?.publishedAt || '',
+        durationSec:     videoSummary.parseDuration(it?.contentDetails?.duration),   // (v4.6) 못 읽으면 null
+        privacy:         it?.status?.privacyStatus || '',                             // public | unlisted | private
       };
     }
   }
@@ -724,7 +728,8 @@ function updateStatsInLibrary(recordId, viewCount, subscriberCount, uploadDate) 
 }
 
 // ── 신규 영상 저장 → record_id ── 같은 video_id 가 이미 있으면 던진다(덮어쓰지 않는다). 호출자가 오류 1건으로 센다.
-function saveToLibrary(v, summary, topics) {
+// (v4.6) meta = { src: 'video'|'app', grade, quality } — 없으면 설명란 요약('app')·미판정으로 저장
+function saveToLibrary(v, summary, topics, meta = {}) {
   return library.insertVideo(libDb, {
     videoId:         v.videoId,
     title:           v.title,
@@ -735,6 +740,9 @@ function saveToLibrary(v, summary, topics) {
     subscriberCount: v.subscriberCount || 0,
     thumbnail:       v.thumbnail || `https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`,
     summary,
+    summarySrc:      meta.src || 'app',
+    grade:           meta.grade ?? null,
+    quality:         meta.quality ?? null,
   });
 }
 
@@ -877,6 +885,7 @@ async function processMasterIngest(libCache) {
       if (det.realChannelTitle) v.channelTitle = det.realChannelTitle;
       if (det.realChannelId)    v.channelId    = det.realChannelId;
       if (det.realPublishedAt)  v.publishedAt  = det.realPublishedAt;
+      v.durationSec = det.durationSec; v.privacy = det.privacy;   // (v4.6)
     }
     v.subscriberCount = chCache[v.channelId] || 0;
 
@@ -909,13 +918,21 @@ async function processMasterIngest(libCache) {
   }
 
   log(`\n  ⚡ 신규 ${processList.length}개 처리 시작...`);
+  // (v4.6) 실제 영상 요약 — 안 되면 설명란 요약(geminiSummarize)으로 대체. PARALLEL 은 1 그대로 둘 것
+  //   (30분 영상 1편 ≈ 18만 토큰 — 병렬로 부르면 무료 분당 토큰 한도에 걸린다)
+  const summarizer = videoSummary.makeVideoSummarizer({
+    request: httpsRequest, getKey: getActiveGeminiKey, rotateKey: rotateGeminiKey,
+    keysCount: CONFIG.geminiApiKeys.length, describe: geminiSummarize, validateSummary,
+    todayKey: yt.todayKey, log, env: process.env,
+    quotaFile: path.join(__dirname, '.video_quota.json'),
+  });
   const PARALLEL = 1;
 
   for (let i = 0; i < processList.length; i += PARALLEL) {
     const batch = processList.slice(i, i + PARALLEL);
     log(`  ⚡ [${i+1}~${Math.min(i+PARALLEL, processList.length)}/${processList.length}] 병렬 요약 중...`);
 
-    const summaryResults = await Promise.allSettled(batch.map(v => geminiSummarize(v)));
+    const summaryResults = await Promise.allSettled(batch.map(v => summarizer.summarize(v)));
     
     // API 호출 간격 확보 (2초 대기)
     await new Promise(r => setTimeout(r, 2000));
@@ -925,7 +942,7 @@ async function processMasterIngest(libCache) {
       const sRes = summaryResults[j];
       try {
         if (sRes.status === 'rejected') throw new Error(sRes.reason?.message || '요약 실패');
-        const summary = sRes.value;
+        const { summary, ...sumMeta } = sRes.value;   // (v4.6) { summary, src, grade, quality }
 
         // 분류 (현재 활성화된 로테이션된 API Key 주입)
         let cls;
@@ -985,8 +1002,8 @@ async function processMasterIngest(libCache) {
         }
 
         // 장부 저장
-        const pageId = saveToLibrary(v, summary, allTopics);
-        log(`    ✓ 장부 저장 완료 (주제: ${allTopics.join(', ') || '(분류 없음)'})`);
+        const pageId = saveToLibrary(v, summary, allTopics, sumMeta);
+        log(`    ✓ 장부 저장 완료 (주제: ${allTopics.join(', ') || '(분류 없음)'} · 요약 ${sumMeta.src}${sumMeta.grade ? ` · ${sumMeta.grade}` : ''})`);
         // 결과 테이블용 구조화 데이터 (server.js → index.html 전달)
         console.log('RESULT_ROW:' + JSON.stringify({
           videoId: v.videoId, title: v.title, channelTitle: v.channelTitle,
@@ -1053,7 +1070,9 @@ async function processMasterIngest(libCache) {
     if (i + PARALLEL < newVideos.length) await new Promise(r => setTimeout(r, 300));
   }
 
-  return { saved, skip, error, savedList, topicStats, skipList, totalInPlaylist: videos.length };
+  const vs = summarizer.stats;
+  log(`  🎬 요약 방식: 영상 ${vs.video} (제외 등급 ${vs.exclude}) · 설명란 대체 ${vs.fallback}${vs.fallback ? ` ${JSON.stringify(vs.reasons)}` : ''}`);
+  return { saved, skip, error, savedList, topicStats, skipList, totalInPlaylist: videos.length, videoStats: vs };
 }
 
 // ── 재생목록 하나 처리 ──
@@ -1552,6 +1571,7 @@ if (require.main === module) {
   module.exports = {
     ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror, runLibraryBackup,
     sendTelegram, readRunState, writeRunState, runNotices, isWholeRunFailure, escapeHtml,   // (v4.2) 실행 실패 알림
+    validateSummary,   // (v4.6) scripts/test_video_summary.js
     _setLibDb: (db) => { libDb = db; },   // 테스트 전용 (scripts/test_scheduler_guards.js)
   };
 }

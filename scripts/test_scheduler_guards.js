@@ -13,6 +13,7 @@
 //   6) (v4.1) 장부 백업 훅도 같다 — 실패해도 reject 하지 않고, 네트워크 요청을 만들지 않는다(텔레그램은 main 이 보낸다)
 //   7) (v4.2) 실행 실패 알림 — 통째 실패 판정, 직전 실행 점검 문구(끝나지 못한 실행·못 보낸 실패·빠진 정시 실행),
 //      상태 파일 읽기·쓰기, sendTelegram 은 성공/실패를 true/false 로 돌려주고 JSON 아닌 응답에도 죽지 않는다
+//   8) (v4.6) 상세 조회는 길이·공개 상태를 같은 1회 호출로 받고, 장부 저장은 요약 방식·등급·신호·요약 시각을 남긴다
 
 const https = require('https');
 const fs = require('fs');
@@ -74,7 +75,7 @@ if (!fs.readFileSync(SCHEDULER, 'utf8').includes('require.main === module')) {
   process.exit(2);
 }
 const sched = require(SCHEDULER);
-const { ytFetch, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, _setLibDb } = sched;
+const { ytFetch, getBatchSubs, getBatchDetails, loadLibraryCache, findDuplicate, saveToLibrary, _setLibDb } = sched;
 const { sendTelegram, readRunState, writeRunState, runNotices, isWholeRunFailure } = sched;
 const library = require(path.join(__dirname, '..', 'lib', 'library'));
 const { DatabaseSync } = library.loadSqlite();   // ExperimentalWarning 한 줄을 삼키는 로더
@@ -218,6 +219,32 @@ const cases = [
       assert(findDuplicate({ videoId: 'NEWNEWNEW01' }, loadLibraryCache(db)), '저장한 영상을 캐시가 못 찾는다');
     } finally { _setLibDb(null); db.close(); }
   }],
+  ['getBatchDetails: (v4.6) contentDetails·status 를 같은 호출로 받아 길이(초)·공개 상태를 채운다', async () => {
+    script = [http(200, { items: [
+      { id: 'V1', statistics: { viewCount: '9' }, snippet: { title: 't' }, contentDetails: { duration: 'PT45M31S' }, status: { privacyStatus: 'public' } },
+      { id: 'V2', statistics: {}, snippet: {}, contentDetails: { duration: 'P0D' }, status: { privacyStatus: 'unlisted' } },
+      { id: 'V3', statistics: {}, snippet: {} },
+    ] })];
+    const m = await getBatchDetails(['V1', 'V2', 'V3', 'V4']);
+    assert(calls.length === 1 && /^\/youtube\/v3\/videos\?part=statistics,snippet,contentDetails,status&id=V1,V2,V3,V4&key=/.test(calls[0].path), '요청 경로가 다르다');
+    assert(m.V1.durationSec === 2731 && m.V1.privacy === 'public' && m.V1.viewCount === 9, 'V1');
+    assert(m.V2.durationSec === 0 && m.V2.privacy === 'unlisted', 'V2');
+    assert(m.V3.durationSec === null && m.V3.privacy === '' && !m.V4, 'V3·V4');
+  }],
+  ['saveToLibrary: (v4.6) 요약 방식·등급·신호·요약 시각 저장, 등급 값은 keep|exclude 만', async () => {
+    const db = library.openLibrary(makeLibrary(SEED));
+    _setLibDb(db);
+    try {
+      const id1 = saveToLibrary({ videoId: 'NEWVID00001', title: '영상 요약' }, '요약', [], { src: 'video', grade: 'exclude', quality: '{"promo_main":true}' });
+      const id2 = saveToLibrary({ videoId: 'NEWVID00002', title: '대체 요약' }, '요약', []);
+      const id3 = saveToLibrary({ videoId: 'NEWVID00003', title: '이상한 등급' }, '요약', [], { src: 'video', grade: 'A' });
+      const g = (id) => db.prepare('SELECT summary_src, grade, quality, summarized_at, created_at FROM videos WHERE record_id = ?').get(id);
+      const a = g(id1), b = g(id2), c = g(id3);
+      assert(a.summary_src === 'video' && a.grade === 'exclude' && a.quality === '{"promo_main":true}' && a.summarized_at === a.created_at, JSON.stringify(a));
+      assert(b.summary_src === 'app' && b.grade === null && b.quality === null && b.summarized_at === b.created_at, JSON.stringify(b));
+      assert(c.grade === null, '허용 밖 등급이 저장됐다: ' + c.grade);
+    } finally { _setLibDb(null); db.close(); }
+  }],
   ['saveToLibrary: 이미 있는 video_id 는 덮어쓰지 않고 던진다', async () => {
     const p = makeLibrary(SEED);
     const db = library.openLibrary(p);
@@ -346,7 +373,7 @@ const cases = [
     script = []; calls = []; unscripted = 0;
     try {
       await fn();
-      assert(calls.length === 0 || /^(ytFetch|getBatchSubs|sendTelegram)/.test(name), `장부 테스트가 네트워크 요청 ${calls.length}회를 만들었다`);
+      assert(calls.length === 0 || /^(ytFetch|getBatchSubs|getBatchDetails|sendTelegram)/.test(name), `장부 테스트가 네트워크 요청 ${calls.length}회를 만들었다`);
       assert(unscripted === 0, `대본에 없는 요청 ${unscripted}회`);
       pass++;
       out(`PASS  ${name}`);

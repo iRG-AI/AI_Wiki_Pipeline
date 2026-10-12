@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**현재 버전: v4.5** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.6** (2026-10-13) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠다. 장부 ↔ Vault 대조는 `scripts/verify_library.py`.
 > v4.4: 꿀팁 제목 보완 `scripts/retitle_tips.py` — 장부 `title`·`updated_at` + 노트 제자리 수정·파일명 변경 + Vault 링크 치환을 한 번에(dry-run 기본, 쓰기 전 백업).
 > v4.5: Wiki 합성 결과 누적 — 장부 `wiki_extract`(user_version 2)에 소스별로 쌓고, `_wiki` 개념·엔티티·index 페이지는 매 실행 전체로 다시 그린다. 옛 소스는 `--backfill` 묶음 추출(하루 30회).
+> v4.6-a: 신규 영상은 실제 영상(YouTube URL)으로 요약하고 같은 호출의 사실 신호로 코드가 등급(keep·exclude)을 매긴다. 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`). `grade: exclude` 노트는 Wiki 합성·검색에서만 뺀다. 안 되면 설명란 요약으로 대체.
 
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
@@ -57,20 +58,21 @@ python3 wiki_ingest.py --full       # 전체: 모든 소스 재분석 (backfill 
 python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리 (backfill 안 함)
 python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페이지 항목 → wiki_extract 씨앗. 기본 dry-run
 
-# 장부 스키마 올리기 (v4.5: user_version 1 → 2). 기본 dry-run. 옛 백업(v1)을 복원했을 때도
+# 장부 스키마 올리기 (v4.6: user_version 1·2 → 3, 한 번에). 기본 dry-run. 옛 백업(v1·v2)을 복원했을 때도
 /opt/homebrew/bin/python3 scripts/migrate_library.py [--apply] [--db=<경로>]
 
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
-# 회귀 테스트 9종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
-/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
+# 회귀 테스트 10종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 31/31  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장
+/opt/homebrew/bin/node scripts/test_video_summary.js         # 17/17  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 (가짜 요청)
 /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
 /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
-/opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 51/51  Wiki 추출 누적·재렌더·backfill·씨앗 + 장부 스키마 이전 (가짜 Gemini)
+/opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 57/57  Wiki 추출 누적·재렌더·backfill·씨앗·품질 제외 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
 /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
-/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
+/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 24/24  장부 → Vault (임시 Vault)
 /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
-/opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 10/10  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정
+/opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 11/11  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외
 /opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
 
 # 대기 큐 정리 (중복 제거 + dead-letter 격리) — 기본 dry-run
@@ -169,7 +171,7 @@ YouTube "AI 영상목록" (마스터 모드)
 | `lib/youtube_oauth.js` | YouTube OAuth2 쓰기 전용. access_token 메모리 캐시(50분), 일일 quota 추적(`.quota_state.json`), 호출 간 200ms rate limit. |
 | `sync_obsidian.py` | (v4.0) 장부 `data/library.db`(읽기 전용) → Obsidian 증분 동기화. 노션 호출 없음. 내부적으로 `wiki_ingest.py`와 연동. 고아 `.md` 격리 포함(아래 참조). `--dry-run` 으로 할 일만 센다. |
 | `wiki_ingest.py` | Karpathy LLM Wiki 파이프라인. Obsidian 노트를 순회하며 Gemini로 엔티티·개념 추출 → (v4.5) 장부 `wiki_extract` 에 소스별 누적 → `_wiki/entities`·`concepts`·`index.md` 를 그 표 전체 + 현재 Vault 로 다시 그림(내용 같으면 안 씀). 아래 「Wiki 합성 결과 누적」. |
-| `scripts/migrate_library.py` | (v4.5) 장부 스키마 이전(user_version 1 → 2). 기본 dry-run, `--apply` 는 온라인 백업 `<장부>.bak.v1-<시각>` 뒤 스키마 실행(전부 `IF NOT EXISTS`) → 버전·무결성·행 수 확인. `--db=` 로 복원본에도. |
+| `scripts/migrate_library.py` | (v4.5·v4.6) 장부 스키마 이전(user_version 1·2 → 3). 기본 dry-run, `--apply` 는 온라인 백업 `<장부>.bak.v<현재>-<시각>` 뒤 한 트랜잭션으로 단계별 `ALTER TABLE ADD COLUMN`(`ADD_COLUMNS`) + 스키마 실행(전부 `IF NOT EXISTS`) → 버전·무결성·행 수·새 표·새 열 확인. 열 추가는 `updated_at` 을 안 건드린다(시트 재전송 없음). `--db=` 로 복원본에도. |
 | `wiki_config.py` | Wiki 인제스트 설정 + Gemini 호출 래퍼. 4키 로테이션, RPD 20 추적(`.wiki_quota.json`), 429 RPD/RPM 분기, 5xx 백오프. |
 | `build_obsidian_wiki.py` | 키워드별 허브 파일 27개 자동 생성(`_MOC/Claude.md` 등) + MOC 재구성. (v4.0) `write_if_changed()` — 내용이 같은 파일은 쓰지 않는다. |
 | `legacy_scripts/` | (v4.0) 은퇴한 노션 전제 스크립트 보관(`migrate_classify.js`·`check_duplicates.py`·`cleanup_duplicates.py`·`fix_nfc_topics.js`·`notion_to_obsidian.js`). 실행 대상 아님 — `legacy_scripts/README.md`. |
@@ -192,7 +194,9 @@ YouTube "AI 영상목록" (마스터 모드)
 | `scripts/test_wiki_ingest.py` | (v4.5) wiki_ingest 누적·재렌더·실패 처리·backfill 상한·씨앗 + `migrate_library` 회귀 테스트. 임시 Vault·장부·상태 파일, Gemini 는 가짜(네트워크 0). |
 | `scripts/retitle_tips.py` · `scripts/test_retitle_tips.py` | (v4.4) 꿀팁 제목 보완. CSV(`record_id,old_title,new_title`) → 장부 `title`·`updated_at`(+ 카톡 자동 메모 비움) · 「AI 꿀팁」 노트 제자리 수정·파일명 변경 · Vault `[[링크]]` 치환 → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 검증 전부 통과 뒤에만 쓰고 쓰기 전 `data/retitle_backup/<시각>/` 에 장부·파일 백업. 장부 조건은 `record_id` + 옛 제목(같은 CSV 재실행은 멈춤). 종료 0 · 1 · 2(무변경). |
 | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
-| `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
+| `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐 · v4.6 `summarySrc`·`grade`·`quality`·`summarized_at`)·`addTopic`·`updateStats`. |
+| `lib/video_summary.js` | (v4.6) 실제 영상 요약 — 요청 생성(`buildBody`)·응답 검사(`parseResponse`, 영상 토큰 0 = 실패)·등급 규칙(`computeGrade`)·하루 분량 누계(`.video_quota.json`)·대체 경로(`makeVideoSummarizer`). 아래 「실제 영상 요약·품질 필터」. |
+| `scripts/test_video_summary.js` | (v4.6) `lib/video_summary.js` 회귀 테스트. 요청 함수는 가짜(네트워크 0), 상태 파일은 임시 폴더. |
 | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
 | `scripts/test_sync_obsidian.py` | (v4.0 2단계) `sync_obsidian.py` 회귀 테스트. 임시 Vault·임시 장부, 하위 단계(재구성·인제스트·인덱스)는 가짜로 바꿔 실제 Vault 를 건드리지 않는다. |
 | `scripts/test_sheet_mirror.py` · `scripts/fake_gas_server.js` | (v4.0 3단계) 시트 미러 회귀 테스트. 가짜 서버가 `gas/sheet_mirror.gs` 원본을 node `vm` 에 올리고 시트·302 리다이렉트를 흉내 낸다(127.0.0.1). 실제 구글 요청 0. |
@@ -316,6 +320,28 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
 - `.wiki_state.json` 의 `entities`·`concepts` 는 이제 전체 카운트다(예전엔 마지막 실행분).
 - 판정: `WIKI_RESULT` 에 `failed`·`entities`·`concepts`(전체 이름 수)·`backfill_calls`·`backfill_done`·`backfill_left` 가 더해졌다. `backfill_left` 가 0 이 되면 끝. `null` 은 그 실행에서 backfill 을 안 돌렸다는 뜻이다.
 
+### 실제 영상 요약·품질 필터 (v4.6-a) — 신규 영상부터
+
+```
+videos.list(statistics,snippet,contentDetails,status — 1유닛 그대로) → 길이(초)·공개 상태
+   │ public · 길이 있음 · 하루 분량 남음 ─▶ Gemini 2.5 Flash 에 YouTube URL 을 영상으로(LOW, 30분 넘으면 endOffset 1800s)
+   │                                        └ JSON {summary_md, signals{promo_main, generic, ai_related, has_demo, sponsored, reason}}
+   │                                        └ 등급 = 코드 규칙 → 장부 summary_src 'video' · grade keep|exclude · quality(JSON)
+   └ 그 밖·실패 ─▶ 기존 설명란 요약(geminiSummarize) → summary_src 'app' · grade NULL(미판정)
+```
+
+- 모듈은 `lib/video_summary.js`, 호출 자리는 `scheduler.js:processMasterIngest` 하나(레거시 재생목록 순회 경로는 설명란 요약 그대로).
+- **등급은 모델이 아니라 코드가 매긴다** — `computeGrade`: `promo_main`(제작자 **자신의** 강의·컨설팅·커뮤니티·상품 판매가 주목적) · `generic`(구체 정보 없는 일반론) · `!ai_related` 중 하나라도면 `exclude`. 유료 광고·협찬(`sponsored`)·시연(`has_demo`)은 기록만 하고 등급에 안 쓴다. 모델에게 A/B/C 를 매기게 했더니 판매 영상에도 A 를 줬다(10-12 시험) — 모델 등급으로 되돌리지 말 것. `promo_main` 정의를 넓히지 말 것 — "판매·홍보가 주목적"으로 두면 다른 회사 도구를 시연하는 협찬 영상까지 제외됐다(10-13 시험).
+- **영상 토큰 0 이면 실패다.** 삭제된 영상은 200 + 영상 토큰 0 + 지어낸 답을 돌려준다(10-13 시험). `parseResponse` 의 이 검사를 빼지 말 것.
+- 공개(`public`)가 아닌 영상은 영상 입력을 시도하지 않는다(일부공개 = 403 PERMISSION_DENIED). 영상 입력 403 은 영상 단위라 그 영상만 대체하고, **연속 2회면 그 실행에서 영상 입력을 끈다**(403 난사 방지). 대체 요약(같은 키)도 403 이면 `geminiSummarize` 의 기존 즉시 종료 경로를 탄다.
+- 429·5xx·네트워크 오류는 키를 돌려 재시도(키 4개 × 2회 상한) 후 대체. 400 등 그 밖의 오류는 재시도 없이 대체.
+- 무료 등급 영상 입력은 하루 8시간 분량 상한(미리보기 기능). `.video_quota.json` `{date(PT), seconds, calls}` 에 시도한 영상의 (앞 30분 기준) 초를 센다 — 실패 요청도 센다. `VIDEO_DAILY_SECONDS`(기본 28800)를 넘을 영상은 대체.
+- `.env` 스위치: `VIDEO_SUMMARY=false` 면 전부 설명란 요약(되돌리기), `VIDEO_MAX_SECONDS`(기본 1800), `VIDEO_DAILY_SECONDS`(기본 28800).
+- `PARALLEL = 1` 유지 — 30분 영상 1편 ≈ 18만 토큰(약 103토큰/초: 영상 71 + 음성 32). 병렬이면 무료 분당 토큰 한도에 걸린다.
+- 노트 프론트매터에 `grade:`(keep·exclude·null)·`summary_src:` 가 붙는다(새 노트만 — 옛 노트는 v4.6-b 재요약 때). **`grade: exclude` 노트는 Vault 에 남고** `wiki_ingest.py:collect_sources`(추출·backfill·페이지 렌더)와 `build_search_index.py:collect_notes`(검색)에서만 빠진다. MOC·시트는 그대로. 제외를 되돌리려면 장부 `grade` 와 노트 프론트매터를 함께 고친다.
+- 판정: `scheduler.log` 의 `🎬 요약 방식: 영상 N (제외 등급 N) · 설명란 대체 N {사유}` 줄, `sqlite3 "file:data/library.db?mode=ro" "select summary_src, grade, count(*) from videos group by 1,2"`.
+- 범위 밖(v4.6-b): 기존 약 3,000편 재요약(`summary_src != 'video'`), 노트 요약 절 제자리 교체, Wiki backfill 재개(지금 `.env WIKI_BACKFILL_DAILY_MAX=0`), 항목 0이 된 `_wiki` 페이지 처리, 재요약 모델(2.5 Flash-Lite 는 신규 프로젝트에 404 — 후보 `gemini-3.5-flash-lite`, 음성 토큰이 따로 안 잡혀 품질 확인 필요).
+
 ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
 
 장부 `videos` 에 없는 notion_id 를 가진 영상 노트를 **삭제하지 않고** `VAULT/_trash/<타임스탬프>/`로 이동합니다 (v4.0 전에는 "Notion에서 삭제된 페이지").
@@ -366,6 +392,7 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
 - `videos_dup` 은 지우지 않는다(중복 페이지 보관, 되돌림용). `has_vault_note=1` 행의 노트는 2단계 첫 동기화에서 `_trash/` 로 격리된다(의도됨).
 - 스키마를 바꾸면 `lib/library_schema.sql` 의 `PRAGMA user_version` 을 올리고 `lib/library_db.py:SCHEMA_VERSION` 도 같이 올린다. 기존 장부는 `scripts/migrate_library.py --apply` 로 올린다 — **코드를 올린 뒤 이전 전까지는 모든 실행이 user_version 불일치로 던진다**(정시 실행 창 밖에서 연달아 할 것). 테스트 `test_backup_library.py` 의 버전 기대값은 `SCHEMA_VERSION` 을 따른다.
 - (v4.5, user_version 2) `wiki_extract` — Wiki 합성 추출 결과(위 「Wiki 합성 결과 누적」). Gemini 무료 한도로 얻은 값이라 지우지 않는다. 시트로 보내지 않는다. 장부 백업에 들어간다.
+- (v4.6, user_version 3) `videos.grade`(keep·exclude·NULL)·`quality`(신호 JSON)·`summarized_at` — 기존 장부는 `migrate_library.py` 가 열만 붙인다(옛 행 NULL). 열은 `CREATE TABLE` 끝에만 추가한다(ALTER 결과와 순서가 같아야 한다). 시트 열은 그대로(머리글 변경 금지 규칙) — 등급은 시트로 보내지 않는다. `summary_src` 값: `property`·`blocks`·`empty`(노션 시절) · `app`(설명란 요약) · `video`(실제 영상 요약).
 
 ### 중요한 제약사항
 
@@ -499,7 +526,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ### 보안 — 절대 커밋 금지
 
-`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `.run_state.json*`(v4.2), `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`). 장부 백업도 상태 파일이 없고(오늘 날짜 파일 유무로 판단) 백업은 `data/backups/` 라 `data/` 패턴에 들어간다.
+`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `.run_state.json*`(v4.2), `.video_quota.json`(v4.6), `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`). 장부 백업도 상태 파일이 없고(오늘 날짜 파일 유무로 판단) 백업은 `data/backups/` 라 `data/` 패턴에 들어간다.
 
 > ⚠️ **새 상태 파일을 만들면 `.gitignore` 패턴을 반드시 재확인한다.**
 > `pending_playlist_adds.json*` 패턴이 `.dead.json`·`.backup.*.json`을 못 잡아 커밋될 뻔한 사고가 있었다(2026-08-17). 현재는 `pending_playlist_adds*`로 수정됨.
@@ -531,6 +558,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-13 (v4.6-a — 실제 영상 요약 + 품질 필터, 신규 영상부터)** — 배경(10-12 시험): 요약이 제목·설명란만 보고 "추론해서라도 작성"이라 설명란이 빈약하면 지어낸 내용이 됐다(`mW5k5CbO4sA` 「AI 데이터 활용」 = 실제는 Python 문자열 강의). 수정: `lib/video_summary.js` 신규 — 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로(LOW, 30분 넘으면 앞 30분), JSON 으로 요약 + 사실 신호, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → exclude). 영상 토큰 0(삭제 영상)·비공개·403(연속 2회면 그 실행 끔)·429 소진·하루 8시간 분량(`.video_quota.json`)은 설명란 요약으로 대체. `getBatchDetails` 가 `contentDetails,status` 도 받음(1유닛 그대로). 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`, `migrate_library.py` 가 v1·v2 → v3 한 번에). 노트 프론트매터 `grade`·`summary_src`, `grade: exclude` 는 `wiki_ingest`·`build_search_index` 에서만 제외. `.env` 스위치 `VIDEO_SUMMARY`·`VIDEO_MAX_SECONDS`·`VIDEO_DAILY_SECONDS`. 테스트: 신규 `test_video_summary.js` 17/17, `test_scheduler_guards.js` 31/31(+2), `test_wiki_ingest.py` 57/57(+6), `test_sync_obsidian.py` 24/24(+1), `test_build_wiki_index.py` 11/11(+1). 회귀 테스트 10종. 지시서 `docs/tasks/2026-10-13-v46a-video-summary.md`.
 - **2026-10-12 (v4.5 — Wiki 합성 결과 누적)** — 결함: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서(05-12 도입 때부터) 페이지 56개의 source_count 가 1~10, index 9행뿐이었다(합성 소스 3,619건). 추출 결과를 저장하지 않아 되살릴 원본이 없었다. 수정: 장부에 `wiki_extract` 표(user_version 1 → 2, `scripts/migrate_library.py`), 소스별 누적 + 매 실행 전체 재렌더(결정적, 내용 같으면 안 씀, 고아 제외·retitle 반영), 깨진 응답은 실패로 3회까지 재시도, 옛 페이지 항목 씨앗(`--seed-from-pages`), 옛 소스 backfill(20개 묶음, 하루 30회, launchd 경로만 — `sync_obsidian` 은 `--no-backfill`). `backup_library.py` 행 수에 `wiki_extract` 추가. 테스트: 신규 `test_wiki_ingest.py` 51/51, `test_backup_library.py` 버전 기대값을 `SCHEMA_VERSION` 으로. 회귀 테스트 9종. 지시서 `docs/tasks/2026-10-12-wiki-extract-store.md`.
 - **2026-10-12 (v4.4 — 꿀팁 제목 보완 도구)** — `scripts/retitle_tips.py`(+ `scripts/test_retitle_tips.py` 49/49) 신규: 장부 tips 제목·`updated_at` + 「AI 꿀팁」 노트 제자리 수정·파일명 변경 + Vault 링크 치환, dry-run 기본·쓰기 전 백업(`data/retitle_backup/`, gitignore 의 `data/` 아래). 앱 코드·데몬 무변경. 첫 적용 5건(`docs/tasks/2026-10-12-retitle-tips.csv`). 회귀 테스트 8종. 지시서 `docs/tasks/2026-10-12-retitle-tips.md`.
 - **2026-10-12 (v4.3 — 노션 잔재 정리)** — 노션 해지(10-12)에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`·`scripts/test_notion_to_sqlite.py` 삭제, `.env` 의 `NOTION_*` 3키 삭제. 그중 계속 쓰던 장부 ↔ Vault 대조(`--verify`)는 `scripts/verify_library.py`(+ `scripts/test_verify_library.py` 16/16)로 떼어 냈다 — 검사 항목·`RESULT_JSON` 키 동일, 실데이터 결과 동일(영상 2,999 · 꿀팁 148 · 없음 0). 앱 코드 변경 없음(주석 3곳). 회귀 테스트 7종 유지. 이름 변경 날짜 표기를 실제 실행일(10-12)로 정정.

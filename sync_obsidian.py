@@ -220,6 +220,9 @@ def video_note_md(rec):
         f'video_url: {video_url or "null"}',
         f'thumbnail: {rec.get("thumbnail_url") or "null"}',
         f'status: {rec.get("status") or ""}',
+        # (v4.6) grade: keep | exclude | null(미판정). exclude 노트는 Vault 에 두고 Wiki 합성·검색 인덱스에서만 뺀다
+        f'grade: {rec.get("grade") or "null"}',
+        f'summary_src: {rec.get("summary_src") or "app"}',
         f'notion_id: {rec["record_id"]}',
         '---',
         '',

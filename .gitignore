@@ -19,6 +19,7 @@ wiki_index.json
 wiki_index.vec
 .migrate_state.json
 .quota_state.json
+.video_quota.json
 migration_preview.csv
 pending_playlist_adds*
 .wiki_quota.json

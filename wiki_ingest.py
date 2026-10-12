@@ -92,9 +92,14 @@ def collect_sources():
                 'channel': fm.get('channel', ''),
                 'notion_id': fm.get('notion_id', ''),
                 'upload_date': fm.get('upload_date', ''),
+                'grade': fm.get('grade', ''),
                 'body': body[:3000],  # API 비용 절약
             })
-    return sources
+    # (v4.6) grade: exclude 노트(판매 주목적·일반론·AI 무관)는 추출·backfill·페이지 렌더 모두에서 뺀다. 노트 자체는 그대로
+    kept = [s for s in sources if s['grade'] != 'exclude']
+    if len(kept) != len(sources):
+        log(f'  🚫 품질 필터 제외 소스 {len(sources) - len(kept)}개 — Wiki 합성에서 뺌')
+    return kept
 
 # ══════════════════════════════════════
 # 2. Gemini로 엔티티/개념 추출

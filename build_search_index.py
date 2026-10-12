@@ -119,6 +119,9 @@ def collect_notes():
                 mm = re.search(rf'^{key}:\s*(.*)$', head, re.MULTILINE)
                 return mm.group(1).strip().strip('"') if mm else default
 
+            if fm('grade') == 'exclude':   # (v4.6) 품질 필터 제외 노트 — Vault 에는 남고 검색에서만 빠진다
+                continue
+
             tags_m = re.search(r'^tags:\s*\[(.*)\]$', head, re.MULTILINE)
             tags = [t.strip().strip('"') for t in tags_m.group(1).split(',')] if tags_m and tags_m.group(1).strip() else []
 

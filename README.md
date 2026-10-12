@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.4** (2026-10-12)
+**현재 버전: v4.6** (2026-10-13)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -11,6 +11,8 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.2: 실행이 통째로 실패하거나, 알림을 못 보냈거나, 정시 실행이 빠지면 텔레그램으로 알립니다(못 보낸 알림은 다음 실행이 보냄).
 > v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠습니다. 장부 ↔ Vault 대조는 `scripts/verify_library.py` 입니다.
 > v4.4: 카톡 꿀팁의 추정 제목(「제목 미확인」·URL 조각)을 원문 제목으로 고치는 `scripts/retitle_tips.py` 를 넣었습니다 — 장부·Obsidian 노트(파일명 포함)·링크를 함께 바꿉니다.
+> v4.5: Wiki 합성 결과(엔티티·개념)를 장부 `wiki_extract` 에 쌓고 `_wiki` 페이지를 매번 전체로 다시 그립니다.
+> v4.6-a: 신규 영상은 **실제 영상**(YouTube URL)을 Gemini 에 넣어 요약하고, 판매가 주목적·일반론·AI 무관 영상은 등급 `exclude` 로 표시해 Wiki 합성·검색에서만 뺍니다(노트는 그대로). 영상 입력이 안 되면 예전처럼 설명란으로 요약합니다.
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
@@ -181,9 +183,9 @@ AI_Wiki_Pipeline/
 ├── backup_library.py                  # (v4.1) 장부 하루 1회 백업 → data/backups/ + 구글 드라이브 (--dry-run / --status / --force)
 ├── sync_obsidian.py                   # 장부 → Obsidian 증분 동기화 (영상·꿀팁 노트, 고아 격리, --dry-run)
 ├── build_obsidian_wiki.py             # MOC + 채널 목차 + 키워드 링크 빌더 (내용 같으면 안 씀)
-├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 추출 → 장부 wiki_extract 누적 → 위키 페이지 렌더 (v4.5)
+├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 추출 → 장부 wiki_extract 누적 → 위키 페이지 렌더 (v4.5, v4.6 grade: exclude 제외)
 ├── wiki_config.py                     # Wiki Ingest 공통 설정 및 Gemini 호출 유틸
-├── build_search_index.py              # 검색 인덱스(임베딩) 증분 빌드 (프론트매터의 notion_id 기준)
+├── build_search_index.py              # 검색 인덱스(임베딩) 증분 빌드 (프론트매터의 notion_id 기준, v4.6 grade: exclude 제외)
 ├── wiki_lan_server.js                 # (v3.2) 집 안 전용 읽기 전용 Wiki 검색 서버 (포트 3100)
 ├── wiki.html                          # Wiki 검색 화면 (server.js·wiki_lan_server.js 공용)
 ├── wiki_mcp.js                        # Wiki 검색 stdio MCP (search_wiki, read_note)
@@ -196,7 +198,8 @@ AI_Wiki_Pipeline/
 ├── lib/
 │   ├── library.js                     # (v4.0) 장부 Node 헬퍼 (openLibrary·insertVideo·addTopic·updateStats)
 │   ├── library_db.py                  # (v4.0) 장부 Python 헬퍼 (open_existing — 없으면 만들지 않음)
-│   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 2 = v4.5 wiki_extract)
+│   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 3 = v4.6 videos.grade·quality·summarized_at)
+│   ├── video_summary.js               # (v4.6) 실제 영상 요약 + 품질 신호 · 등급 규칙 · 하루 영상 분량 누계
 │   ├── env_util.py                    # (v4.0) .env 읽기 (의존성 없음)
 │   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
 │   ├── classifier.js                  # Gemini 기반 토픽 분류기
@@ -205,10 +208,10 @@ AI_Wiki_Pipeline/
 ├── scripts/
 │   ├── verify_library.py              # (v4.3) 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음)
 │   ├── retitle_tips.py                # (v4.4) 꿀팁 제목 보완 — 장부·노트 파일명·링크 일괄 (dry-run 기본)
-│   ├── migrate_library.py             # (v4.5) 장부 스키마 이전 1 → 2 (dry-run 기본, 백업 먼저)
+│   ├── migrate_library.py             # (v4.5·v4.6) 장부 스키마 이전 1·2 → 3 (dry-run 기본, 백업 먼저)
 │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
 │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
-│   └── test_*.{js,py}                 # 회귀 테스트 9종 (네트워크 0회)
+│   └── test_*.{js,py}                 # 회귀 테스트 10종 (네트워크 0회)
 ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
 ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
 ├── docs/cowork-project-instructions.md # (옛) Cowork 프로젝트 인수인계 사본 (2026-08-17) — 현재 원본은 Cowork 프로젝트 설정
@@ -256,6 +259,11 @@ LIBRARY_BACKUP_DIR=~/Library/CloudStorage/GoogleDrive-<계정>/내 드라이브/
 # (v4.5) Wiki 합성 backfill — 옛 소스를 묶어서 다시 추출. 영상 요약과 같은 Gemini 무료 키를 쓰므로 올리지 말 것
 WIKI_BACKFILL_DAILY_MAX=30                          # 하루(태평양시) 호출 상한, 0 = 끔 (없으면 30)
 WIKI_BACKFILL_BATCH=20                              # 한 호출에 묶는 소스 수 1~40 (없으면 20)
+
+# (v4.6) 실제 영상 요약 — 없으면 아래 기본값. false 면 예전처럼 설명란으로만 요약
+VIDEO_SUMMARY=true
+VIDEO_MAX_SECONDS=1800                              # 이보다 긴 영상은 앞부분만 (Gemini videoMetadata.endOffset)
+VIDEO_DAILY_SECONDS=28800                           # 하루(태평양시) 영상 입력 분량 상한 — 무료 등급 8시간
 
 # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
 WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
@@ -396,13 +404,13 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 ---
 
-## 🗄️ 장부 구조 (`data/library.db`, v4.0 · user_version 2 = v4.5)
+## 🗄️ 장부 구조 (`data/library.db`, v4.0 · user_version 3 = v4.6)
 
 스키마 원본은 `lib/library_schema.sql` 하나다(Python·Node 가 같은 파일을 실행). 문자열은 NFC, 목록은 JSON 배열 문자열, 시각은 ISO 8601 UTC.
 
 | 테이블 | 내용 | 시트 탭 |
 |---|---|---|
-| `videos` | 영상 1건 1행. `record_id`(노션에서 옮긴 행 = 노션 page id, 새 행 = uuid4 = Obsidian `notion_id`) · `video_id`(UNIQUE) · 제목 · 채널 · `topics` · 업로드일 · 조회수 · 구독자 · URL · `summary`(Gemini 요약 마크다운) | **영상** |
+| `videos` | 영상 1건 1행. `record_id`(노션에서 옮긴 행 = 노션 page id, 새 행 = uuid4 = Obsidian `notion_id`) · `video_id`(UNIQUE) · 제목 · 채널 · `topics` · 업로드일 · 조회수 · 구독자 · URL · `summary`(Gemini 요약 마크다운) · `summary_src`(`video` 실제 영상 요약 · `app` 설명란 요약 · 그 밖 노션 시절) · (v4.6) `grade`(keep·exclude·NULL 미판정) · `quality`(신호 JSON) · `summarized_at` — 등급·신호는 시트로 보내지 않는다 | **영상** |
 | `tips` | 카톡 링크 1건 1행. 제목 · URL · `url_key`(중복 판정) · 출처(호스트) · `tags` · 카테고리 · 상태 · 중요도 · 저장일 · 메모 · `body_md`(본문) | **꿀팁** |
 | `videos_dup` | 1단계 적재 때 같은 video_id 로 겹친 노션 페이지 보관본 (지우지 않음) | — |
 | `wiki_extract` | (v4.5) Wiki 합성 추출 결과 — 소스(`record_id`)별 엔티티·개념·관계 JSON, `status`(ok·seed·failed)·`attempts`. `_wiki` 페이지는 이 표로 다시 그린다 | — |
@@ -423,6 +431,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.6-a** | 2026-10-13 | **실제 영상 요약 + 품질 필터(신규 영상부터)**: 설명란만 보고 "추론해서라도" 쓰던 요약이 빈약한 설명란에서 지어낸 내용이 되던 문제 수정. 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로 넣어(LOW, 30분 넘으면 앞 30분) 요약 + 사실 신호를 받고, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → `exclude`). 삭제·비공개·403·한도는 설명란 요약으로 대체. 장부 user_version 3(`grade`·`quality`·`summarized_at`), 노트 프론트매터 `grade`·`summary_src`, `exclude` 는 Wiki 합성·검색에서만 제외. 회귀 테스트 10종 |
 | **v4.5** | 2026-10-12 | **Wiki 합성 결과 누적**: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서 페이지마다 1~10건만 남던 결함(05-12 도입 때부터) 수정. 추출 결과를 장부 새 표 `wiki_extract`(user_version 2, `scripts/migrate_library.py`)에 소스별로 쌓고 매 실행 전체로 다시 그림(내용 같으면 안 씀). 깨진 응답은 실패로 재시도(3회), 옛 페이지 항목 씨앗, 옛 소스 3천여 건은 20개 묶음 backfill(하루 30회, 약 6일). 회귀 테스트 9종 |
 | **v4.4** | 2026-10-12 | **꿀팁 제목 보완 도구**: 카톡 인제스트가 URL 로만 추정한 꿀팁 제목(「유튜브 영상 (제목 미확인)」·`courses` 등, 46건 누적)을 원문 제목으로 고치는 `scripts/retitle_tips.py`(CSV 입력, dry-run 기본). 장부 `title`·`updated_at`(시트 미러 반영) + 자동 메모 비움, 「AI 꿀팁」 노트 제자리 수정·파일명 변경, Vault `[[링크]]` 치환을 함께 하고 쓰기 전에 장부·파일을 백업. 첫 적용 5건. 회귀 테스트 8종 |
 | **v4.3** | 2026-10-12 | **노션 잔재 정리**: 노션 해지에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`(+ 테스트)와 `.env` 의 `NOTION_*` 3키를 지움. 계속 쓰던 장부 ↔ Vault 대조만 `scripts/verify_library.py` 로 떼어 냄(검사 항목·`RESULT_JSON` 동일, 테스트 16/16). 앱 코드 동작 무변경. |
@@ -449,6 +458,23 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.6-a] — 2026-10-13 (🎬 실제 영상 요약 + 품질 필터, 신규 영상부터)
+
+**배경.** `scheduler.js:geminiSummarize` 는 제목·채널·설명란·태그만 넣고 "정보가 부족해도 추론해서 반드시 작성"을 시켰다. 10-12 시험에서 설명란이 빈약한 `mW5k5CbO4sA` 「AI 데이터 활용」의 장부 요약(데이터 수집·정제·윤리)은 전부 지어낸 내용이었다 — 실제 영상은 VS Code 로 Python 문자열을 다루는 강의. 같은 시험에서 Gemini 에 YouTube URL 을 영상으로 넣으면 실제 내용을 요약했고, 판매 목적·일반론 같은 사실 판단은 맞았지만 모델이 매긴 A/B/C 등급은 컨설팅 판매 영상에도 A 를 줬다.
+
+| 항목 | 내용 |
+|---|---|
+| 요약 | 공개 영상 → `fileData.fileUri` = YouTube URL, `MEDIA_RESOLUTION_LOW`(약 103토큰/초), 30분 넘으면 `videoMetadata.endOffset` 1800s. JSON 응답 `{summary_md(4절), signals{promo_main, generic, ai_related, has_demo, sponsored, reason}}`. 모듈 `lib/video_summary.js` |
+| 등급 | 코드 규칙 — `promo_main`(제작자 자신의 강의·컨설팅·상품 판매가 주목적)·`generic`·`!ai_related` 중 하나라도면 `exclude`, 아니면 `keep`. 유료 광고·협찬(`sponsored`)은 기록만, 제외 사유 아님(실제 시험에서 정의가 넓으면 협찬 도구 시연까지 잡혀 좁힘). 대체 요약은 `NULL`(미판정) |
+| 대체 | 일부공개·비공개·길이 모름 → 영상 입력 안 함. 200 이어도 영상 토큰 0(삭제 영상이 지어낸 답을 줌) → 실패. 403 → 그 영상만, 연속 2회면 그 실행 끔. 429·5xx → 키 돌려 재시도 후. 하루 영상 분량 8시간(`.video_quota.json`, 태평양시) 초과 → 모두 기존 설명란 요약(`summary_src` `app`) |
+| 조회 | `videos.list` 를 `part=statistics,snippet,contentDetails,status` 로(1유닛 그대로) — 길이·공개 상태 |
+| 장부 | user_version 2 → 3: `videos.grade`·`quality`·`summarized_at`. `scripts/migrate_library.py --apply` 가 열만 붙임(v1·v2 → v3 한 번에, 옛 행 NULL, `updated_at` 무변경이라 시트 재전송 없음) |
+| 노트·Wiki·검색 | 새 노트 프론트매터 `grade:`·`summary_src:`. `grade: exclude` 노트는 Vault 에 남고 `wiki_ingest`(추출·backfill·렌더)·`build_search_index` 에서만 빠짐. 시트 열은 그대로 |
+| 끄기 | `.env VIDEO_SUMMARY=false`(전부 설명란 요약) |
+| 테스트 | 신규 `scripts/test_video_summary.js` 17/17, `test_scheduler_guards.js` 31/31, `test_wiki_ingest.py` 57/57, `test_sync_obsidian.py` 24/24, `test_build_wiki_index.py` 11/11. 회귀 테스트 10종 |
+| 다음(v4.6-b) | 기존 약 3,000편 재요약(최신부터, 하루 상한) · 노트 요약 절 제자리 교체 · Wiki backfill 재개(지금 정지) |
+| 지시서 | `docs/tasks/2026-10-13-v46a-video-summary.md` |
 
 #### [v4.5] — 2026-10-12 (🧠 Wiki 합성 결과 누적)
 

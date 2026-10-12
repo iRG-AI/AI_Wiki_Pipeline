@@ -6,7 +6,7 @@
 -- 문자열은 전부 NFC. topics·tags 는 JSON 배열 문자열.
 -- 시각(created_at·updated_at)은 ISO 8601 UTC ('2026-10-11T08:15:00.000Z').
 
-PRAGMA user_version = 2;   -- v4.5: wiki_extract 추가 (1 → 2, 이전 장부는 scripts/migrate_library.py)
+PRAGMA user_version = 3;   -- v4.6: videos.grade·quality·summarized_at (2 → 3) · v4.5: wiki_extract (1 → 2). 이전 장부는 scripts/migrate_library.py
 
 CREATE TABLE IF NOT EXISTS videos (
   record_id        TEXT PRIMARY KEY,
@@ -21,9 +21,13 @@ CREATE TABLE IF NOT EXISTS videos (
   thumbnail_url    TEXT,
   status           TEXT,
   summary          TEXT NOT NULL DEFAULT '',    -- 원문 마크다운 (Gemini 요약 그대로)
-  summary_src      TEXT NOT NULL DEFAULT 'app', -- property | blocks | empty | app
+  summary_src      TEXT NOT NULL DEFAULT 'app', -- property | blocks | empty | app(설명란 요약) | video(v4.6 실제 영상 요약)
   created_at       TEXT NOT NULL,
-  updated_at       TEXT NOT NULL
+  updated_at       TEXT NOT NULL,
+  -- v4.6 (user_version 3) — 기존 장부는 migrate_library.py 가 ALTER TABLE 로 붙인다. 열 순서를 바꾸지 말 것(뒤에만 추가)
+  grade            TEXT,                        -- keep | exclude | NULL(미판정 = 설명란 요약·옛 행). exclude 는 Wiki·검색에서만 뺀다
+  quality          TEXT,                        -- 영상 요약 신호 JSON {promo_main, generic, ai_related, has_demo, reason, why, model, sec, ...}
+  summarized_at    TEXT                         -- 요약을 만든 시각(ISO UTC). 옛 행은 NULL
 );
 CREATE INDEX IF NOT EXISTS idx_videos_title ON videos(title);
 

@@ -9,7 +9,7 @@ REPO_ROOT   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR    = os.path.join(REPO_ROOT, 'data')
 DB_PATH     = os.path.join(DATA_DIR, 'library.db')
 SCHEMA_PATH = os.path.join(REPO_ROOT, 'lib', 'library_schema.sql')
-SCHEMA_VERSION = 2   # v4.5 wiki_extract — lib/library_schema.sql 의 PRAGMA user_version 과 같이 올린다
+SCHEMA_VERSION = 3   # v4.6 videos.grade·quality·summarized_at (v4.5 = 2 wiki_extract) — lib/library_schema.sql 의 PRAGMA user_version 과 같이 올린다
 
 
 def schema_sql():

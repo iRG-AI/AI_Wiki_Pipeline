@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-wiki_ingest.py (v4.5 wiki_extract 누적·재렌더·backfill·씨앗) + scripts/migrate_library.py 회귀 테스트
+wiki_ingest.py (v4.5 wiki_extract 누적·재렌더·backfill·씨앗 · v4.6 품질 필터 제외) + scripts/migrate_library.py(v1·v2 → v3) 회귀 테스트
 — 네트워크 0회(Gemini 는 가짜), 실제 Vault·data/·상태 파일 무변경
 
   /opt/homebrew/bin/python3 scripts/test_wiki_ingest.py
@@ -76,11 +76,12 @@ def ok_json(ents=(), cons=(), rels=()):
                        'relations': [{'from': a, 'to': b, 'type': t} for a, b, t in rels]}, ensure_ascii=False)
 
 
-def note(vault, folder, fname, title, rid, date='2026-10-01'):
+def note(vault, folder, fname, title, rid, date='2026-10-01', grade=None):
     p = os.path.join(vault, folder, fname)
     os.makedirs(os.path.dirname(p), exist_ok=True)
+    g = f'grade: {grade}\n' if grade else ''
     open(p, 'w', encoding='utf-8').write(
-        f'---\ntitle: "{title}"\nchannel: "채널"\nupload_date: {date}\nnotion_id: {rid}\n---\n\n## 영상 개요\n{title} 본문\n')
+        f'---\ntitle: "{title}"\nchannel: "채널"\nupload_date: {date}\n{g}notion_id: {rid}\n---\n\n## 영상 개요\n{title} 본문\n')
     return p
 
 
@@ -304,7 +305,7 @@ try:
     run(); raised = ''
 except RuntimeError as e:
     raised = str(e)
-check('v1 장부를 v2 코드가 열면 던짐', 'user_version 1' in raised, raised)
+check('v1 장부를 v3 코드가 열면 던짐', 'user_version 1' in raised, raised)
 b0 = open(ldb.DB_PATH, 'rb').read()
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
@@ -315,7 +316,7 @@ buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
     code = mig.main(['--apply'])
 rj = json.loads(buf.getvalue().split('RESULT_JSON ')[1])
-check('migrate --apply: user_version 2 · 행 수 그대로 · 백업 생김', code == 0 and rj['ok'] and rj['user_version'] == 2 and rj['rows'] == {'videos': 1, 'videos_dup': 0, 'tips': 0, 'meta': 0} and os.path.exists(rj['backup']), str(rj))
+check('migrate --apply: v1 → v3 한 번에 · 행 수 그대로 · 백업 생김', code == 0 and rj['ok'] and rj['user_version'] == ldb.SCHEMA_VERSION == 3 and rj['rows'] == {'videos': 1, 'videos_dup': 0, 'tips': 0, 'meta': 0} and os.path.exists(rj['backup']), str(rj))
 bk = sqlite3.connect(rj['backup'])
 check('백업 사본은 v1 그대로', bk.execute('PRAGMA user_version').fetchone()[0] == 1); bk.close()
 code, out, r = run()
@@ -331,7 +332,51 @@ with contextlib.redirect_stdout(io.StringIO()):
     code = mig.main(['--apply', '--db=' + os.path.join(root, '없음.db')])
 check('migrate: 장부 없으면 exit 1 · 안 만듦', code == 1 and not os.path.exists(os.path.join(root, '없음.db')))
 c = sqlite3.connect(':memory:'); c.executescript(ldb.schema_sql())
-check('스키마 파일 user_version = SCHEMA_VERSION', c.execute('PRAGMA user_version').fetchone()[0] == ldb.SCHEMA_VERSION == 2); c.close()
+check('스키마 파일 user_version = SCHEMA_VERSION', c.execute('PRAGMA user_version').fetchone()[0] == ldb.SCHEMA_VERSION == 3); c.close()
+
+# ═══ 8. (v4.6) migrate v2 → v3 — 열만 붙고 기존 행·updated_at 그대로 ═══
+root, vault = setup('mig3')
+V2_SQL = re.sub(r',\n  -- v4\.6.*?summarized_at    TEXT[^\n]*\n', '\n', ldb.schema_sql(), flags=re.DOTALL).replace('PRAGMA user_version = 3', 'PRAGMA user_version = 2')
+os.remove(ldb.DB_PATH)
+c = sqlite3.connect(ldb.DB_PATH); c.executescript(V2_SQL)
+check('v2 스키마 재현(새 열 없음 · user_version 2)', not {'grade', 'quality', 'summarized_at'} & {x[1] for x in c.execute('PRAGMA table_info(videos)')}
+      and c.execute('PRAGMA user_version').fetchone()[0] == 2)
+c.execute("INSERT INTO videos (record_id, video_id, title, summary, summary_src, created_at, updated_at) VALUES ('v2a','AAAAAAAAAAA','옛 영상','요약','property','2026-05-01T00:00:00.000Z','2026-05-02T00:00:00.000Z')")
+c.execute("INSERT INTO wiki_extract (record_id, status, created_at, updated_at) VALUES ('v2a','ok','x','x')")
+c.commit(); c.close()
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    code = mig.main([])
+rj = json.loads(buf.getvalue().split('RESULT_JSON ')[1])
+check('v2 dry-run: 새 열 3개 보고 · 무변경', code == 0 and rj['dry_run'] and rj['add_columns'] == ['videos.grade', 'videos.quality', 'videos.summarized_at'] and rj['missing'] == [], str(rj))
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    code = mig.main(['--apply'])
+rj = json.loads(buf.getvalue().split('RESULT_JSON ')[1])
+c = sqlite3.connect(ldb.DB_PATH); c.row_factory = sqlite3.Row
+r = dict(c.execute("SELECT * FROM videos WHERE record_id='v2a'").fetchone())
+nwx = c.execute('SELECT COUNT(*) FROM wiki_extract').fetchone()[0]; c.close()
+check('v2 → v3 apply: ok · 새 열 NULL · updated_at 그대로 · wiki_extract 보존',
+      code == 0 and rj['ok'] and rj['user_version'] == 3 and r['grade'] is None and r['quality'] is None and r['summarized_at'] is None
+      and r['updated_at'] == '2026-05-02T00:00:00.000Z' and r['summary'] == '요약' and nwx == 1, str((rj, r)))
+bk = sqlite3.connect(rj['backup'])
+check('v2 백업 사본은 v2 그대로', bk.execute('PRAGMA user_version').fetchone()[0] == 2 and 'grade' not in {x[1] for x in bk.execute('PRAGMA table_info(videos)')}); bk.close()
+
+# ═══ 9. (v4.6) grade: exclude 소스는 추출·렌더에서 빠진다 (노트는 그대로) ═══
+root, vault = setup('grade')
+note(vault, 'AI Claude', 'k1.md', '좋은영상', 'rid-k')
+px = note(vault, 'AI Claude', 'x1.md', '판매영상', 'rid-x', grade='exclude')
+note(vault, 'AI Claude', 'n1.md', '미판정영상', 'rid-n', grade='null')
+SINGLE['좋은영상'] = ok_json([('Claude Code', '도구')])
+SINGLE['판매영상'] = ok_json([('Claude Code', '도구')])
+SINGLE['미판정영상'] = ok_json([('Claude Code', '주제')])
+h = hashlib.sha256(open(px, 'rb').read()).hexdigest()
+code, out, r = run()
+pg = page(vault, 'entities', 'Claude Code')
+check('exclude: 추출 호출 안 함 · 페이지에 없음 · keep·미판정은 실림',
+      code == 0 and ('single', '판매영상') not in CALLS and ('single', '좋은영상') in CALLS and ('single', '미판정영상') in CALLS
+      and '판매영상' not in pg and '좋은영상' in pg and '미판정영상' in pg, str((CALLS, pg[:300])))
+check('exclude 노트 파일은 그대로', hashlib.sha256(open(px, 'rb').read()).hexdigest() == h and '품질 필터 제외 소스 1개' in out)
 
 # ═══ 마무리 ═══
 check('전체 네트워크 0회', NET_CALLS == [])

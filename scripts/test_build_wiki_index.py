@@ -8,6 +8,7 @@
   1) 두 번째 재구성은 노트를 하나도 다시 쓰지 않는다 (mtime 그대로) — 2026-10-11 Vault 전체 mtime 3,193개 변경의 재발 방지
   2) 바뀐 노트 하나만 다시 쓴다
   3) 검색 인덱스는 맨 앞 프론트매터의 notion_id 만 노트로 센다 (본문 예시의 'notion_id: …' 는 노트가 아니다)
+  4) (v4.6) 프론트매터 grade: exclude 노트는 검색 인덱스에서 빠진다 (grade: null·keep 은 그대로)
 """
 import os, shutil, sys, tempfile, time
 from contextlib import redirect_stdout
@@ -116,6 +117,16 @@ try:
     check('노트 = 영상 2 + 꿀팁 1 (본문 예시 2개는 제외)', ids == ['aaaaaaaa-0000-0000-0000-00000000001a', 'aaaaaaaa-0000-0000-0000-00000000002b', 'tip-0001'], ids)
     n1 = next(n for n in notes if n['id'].endswith('1a'))
     check('제목·태그·조회수는 프론트매터 값', n1['title'] == '영상 하나' and n1['tags'] == ['AI Claude'] and n1['view_count'] == 10, n1)
+
+    print('▶ 5. (v4.6) grade: exclude 는 검색에서 제외')
+    for rel, nid, g in (('AI Claude/채널가_판매_20260903.md', 'aaaaaaaa-0000-0000-0000-00000000003c', 'exclude'),
+                        ('AI Claude/채널가_좋음_20260904.md', 'aaaaaaaa-0000-0000-0000-00000000004d', 'keep'),
+                        ('AI Claude/채널가_미판정_20260905.md', 'aaaaaaaa-0000-0000-0000-00000000005e', 'null')):
+        with open(os.path.join(V, rel), 'w', encoding='utf-8') as fh:
+            fh.write(note('x', nid, 'AI Claude').replace('status: 완료\n', f'status: 완료\ngrade: {g}\n'))
+    ids = sorted(n['id'] for n in bsi.collect_notes())
+    check('exclude 1건만 빠지고 keep·null 은 포함', '…003c' not in ids and not any(i.endswith('3c') for i in ids)
+          and any(i.endswith('4d') for i in ids) and any(i.endswith('5e') for i in ids) and len(ids) == 5, ids)
     check('네트워크 요청 0건', not calls, calls[:2])
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
