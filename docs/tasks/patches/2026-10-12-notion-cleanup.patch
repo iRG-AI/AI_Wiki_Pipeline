@@ -1,0 +1,1689 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 201011f..e544748 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -4,16 +4,17 @@
+ > 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
+ > (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
+ 
+-**현재 버전: v4.2** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
++**현재 버전: v4.3** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+ > v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
++> v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠다. 장부 ↔ Vault 대조는 `scripts/verify_library.py`.
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+ > 구 백업: `~/Claude/Youtube_Notion_Grap_BACKUP_20260717`.
+-> 2026-10-13에 이름을 `Youtube_Notion_Grap`(GitHub `YouTube_Notion_Grab`) → `AI_Wiki_Pipeline`(폴더·GitHub 동일)으로 바꿨습니다. 옛 이름·경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다(`docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둡니다).
++> 2026-10-12에 이름을 `Youtube_Notion_Grap`(GitHub `YouTube_Notion_Grab`) → `AI_Wiki_Pipeline`(폴더·GitHub 동일)으로 바꿨습니다. 옛 이름·경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다(`docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둡니다).
+ 
+ ## Commands
+ 
+@@ -57,7 +58,7 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
+ 
+ # 회귀 테스트 7종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+ /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
+-/opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py   # 37/37  (보관 스크립트) 적재·--verify
++/opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+@@ -68,9 +69,8 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
+ node scripts/clean_pending_queue.js
+ node scripts/clean_pending_queue.js --apply
+ 
+-# 장부 ↔ Vault 대조 (노션 호출 없음) — 보관 스크립트지만 --verify 는 계속 쓴다
+-/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify
+-# ※ --apply --replace 는 금지(장부가 원본이 된 뒤라 스크립트가 거부한다). 노션 적재 기능은 노션 해지 때 파일째 지운다
++# 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음) — 통과 0 · 실패 1, 마지막 RESULT_JSON 의 vault_missing·tips_missing 0
++/opt/homebrew/bin/python3 scripts/verify_library.py
+ 
+ # launchd 제어 (6시간 자동 실행)
+ launchctl start com.irichgreen.ytsummarizer
+@@ -165,7 +165,6 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. (v4.2) 실행 실패 알림(판정·점검 문구·상태 파일·`sendTelegram` 반환값) 포함. |
+ | `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. |
+ | `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
+-| `lib/tips_notion.py` | (보관) 노션 「AI 꿀팁」 래퍼. **앱은 import 하지 않는다** — `scripts/notion_to_sqlite.py` 만 쓴다. 노션 해지 때 함께 삭제. |
+ | `lib/env_util.py` | (v4.0 3단계) `.env` 읽기(의존성 0). `kakao_ingest.py`·`sheet_mirror.py` 가 쓴다. |
+ | `sheet_mirror.py` | (v4.0 3단계) 장부 → 구글 시트 미러(보기 전용, 단방향). `updated_at` 워터마크로 변경분만, 200행씩 POST. `--dry-run`·`--full`·`--check`. 아래 "구글 시트 미러" 절. |
+ | `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
+@@ -176,7 +175,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `wiki_mcp.js` | 같은 코어를 Claude에 노출하는 stdio MCP(`search_wiki`, `read_note`). 웹 서버 없이 동작. |
+ | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
+ | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
+-| `scripts/notion_to_sqlite.py` | (보관, v4.0 1단계) 노션 두 DB → `data/library.db` 적재 스크립트. 지금 쓰는 기능은 `--verify`(장부 ↔ Vault 대조, 노션 호출 없음)뿐. 노션 rich_text → 마크다운 변환(`block_to_md`)도 여기로 옮겼다. 노션 해지 때 삭제. |
++| `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
+ | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
+ | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
+@@ -316,16 +315,15 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
+ - **Google Apps Script 웹앱** (v4.0, 시트 미러 받는 쪽): `SHEET_MIRROR_URL`, `SHEET_MIRROR_TOKEN`
+ - **Telegram Bot**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+ - **구글 드라이브 데스크톱 앱** (v4.1, 장부 백업 사본): `LIBRARY_BACKUP_DIR` — API 호출 없음, 앱이 동기화하는 로컬 폴더에 파일만 쓴다
+-- (보관) **Notion API**: `NOTION_TOKEN`·`NOTION_DB_ID`·`NOTION_TIPS_DB_ID` — 앱은 쓰지 않는다. `scripts/notion_to_sqlite.py` 만 읽는다. 「Notion 데이터 이관」이 끝나 노션을 해지할 때 `lib/tips_notion.py`·`notion_to_sqlite.py` 와 함께 지운다.
+ 
+ 모든 API 키는 `.env`에서 로드. `scheduler.js`와 `lib/*.js` 각각 자체 `loadEnv()` 포함.
+ 
+ ### v4.0 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
+ 
+-- **장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py`·`sheet_mirror.py` 는 장부를 읽어 노트·시트를 만든다(`sheet_mirror.py` 는 `meta` 의 `sheet_*` 키만 쓴다). 파이프라인에 노션 호출이 없고 앱 코드는 노션 모듈을 import 하지 않는다. 노션은 낡은 사본(해지 대기).
++- **장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py`·`sheet_mirror.py` 는 장부를 읽어 노트·시트를 만든다(`sheet_mirror.py` 는 `meta` 의 `sheet_*` 키만 쓴다). 파이프라인에 노션 호출이 없고 앱 코드는 노션 모듈을 import 하지 않는다. 노션은 2026-10-12 해지했다(v4.3 에서 노션 모듈·`.env NOTION_*` 삭제).
+ - **장부는 이 맥에만 있는 원본이다.** 지우거나 새로 만들지 말 것 — 파일이 없으면 Node·Python 모두 만들지 않고 던진다. 복원은 `data/backups/library-YYYYMMDD.db.gz`(v4.1, 하루 1회 · 드라이브에도 사본) 또는 `data/library.db.bak.*` 에서 — 절차는 README 「장부 백업」.
+ - 새 영상 노트 본문 = 장부 `summary`(Gemini 요약 원문 마크다운). 모양은 노션 시절 노트와 같다(빈 줄 · `**▶ 영상 보기: **URL` · `---` · 요약).
+-- **`meta.switched_at` 이 찍힌 장부에 `notion_to_sqlite.py --apply --replace` 를 돌리지 말 것** — 스크립트가 거부한다(앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다).
++- 노션 → 장부 적재 스크립트(`notion_to_sqlite.py`)는 v4.3 에서 지웠다. 장부를 되살리는 경로는 백업 복원뿐이다(README 「장부 백업」).
+ - journal_mode 는 기본(DELETE) 그대로 둔다. 접근이 scheduler → kakao_ingest → sync_obsidian 순차라 WAL 이 필요 없다. 겹치면 Node·Python 모두 busy_timeout 5초 대기.
+ - `record_id` = 노션 page id(하이픈 포함) = Obsidian `notion_id`. **프론트매터 키 이름 `notion_id` 를 바꾸지 말 것** — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다. 새 행은 uuid4.
+ - `data/` 는 gitignore. 개인 요약 전체가 들어 있다 — `git check-ignore -q data/library.db` 로 확인.
+@@ -496,7 +494,8 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
+-- **2026-10-13 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
++- **2026-10-12 (v4.3 — 노션 잔재 정리)** — 노션 해지(10-12)에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`·`scripts/test_notion_to_sqlite.py` 삭제, `.env` 의 `NOTION_*` 3키 삭제. 그중 계속 쓰던 장부 ↔ Vault 대조(`--verify`)는 `scripts/verify_library.py`(+ `scripts/test_verify_library.py` 16/16)로 떼어 냈다 — 검사 항목·`RESULT_JSON` 키 동일, 실데이터 결과 동일(영상 2,999 · 꿀팁 148 · 없음 0). 앱 코드 변경 없음(주석 3곳). 회귀 테스트 7종 유지. 이름 변경 날짜 표기를 실제 실행일(10-12)로 정정.
++- **2026-10-12 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
+ - **2026-10-12 (문서 현행화, 버전 유지)** — README 전수 대조 후 수정: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·`.run_state.json` 추가), 사이클 표 순서(대기 큐 소진이 인제스트보다 먼저 — `scheduler.js` 실제 순서), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 4개 표, 프로젝트 구조 누락 파일 5개, 장부 `meta`·`tips` 열, v4.0 이력의 낡은 표기. 레포 `com.irichgreen.wiki-ingest.plist` 를 설치본과 같게(17:30 · Homebrew python3 · 증분), `install-wiki-ingest.sh`·`install-scheduler.sh`·`deploy.sh` 의 낡은 문구(03:00·노션·00:30) 정리. 코드 동작 무변경, 데몬 재기동 불필요. 지시서 `docs/tasks/2026-10-12-docs-sync.md`.
+ - **2026-10-12 (v4.2 — 실행 실패 알림)** — 10-04 ~ 10-12 실행 35회 재집계: 프로세스가 죽은 실행 0, "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2(10-04 06:00·10-05 00:00 ENOTFOUND), 아예 돌지 않은 정시 실행 1(10-09 12:00) — 셋 다 텔레그램 없이 지나갔다(`hasNewOrUpdated` 에 안 걸리고, `main().catch` 는 로그만). `scheduler.js`: 통째 실패면 `[실행 실패]` 텔레그램, `main().catch` 도 기록 후 알림, 실행 상태 파일 `.run_state.json` 으로 못 보낸 실패·끝나지 못한 실행·9시간 넘는 간격을 다음 실행이 `[직전 실행 점검]` 으로 알림(못 보내면 pending 으로 넘김, 최대 10줄). `sendTelegram` 이 성공 여부(true/false)를 돌려주고 JSON 아닌 응답에 죽던 잠복 결함·무응답 대기를 막음(20초). `.gitignore` 에 `.run_state.json*`. 테스트: `test_scheduler_guards.js` 29/29(+7), 사본 폴더 `main()` 모의 실행 10종(가짜 https·하위 스크립트). 지시서 `docs/tasks/2026-10-12-run-failure-alert.md`.
+ - **2026-10-12 (v4.1 — 장부 자동 백업)** — `backup_library.py` 신설: 장부를 하루 1회(KST 날짜 파일 유무로 판단, 상태 파일 없음) SQLite 온라인 백업 → `integrity_check`·`user_version`·`videos≥1` 검사 → gzip → 압축 해제 sha256 대조 후 `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브 데스크톱 앱 폴더)에 저장, 최신 7개 + 주별 4개 보관(형식 맞는 이름만 정리). 드라이브 부모 폴더가 없으면 만들지 않고 실패. 장부는 읽기 전용. `scheduler.js:runLibraryBackup()`(reject 없음, 실패는 텔레그램 별도). 배경: 타임머신 디스크 미마운트·iCloud 동기화 꺼짐으로 장부 사본이 같은 디스크의 `.bak` 하나뿐이었다. 테스트: 신규 `test_backup_library.py` 50/50, `test_scheduler_guards.js` 22/22(+3). 지시서 `docs/tasks/2026-10-12-library-backup.md`.
+diff --git a/CLAUDE.md b/CLAUDE.md
+index dda73af..fba05d5 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -2,16 +2,17 @@
+ 
+ This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+ 
+-**현재 버전: v4.2** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
++**현재 버전: v4.3** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+ > v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
++> v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠다. 장부 ↔ Vault 대조는 `scripts/verify_library.py`.
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+ > 구 백업: `~/Claude/Youtube_Notion_Grap_BACKUP_20260717`.
+-> 2026-10-13에 이름을 `Youtube_Notion_Grap`(GitHub `YouTube_Notion_Grab`) → `AI_Wiki_Pipeline`(폴더·GitHub 동일)으로 바꿨습니다. 옛 이름·경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다(`docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둡니다).
++> 2026-10-12에 이름을 `Youtube_Notion_Grap`(GitHub `YouTube_Notion_Grab`) → `AI_Wiki_Pipeline`(폴더·GitHub 동일)으로 바꿨습니다. 옛 이름·경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다(`docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둡니다).
+ 
+ ## Commands
+ 
+@@ -55,7 +56,7 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
+ 
+ # 회귀 테스트 7종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+ /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
+-/opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py   # 37/37  (보관 스크립트) 적재·--verify
++/opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+@@ -66,9 +67,8 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
+ node scripts/clean_pending_queue.js
+ node scripts/clean_pending_queue.js --apply
+ 
+-# 장부 ↔ Vault 대조 (노션 호출 없음) — 보관 스크립트지만 --verify 는 계속 쓴다
+-/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify
+-# ※ --apply --replace 는 금지(장부가 원본이 된 뒤라 스크립트가 거부한다). 노션 적재 기능은 노션 해지 때 파일째 지운다
++# 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음) — 통과 0 · 실패 1, 마지막 RESULT_JSON 의 vault_missing·tips_missing 0
++/opt/homebrew/bin/python3 scripts/verify_library.py
+ 
+ # launchd 제어 (6시간 자동 실행)
+ launchctl start com.irichgreen.ytsummarizer
+@@ -163,7 +163,6 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. (v4.2) 실행 실패 알림(판정·점검 문구·상태 파일·`sendTelegram` 반환값) 포함. |
+ | `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. |
+ | `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
+-| `lib/tips_notion.py` | (보관) 노션 「AI 꿀팁」 래퍼. **앱은 import 하지 않는다** — `scripts/notion_to_sqlite.py` 만 쓴다. 노션 해지 때 함께 삭제. |
+ | `lib/env_util.py` | (v4.0 3단계) `.env` 읽기(의존성 0). `kakao_ingest.py`·`sheet_mirror.py` 가 쓴다. |
+ | `sheet_mirror.py` | (v4.0 3단계) 장부 → 구글 시트 미러(보기 전용, 단방향). `updated_at` 워터마크로 변경분만, 200행씩 POST. `--dry-run`·`--full`·`--check`. 아래 "구글 시트 미러" 절. |
+ | `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
+@@ -174,7 +173,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `wiki_mcp.js` | 같은 코어를 Claude에 노출하는 stdio MCP(`search_wiki`, `read_note`). 웹 서버 없이 동작. |
+ | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
+ | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
+-| `scripts/notion_to_sqlite.py` | (보관, v4.0 1단계) 노션 두 DB → `data/library.db` 적재 스크립트. 지금 쓰는 기능은 `--verify`(장부 ↔ Vault 대조, 노션 호출 없음)뿐. 노션 rich_text → 마크다운 변환(`block_to_md`)도 여기로 옮겼다. 노션 해지 때 삭제. |
++| `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
+ | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
+ | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
+@@ -314,16 +313,15 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
+ - **Google Apps Script 웹앱** (v4.0, 시트 미러 받는 쪽): `SHEET_MIRROR_URL`, `SHEET_MIRROR_TOKEN`
+ - **Telegram Bot**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+ - **구글 드라이브 데스크톱 앱** (v4.1, 장부 백업 사본): `LIBRARY_BACKUP_DIR` — API 호출 없음, 앱이 동기화하는 로컬 폴더에 파일만 쓴다
+-- (보관) **Notion API**: `NOTION_TOKEN`·`NOTION_DB_ID`·`NOTION_TIPS_DB_ID` — 앱은 쓰지 않는다. `scripts/notion_to_sqlite.py` 만 읽는다. 「Notion 데이터 이관」이 끝나 노션을 해지할 때 `lib/tips_notion.py`·`notion_to_sqlite.py` 와 함께 지운다.
+ 
+ 모든 API 키는 `.env`에서 로드. `scheduler.js`와 `lib/*.js` 각각 자체 `loadEnv()` 포함.
+ 
+ ### v4.0 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
+ 
+-- **장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py`·`sheet_mirror.py` 는 장부를 읽어 노트·시트를 만든다(`sheet_mirror.py` 는 `meta` 의 `sheet_*` 키만 쓴다). 파이프라인에 노션 호출이 없고 앱 코드는 노션 모듈을 import 하지 않는다. 노션은 낡은 사본(해지 대기).
++- **장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py`·`sheet_mirror.py` 는 장부를 읽어 노트·시트를 만든다(`sheet_mirror.py` 는 `meta` 의 `sheet_*` 키만 쓴다). 파이프라인에 노션 호출이 없고 앱 코드는 노션 모듈을 import 하지 않는다. 노션은 2026-10-12 해지했다(v4.3 에서 노션 모듈·`.env NOTION_*` 삭제).
+ - **장부는 이 맥에만 있는 원본이다.** 지우거나 새로 만들지 말 것 — 파일이 없으면 Node·Python 모두 만들지 않고 던진다. 복원은 `data/backups/library-YYYYMMDD.db.gz`(v4.1, 하루 1회 · 드라이브에도 사본) 또는 `data/library.db.bak.*` 에서 — 절차는 README 「장부 백업」.
+ - 새 영상 노트 본문 = 장부 `summary`(Gemini 요약 원문 마크다운). 모양은 노션 시절 노트와 같다(빈 줄 · `**▶ 영상 보기: **URL` · `---` · 요약).
+-- **`meta.switched_at` 이 찍힌 장부에 `notion_to_sqlite.py --apply --replace` 를 돌리지 말 것** — 스크립트가 거부한다(앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다).
++- 노션 → 장부 적재 스크립트(`notion_to_sqlite.py`)는 v4.3 에서 지웠다. 장부를 되살리는 경로는 백업 복원뿐이다(README 「장부 백업」).
+ - journal_mode 는 기본(DELETE) 그대로 둔다. 접근이 scheduler → kakao_ingest → sync_obsidian 순차라 WAL 이 필요 없다. 겹치면 Node·Python 모두 busy_timeout 5초 대기.
+ - `record_id` = 노션 page id(하이픈 포함) = Obsidian `notion_id`. **프론트매터 키 이름 `notion_id` 를 바꾸지 말 것** — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다. 새 행은 uuid4.
+ - `data/` 는 gitignore. 개인 요약 전체가 들어 있다 — `git check-ignore -q data/library.db` 로 확인.
+@@ -494,7 +492,8 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
+-- **2026-10-13 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
++- **2026-10-12 (v4.3 — 노션 잔재 정리)** — 노션 해지(10-12)에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`·`scripts/test_notion_to_sqlite.py` 삭제, `.env` 의 `NOTION_*` 3키 삭제. 그중 계속 쓰던 장부 ↔ Vault 대조(`--verify`)는 `scripts/verify_library.py`(+ `scripts/test_verify_library.py` 16/16)로 떼어 냈다 — 검사 항목·`RESULT_JSON` 키 동일, 실데이터 결과 동일(영상 2,999 · 꿀팁 148 · 없음 0). 앱 코드 변경 없음(주석 3곳). 회귀 테스트 7종 유지. 이름 변경 날짜 표기를 실제 실행일(10-12)로 정정.
++- **2026-10-12 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
+ - **2026-10-12 (문서 현행화, 버전 유지)** — README 전수 대조 후 수정: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·`.run_state.json` 추가), 사이클 표 순서(대기 큐 소진이 인제스트보다 먼저 — `scheduler.js` 실제 순서), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 4개 표, 프로젝트 구조 누락 파일 5개, 장부 `meta`·`tips` 열, v4.0 이력의 낡은 표기. 레포 `com.irichgreen.wiki-ingest.plist` 를 설치본과 같게(17:30 · Homebrew python3 · 증분), `install-wiki-ingest.sh`·`install-scheduler.sh`·`deploy.sh` 의 낡은 문구(03:00·노션·00:30) 정리. 코드 동작 무변경, 데몬 재기동 불필요. 지시서 `docs/tasks/2026-10-12-docs-sync.md`.
+ - **2026-10-12 (v4.2 — 실행 실패 알림)** — 10-04 ~ 10-12 실행 35회 재집계: 프로세스가 죽은 실행 0, "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2(10-04 06:00·10-05 00:00 ENOTFOUND), 아예 돌지 않은 정시 실행 1(10-09 12:00) — 셋 다 텔레그램 없이 지나갔다(`hasNewOrUpdated` 에 안 걸리고, `main().catch` 는 로그만). `scheduler.js`: 통째 실패면 `[실행 실패]` 텔레그램, `main().catch` 도 기록 후 알림, 실행 상태 파일 `.run_state.json` 으로 못 보낸 실패·끝나지 못한 실행·9시간 넘는 간격을 다음 실행이 `[직전 실행 점검]` 으로 알림(못 보내면 pending 으로 넘김, 최대 10줄). `sendTelegram` 이 성공 여부(true/false)를 돌려주고 JSON 아닌 응답에 죽던 잠복 결함·무응답 대기를 막음(20초). `.gitignore` 에 `.run_state.json*`. 테스트: `test_scheduler_guards.js` 29/29(+7), 사본 폴더 `main()` 모의 실행 10종(가짜 https·하위 스크립트). 지시서 `docs/tasks/2026-10-12-run-failure-alert.md`.
+ - **2026-10-12 (v4.1 — 장부 자동 백업)** — `backup_library.py` 신설: 장부를 하루 1회(KST 날짜 파일 유무로 판단, 상태 파일 없음) SQLite 온라인 백업 → `integrity_check`·`user_version`·`videos≥1` 검사 → gzip → 압축 해제 sha256 대조 후 `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브 데스크톱 앱 폴더)에 저장, 최신 7개 + 주별 4개 보관(형식 맞는 이름만 정리). 드라이브 부모 폴더가 없으면 만들지 않고 실패. 장부는 읽기 전용. `scheduler.js:runLibraryBackup()`(reject 없음, 실패는 텔레그램 별도). 배경: 타임머신 디스크 미마운트·iCloud 동기화 꺼짐으로 장부 사본이 같은 디스크의 `.bak` 하나뿐이었다. 테스트: 신규 `test_backup_library.py` 50/50, `test_scheduler_guards.js` 22/22(+3). 지시서 `docs/tasks/2026-10-12-library-backup.md`.
+diff --git a/README.md b/README.md
+index c161f9a..e19827c 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
+ 
+-**현재 버전: v4.2** (2026-10-12)
++**현재 버전: v4.3** (2026-10-12)
+ 
+ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
+ 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
+@@ -9,7 +9,8 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카
+ > v4.0 에서 노션을 뺐습니다. 원본 = 장부(`data/library.db`), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없습니다.
+ > v4.1: 장부를 하루 1회 로컬(`data/backups/`)과 구글 드라이브에 자동 백업합니다(최신 7개 + 주별 4개).
+ > v4.2: 실행이 통째로 실패하거나, 알림을 못 보냈거나, 정시 실행이 빠지면 텔레그램으로 알립니다(못 보낸 알림은 다음 실행이 보냄).
+-> 2026-10-13: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
++> v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠습니다. 장부 ↔ Vault 대조는 `scripts/verify_library.py` 입니다.
++> 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
+ > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
+ 
+ ---
+@@ -199,10 +200,9 @@ AI_Wiki_Pipeline/
+ │   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
+ │   ├── classifier.js                  # Gemini 기반 토픽 분류기
+ │   ├── wiki_search.js                 # Wiki 검색 코어 (임베딩 코사인 + 키워드 폴백)
+-│   ├── kakao_parse.py                 # URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
+-│   └── tips_notion.py                 # (보관) 노션 래퍼 — notion_to_sqlite.py 만 쓴다. 노션 해지 때 삭제
++│   └── kakao_parse.py                 # URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
+ ├── scripts/
+-│   ├── notion_to_sqlite.py            # (보관) v4.0 1단계 노션 → 장부 적재 · --verify (장부 ↔ Vault 대조)
++│   ├── verify_library.py              # (v4.3) 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음)
+ │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
+ │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
+ │   └── test_*.{js,py}                 # 회귀 테스트 7종 (네트워크 0회)
+@@ -272,11 +272,6 @@ YOUTUBE_OAUTH_CLIENT_SECRET=...
+ YOUTUBE_OAUTH_REFRESH_TOKEN=...
+ YOUTUBE_MASTER_PLAYLIST_ID=PLxxxxxxxxxxxxxxxxxxxxxxxx
+ YOUTUBE_PLAYLIST_SYNC=true                          # false 면 토픽 재생목록 추가·대기 큐 재시도를 건너뛴다 (요약·분류·장부 저장은 그대로). 현재 운영값 false
+-
+-# (보관) 노션 — scripts/notion_to_sqlite.py 만 읽는다. 앱은 쓰지 않는다. 노션 해지 때 함께 지운다
+-NOTION_TOKEN=ntn_...
+-NOTION_DB_ID=...
+-NOTION_TIPS_DB_ID=...
+ ```
+ 
+ ---
+@@ -414,6 +409,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ | 버전 | 날짜 | 주요 내용 요약 |
+ | :-- | :--- | :--- |
++| **v4.3** | 2026-10-12 | **노션 잔재 정리**: 노션 해지에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`(+ 테스트)와 `.env` 의 `NOTION_*` 3키를 지움. 계속 쓰던 장부 ↔ Vault 대조만 `scripts/verify_library.py` 로 떼어 냄(검사 항목·`RESULT_JSON` 동일, 테스트 16/16). 앱 코드 동작 무변경. |
+ | **v4.2** | 2026-10-12 | **실행 실패 알림**: "저장 0 · Skip 0 · 오류 ≥1"(영상을 하나도 확인하지 못한 실행)과 치명적 오류가 텔레그램 없이 지나가던 구멍을 막음. 실행 상태 파일 `.run_state.json` 으로 네트워크가 죽어 못 보낸 실패·끝을 기록하지 못한 실행·9시간 넘게 빈 간격(빠진 정시 실행)을 다음 실행이 `[직전 실행 점검]` 으로 알림. `sendTelegram` 이 성공 여부를 돌려주고 JSON 아닌 응답에 죽지 않음 |
+ | **v4.1** | 2026-10-12 | **장부 자동 백업**: 장부(`data/library.db`)를 하루 1회 SQLite 온라인 백업 → 무결성 검사 → gzip 해 로컬 `data/backups/` 와 구글 드라이브 폴더(`.env LIBRARY_BACKUP_DIR`)에 저장(`backup_library.py`). 최신 7개 + 주별 4개 보관. 장부는 읽기 전용으로만 연다. 스케줄러 훅은 reject 없음, 실패는 텔레그램. 회귀 테스트 7종 |
+ | **v4.0** | 2026-10-12 | **노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러**: 원본을 노션에서 맥의 SQLite 장부 `data/library.db` 로 옮김(1단계 적재 · 2단계 쓰기/읽기 전환 · 3단계 정리, 단계마다 실데이터 판정). 파이프라인 노션 호출 0. 장부 → 구글 시트(탭 영상·꿀팁) 단방향 미러 `sheet_mirror.py` + Apps Script 웹앱 `gas/sheet_mirror.gs`(변경분만, 인증 오류 즉시 중단). 앱의 노션 코드 의존 제거, `/api/sync-obsidian` 제거, 재구성 시 내용 같은 파일 안 쓰기(Vault 전체 mtime 갱신 해소). 회귀 테스트 6종 |
+@@ -438,6 +434,20 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ ### 📝 상세 변경 내역 (Detailed Change Log)
+ 
++#### [v4.3] — 2026-10-12 (🧹 노션 잔재 정리)
++
++**배경.** v4.0 부터 파이프라인은 노션을 부르지 않았고, 노션 모듈은 「Notion 데이터 이관」이 끝날 때까지 보관만 했다. 10-12 이관이 끝나 노션을 해지했다. 보관 파일 중 실제로 쓰던 기능은 `notion_to_sqlite.py --verify`(장부 ↔ Vault 대조, 노션 호출 없음) 하나였다.
++
++| 항목 | 내용 |
++|---|---|
++| 삭제 | `lib/tips_notion.py` · `scripts/notion_to_sqlite.py` · `scripts/test_notion_to_sqlite.py`, `.env` 의 `NOTION_TOKEN`·`NOTION_DB_ID`·`NOTION_TIPS_DB_ID` |
++| 신규 | `scripts/verify_library.py` — `--verify` 를 노션 import 없이 떼어 옴. 장부 `mode=ro`, Vault 읽기만, 네트워크 0. 통과 0 · 실패 1 · 인자 2. 검사 항목·`RESULT_JSON` 키 동일 |
++| 실데이터 | 옛 `--verify` 와 새 스크립트의 `RESULT_JSON` 이 글자까지 같음(영상 2,999 · dup 203 · 꿀팁 148 · `vault_missing` 0 · `tips_missing` 0) |
++| 테스트 | 신규 `scripts/test_verify_library.py` 16/16(임시 장부·Vault — 장부·Vault 무변경, 노션 모듈 import 0, 네트워크 0 확인). 회귀 테스트 7종 유지 |
++| 그대로 | 노트 프론트매터 키 `notion_id`(= 장부 `record_id`) — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있어 이름을 바꾸지 않는다 |
++| 문서 | 이름 변경 날짜 표기를 실제 실행일 10-12 로 정정(지시서 파일 이름은 그대로) |
++| 지시서 | `docs/tasks/2026-10-12-notion-cleanup.md` |
++
+ #### [v4.2] — 2026-10-12 (🚨 실행 실패 알림)
+ 
+ **배경.** 10-04 ~ 10-12 실행 35회를 다시 세었다. 프로세스가 죽은 실행은 0회(v3.2.1 재시도가 흡수)였지만, 마스터 인제스트가 ENOTFOUND 로 통째 실패해 "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2회(10-04 06:00, 10-05 00:00)와 아예 돌지 않은 정시 실행 1회(10-09 12:00)가 **텔레그램 없이** 지나갔다. 완료 알림은 신규·갱신이 있을 때만 보내고, `main().catch` 는 로그만 남겼다. 네트워크가 죽은 실행은 그 자리에서 알림도 못 보내므로 "다음 실행이 알리는" 길이 함께 필요했다.
+@@ -450,7 +460,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ | 테스트 | `test_scheduler_guards.js` 29/29(+7). 사본 폴더에서 가짜 https·하위 스크립트로 `main()` 모의 실행 10종(전면 다운 → 복구, 연속 실패 누적, 빠진 실행, 도중 종료, 겹친 실행, 장부 없음, 치명적 오류) |
+ | 지시서 | `docs/tasks/2026-10-12-run-failure-alert.md` |
+ | 문서 현행화 (같은 날, 버전 유지) | README 전수 대조: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·실행 상태 추가), 사이클 표 순서(대기 큐가 인제스트보다 먼저), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 표, 프로젝트 구조 누락 파일, 장부 `meta`·`tips` 열. 레포 `com.irichgreen.wiki-ingest.plist` 를 실제 설치본(17:30 · Homebrew python3 · 증분)과 같게 맞춤 — 그전 원본(03:00 · `/usr/bin/python3` · `--full`)으로 재설치하면 라이브러리가 갈리고 Gemini 무료 한도를 소진했다. 설치·배포 스크립트의 낡은 문구(노션·03:00·00:30) 정리. 지시서 `docs/tasks/2026-10-12-docs-sync.md` |
+-| 이름 변경 (2026-10-13, 버전 유지) | 노션을 뺀 뒤에도 이름에 남아 있던 Notion 을 정리: 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab`(철자도 서로 달랐다) → 둘 다 `AI_Wiki_Pipeline`. 레포 plist 원본 4개 · 설치 스크립트 sed 패턴 · `package.json` 이름 · 문서 경로. 코드 동작 무변경(코드에 레포 절대경로 없음). 레포 밖 맥 설정(설치된 plist · 로그 회전 스크립트 · Claude Code MCP 등록)은 지시서 절차로 함께 옮김. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md` |
++| 이름 변경 (2026-10-12, 버전 유지) | 노션을 뺀 뒤에도 이름에 남아 있던 Notion 을 정리: 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab`(철자도 서로 달랐다) → 둘 다 `AI_Wiki_Pipeline`. 레포 plist 원본 4개 · 설치 스크립트 sed 패턴 · `package.json` 이름 · 문서 경로. 코드 동작 무변경(코드에 레포 절대경로 없음). 레포 밖 맥 설정(설치된 plist · 로그 회전 스크립트 · Claude Code MCP 등록)은 지시서 절차로 함께 옮김. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md` |
+ 
+ #### [v4.1] — 2026-10-12 (🛟 장부 자동 백업)
+ 
+diff --git a/build_search_index.py b/build_search_index.py
+index 90b5d2d..132d921 100644
+--- a/build_search_index.py
++++ b/build_search_index.py
+@@ -90,7 +90,7 @@ def batch_embed(texts):
+ SKIP_FILES = {'log.md', 'schema.md', '캔버스.md'}
+ 
+ # 프론트매터(맨 앞 YAML 블록) 안의 키만 읽는다 — 본문 코드블록의 'notion_id: …' 예시를 노트로 오인하지 않게
+-# (v4.0 3단계. sync_obsidian.py:FM_RE·scripts/notion_to_sqlite.py 와 같은 규칙)
++# (v4.0 3단계. sync_obsidian.py:FM_RE·scripts/verify_library.py 와 같은 규칙)
+ FM_RE = re.compile(r'\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)', re.S)
+ 
+ def fm_text(content):
+diff --git a/docs/cowork-project-instructions.md b/docs/cowork-project-instructions.md
+index e4529dd..a5a23bb 100644
+--- a/docs/cowork-project-instructions.md
++++ b/docs/cowork-project-instructions.md
+@@ -4,5 +4,5 @@
+ 이 사본은 갱신되지 않아 옛 경로·옛 구조(노션)를 담고 있었다. 옛 내용은 git 이력에 있다.
+ 
+ - 구조·제약의 원본: 레포 루트 `CLAUDE.md` (어긋나면 `CLAUDE.md` 가 이긴다)
+-- Cowork 운영 지침: claude.ai 프로젝트 설정 (v4.2 기준 현행화 2026-10-12)
+-- 2026-10-13: 레포 이름 `Youtube_Notion_Grap` → `AI_Wiki_Pipeline` 때 이 안내문으로 바꿨다.
++- Cowork 운영 지침: claude.ai 프로젝트 설정 (v4.3 기준 현행화 2026-10-12)
++- 2026-10-12: 레포 이름 `Youtube_Notion_Grap` → `AI_Wiki_Pipeline` 때 이 안내문으로 바꿨다.
+diff --git a/lib/env_util.py b/lib/env_util.py
+index 1fe8602..a34c985 100644
+--- a/lib/env_util.py
++++ b/lib/env_util.py
+@@ -2,7 +2,7 @@
+ """
+ 레포 루트 .env 읽기 — 네트워크 없음, 의존성 없음 (v4.0 3단계).
+ 
+-kakao_ingest.py 가 노션 래퍼(lib/tips_notion.py)를 .env 읽기용으로만 import 하던 것을 대신한다.
++kakao_ingest.py 가 노션 래퍼(lib/tips_notion.py, v4.3 에서 삭제)를 .env 읽기용으로만 import 하던 것을 대신한다.
+ 형식: KEY=VALUE 한 줄씩. '#' 주석·빈 줄 무시. 값 양끝의 따옴표(" ')는 벗긴다 (tips_notion.load_env 와 같은 규칙).
+ """
+ import os
+diff --git a/lib/tips_notion.py b/lib/tips_notion.py
+deleted file mode 100644
+index b2f7eb7..0000000
+--- a/lib/tips_notion.py
++++ /dev/null
+@@ -1,183 +0,0 @@
+-#!/usr/bin/env python3
+-"""
+-Notion「AI 꿀팁」DB 전용 조회/생성 래퍼
+-
+-※ v4.0 3단계부터 보관용이다. 앱 코드는 import 하지 않는다 — scripts/notion_to_sqlite.py(보관) 만 쓴다.
+-  노션을 해지할 때 scripts/notion_to_sqlite.py·.env 의 NOTION_* 와 함께 지운다. .env 읽기는 lib/env_util.py.
+-
+-속성 타입 (2026-09-06 §2-2 검증 출력 — 추측 금지, 바뀌면 이 표부터 갱신):
+-    제목     title
+-    URL      url
+-    출처     url        ← 호스트만 저장 (예: github.com). 기존 행과 형식 통일
+-    태그     rich_text  ← 쉼표 결합 문자열
+-    카테고리 select     프롬프트|개발툴|기타|모델/LLM|뉴스/트렌드|지식관리|사업/마케팅
+-    상태     select     미확인
+-    중요도   select     상|중|하
+-    저장일   date
+-    메모     rich_text
+-
+-보안 원칙 (CLAUDE.md 1순위):
+-    401/403 → NotionAuthError 발생, 호출자는 즉시 종료해야 한다. 재시도 금지.
+-    429/5xx → 지수 백오프(2·4·8·16초), 최대 4회 후 실패.
+-    생성 루프는 호출 간 350ms 대기 (3 req/s 준수).
+-
+-실행 인터프리터: /usr/bin/python3 (시스템 파이썬). python.org 3.11은 루트 인증서가 없어 SSL 오류가 난다.
+-"""
+-import json, os, re, ssl, sys, time
+-from urllib.request import urlopen, Request
+-from urllib.error import HTTPError, URLError
+-
+-SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-NOTION_VERSION = '2022-06-28'
+-RATE_SLEEP = 0.35
+-
+-
+-class NotionAuthError(RuntimeError):
+-    """401/403 — 즉시 종료 신호"""
+-
+-
+-def load_env():
+-    env = {}
+-    p = os.path.join(SCRIPT_DIR, '.env')
+-    if not os.path.exists(p):
+-        return env
+-    for line in open(p).read().split('\n'):
+-        line = line.strip()
+-        if not line or line.startswith('#') or '=' not in line:
+-            continue
+-        k, _, v = line.partition('=')
+-        env[k.strip()] = v.strip().strip('"').strip("'")
+-    return env
+-
+-
+-ENV = load_env()
+-NOTION_TOKEN = ENV.get('NOTION_TOKEN', '')
+-TIPS_DB_ID = ENV.get('NOTION_TIPS_DB_ID', '')
+-
+-
+-def notion_call(method, path, body=None, max_attempts=4):
+-    data = json.dumps(body).encode('utf-8') if body is not None else None
+-    ctx = ssl.create_default_context()
+-    for attempt in range(max_attempts):
+-        req = Request(f'https://api.notion.com{path}', data=data, method=method, headers={
+-            'Authorization': f'Bearer {NOTION_TOKEN}',
+-            'Content-Type': 'application/json',
+-            'Notion-Version': NOTION_VERSION,
+-        })
+-        try:
+-            with urlopen(req, context=ctx, timeout=30) as res:
+-                return json.loads(res.read())
+-        except HTTPError as e:
+-            payload = e.read().decode('utf-8', 'ignore')
+-            if e.code in (401, 403):
+-                raise NotionAuthError(f'HTTP {e.code} — 인증/권한 오류, 연쇄 요청 중단: {payload[:200]}')
+-            if e.code in (429,) or e.code >= 500:
+-                if attempt == max_attempts - 1:
+-                    raise RuntimeError(f'HTTP {e.code} 재시도 초과: {payload[:200]}')
+-                wait = 2 ** (attempt + 1)
+-                print(f'  ⏸ HTTP {e.code} — {wait}s 대기 후 재시도', flush=True)
+-                time.sleep(wait)
+-                continue
+-            raise RuntimeError(f'HTTP {e.code}: {payload[:300]}')
+-        except URLError as e:
+-            if 'CERTIFICATE_VERIFY_FAILED' in str(e):
+-                raise RuntimeError('SSL 인증서 오류 — /usr/bin/python3 로 실행하세요') from e
+-            if attempt == max_attempts - 1:
+-                raise
+-            time.sleep(2 ** (attempt + 1))
+-
+-
+-# ── 조회 ──
+-def load_all_tips(db_id=None):
+-    db_id = db_id or TIPS_DB_ID
+-    if not db_id:
+-        raise RuntimeError('NOTION_TIPS_DB_ID 가 .env 에 없습니다')
+-    pages, cursor = [], None
+-    while True:
+-        body = {'page_size': 100}
+-        if cursor:
+-            body['start_cursor'] = cursor
+-        res = notion_call('POST', f'/v1/databases/{db_id}/query', body)
+-        pages.extend(res.get('results', []))
+-        cursor = res.get('next_cursor')
+-        if not cursor:
+-            break
+-    return pages
+-
+-
+-def _plain(rt):
+-    return ''.join(t.get('plain_text', '') for t in (rt or []))
+-
+-
+-def page_to_row(p):
+-    pr = p.get('properties', {})
+-    return {
+-        'id': p['id'],
+-        'title': _plain(pr.get('제목', {}).get('title')),
+-        'url': pr.get('URL', {}).get('url') or '',
+-        'source': pr.get('출처', {}).get('url') or '',
+-        'tags': [t.strip() for t in _plain(pr.get('태그', {}).get('rich_text')).split(',') if t.strip()],
+-        'category': (pr.get('카테고리', {}).get('select') or {}).get('name', ''),
+-        'status': (pr.get('상태', {}).get('select') or {}).get('name', ''),
+-        'importance': (pr.get('중요도', {}).get('select') or {}).get('name', ''),
+-        'saved_date': (pr.get('저장일', {}).get('date') or {}).get('start', ''),
+-        'memo': _plain(pr.get('메모', {}).get('rich_text')),
+-        'created_time': p.get('created_time', ''),
+-        'last_edited_time': p.get('last_edited_time', ''),
+-    }
+-
+-
+-# ── 생성 ──
+-def build_properties(row):
+-    """row: {title,url,source,tags[],category,status,importance,saved_date,memo}"""
+-    def rt(s):
+-        s = (s or '')[:2000]
+-        return [{'type': 'text', 'text': {'content': s}}] if s else []
+-    props = {
+-        '제목': {'title': [{'type': 'text', 'text': {'content': (row['title'] or row['url'])[:200]}}]},
+-        'URL': {'url': row['url']},
+-        '출처': {'url': row.get('source') or None},
+-        '태그': {'rich_text': rt(','.join(row.get('tags') or []))},
+-        '카테고리': {'select': {'name': row.get('category') or '기타'}},
+-        '상태': {'select': {'name': row.get('status') or '미확인'}},
+-        '중요도': {'select': {'name': row.get('importance') or '중'}},
+-        '메모': {'rich_text': rt(row.get('memo'))},
+-    }
+-    if row.get('saved_date'):
+-        props['저장일'] = {'date': {'start': row['saved_date'][:10]}}
+-    return props
+-
+-
+-def create_tip(row, db_id=None):
+-    db_id = db_id or TIPS_DB_ID
+-    res = notion_call('POST', '/v1/pages', {
+-        'parent': {'database_id': db_id},
+-        'properties': build_properties(row),
+-    })
+-    time.sleep(RATE_SLEEP)
+-    return res
+-
+-
+-def get_blocks(page_id):
+-    """페이지 본문 블록 (사용자가 나중에 메모를 붙였을 수 있음)."""
+-    blocks, cursor = [], None
+-    while True:
+-        path = f'/v1/blocks/{page_id}/children?page_size=100' + (f'&start_cursor={cursor}' if cursor else '')
+-        res = notion_call('GET', path)
+-        blocks.extend(res.get('results', []))
+-        cursor = res.get('next_cursor')
+-        if not cursor:
+-            break
+-    return blocks
+-
+-
+-if __name__ == '__main__':
+-    pages = load_all_tips()
+-    rows = [page_to_row(p) for p in pages]
+-    print(f'✅ 「AI 꿀팁」{len(rows)}건 로드')
+-    from collections import Counter
+-    print('카테고리:', dict(Counter(r['category'] for r in rows)))
+-    print('상태:', dict(Counter(r['status'] for r in rows)))
+-    print('URL 비어있음:', sum(1 for r in rows if not r['url']))
+-    for r in rows[:3]:
+-        print(' ', r['saved_date'], '|', r['category'], '|', r['title'][:40], '|', r['url'][:60])
+diff --git a/scripts/notion_to_sqlite.py b/scripts/notion_to_sqlite.py
+deleted file mode 100644
+index 68bb9d2..0000000
+--- a/scripts/notion_to_sqlite.py
++++ /dev/null
+@@ -1,546 +0,0 @@
+-#!/usr/bin/env python3
+-"""
+-v4.0 1단계 — 노션 → SQLite 적재 (노션 읽기 전용)
+-
+-※ v4.0 3단계부터 보관용이다. 앱(스케줄러·카톡·동기화·시트 미러)은 이 파일도 lib/tips_notion.py 도 import 하지 않는다.
+-  쓰는 곳은 --verify(장부 ↔ Vault 대조) 정도. 노션을 해지할 때 lib/tips_notion.py·.env 의 NOTION_* 와 함께 지운다.
+-
+-  /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py                    # dry-run: 노션을 읽고 보고만 한다. 파일을 쓰지 않는다
+-  /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply            # data/library.db 생성 (이미 있으면 거부)
+-  /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --apply --replace  # 기존 파일을 data/library.db.bak.<시각> 으로 옮기고 새로 만든다
+-  /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify           # 노션 호출 없이 data/library.db ↔ Obsidian Vault 대조
+-  /opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --mark-switched    # (v4.0 2단계) 장부를 원본으로 확정 — 이후 --apply --replace 거부
+-
+-전환 후 재적재 금지 (v4.0 2단계):
+-  스케줄러·카톡 인제스트가 장부에 직접 쓰기 시작하면 노션은 낡은 사본이다. 이때 --apply --replace 를 돌리면
+-  앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다. 그래서 다음 중 하나라도 있으면 --replace 를 거부한다:
+-  meta.switched_at 이 있음 · videos.summary_src='app' 행이 있음 · tips 에 loaded_at 이후 created_at 행이 있음.
+-
+-  --summary-check=N   무작위 N개 영상의 노션 본문 블록과 '요약 내용' 속성을 비교해 보고만 한다 (기본 20, 0 = 끔)
+-  --summary-check=all 전량 비교하고, 다르면 본문 블록 쪽을 summary 로 쓴다 (페이지당 1회 호출, 3천 건이면 약 30분)
+-
+-안전 (CLAUDE.md 보안 원칙):
+-  - 노션에는 GET 과 databases/query(POST, 읽기)만 보낸다. 쓰기·수정·삭제 요청은 이 파일에 없다.
+-  - HTTP 는 lib/tips_notion.py:notion_call 하나로 나간다 — 401/403 즉시 NotionAuthError(종료 코드 2),
+-    429/5xx 지수 백오프(2·4·8·16초) 후 실패, 호출 간 0.35초 대기.
+-  - 전부 읽었거나 아무것도 쓰지 않거나: 임시 파일(library.db.tmp)에 쓰고 검사가 통과해야만 rename 한다.
+-    중간에 실패하면 기존 data/library.db 는 그대로다.
+-
+-중복(같은 video_id):
+-  Obsidian 노트(notion_id)가 가리키는 page 를 남긴다. 여럿이면 그중 가장 오래된 것, 없으면 전체에서 가장 오래된 것.
+-  나머지는 videos_dup 에 보관한다(삭제 아님). 남긴 행의 topics 는 그룹 전체 topics 의 합집합이다.
+-"""
+-import json, os, random, re, sys, time, unicodedata
+-from collections import Counter, defaultdict
+-from datetime import datetime, timezone
+-
+-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-sys.path.insert(0, REPO_ROOT)
+-sys.path.insert(0, os.path.join(REPO_ROOT, 'lib'))
+-
+-import tips_notion as tn                       # noqa: E402  HTTP·인증 오류 처리 원본
+-import sync_obsidian as so                     # noqa: E402  VAULT 경로·Vault 스캔 재사용
+-from kakao_parse import url_key                # noqa: E402
+-import library_db as ldb                       # noqa: E402
+-
+-NOTION_DB_ID   = tn.ENV.get('NOTION_DB_ID', '')
+-TIPS_DB_ID     = tn.TIPS_DB_ID
+-RATE_SLEEP     = tn.RATE_SLEEP
+-SUMMARY_PROP   = '요약 내용'
+-RT_REFETCH_AT  = 25          # 속성 rich_text 가 이 개수 이상이면 잘렸을 수 있으므로 속성 단독 조회로 다시 받는다
+-VID_RE = re.compile(r'(?:[?&]v=|youtu\.be/|/shorts/|/embed/)([A-Za-z0-9_-]{11})')
+-
+-
+-def log(msg=''):
+-    print(msg, flush=True)
+-
+-
+-def nfc(s):
+-    return unicodedata.normalize('NFC', s or '')
+-
+-
+-# ── 노션 rich_text·블록 → 마크다운 (v4.0 3단계: sync_obsidian.py 에서 옮겨 옴 — 이제 이 스크립트만 쓴다) ──
+-def rich_to_md(rt_list):
+-    out = ''
+-    for rt in rt_list or []:
+-        t = rt.get('text', {}).get('content', '')
+-        a = rt.get('annotations', {})
+-        if a.get('bold'):   t = f'**{t}**'
+-        if a.get('italic'): t = f'*{t}*'
+-        if a.get('code'):   t = f'`{t}`'
+-        out += t
+-    return out
+-
+-
+-def block_to_md(block):
+-    btype = block.get('type', '')
+-    b = block.get(btype, {})
+-    text = rich_to_md(b.get('rich_text', []))
+-    mapping = {
+-        'heading_1': f'# {text}',
+-        'heading_2': f'## {text}',
+-        'heading_3': f'### {text}',
+-        'paragraph': text or '',
+-        'bulleted_list_item': f'- {text}',
+-        'numbered_list_item': f'1. {text}',
+-        'quote': f'> {text}',
+-        'divider': '---',
+-    }
+-    return mapping.get(btype, text)
+-
+-
+-def plain(rt):
+-    return nfc(''.join((t.get('plain_text') if t.get('plain_text') is not None
+-                        else t.get('text', {}).get('content', '')) for t in (rt or [])))
+-
+-
+-# ─────────────────────────── 노션 읽기 ───────────────────────────
+-def query_all(db_id, label):
+-    """DB 전체 조회. 전부 읽었거나 던지거나. 0건이면 던진다."""
+-    if not db_id:
+-        raise RuntimeError(f'{label}: DB id 가 .env 에 없습니다')
+-    pages, cursor, n = [], None, 0
+-    while True:
+-        body = {'page_size': 100}
+-        if cursor:
+-            body['start_cursor'] = cursor
+-        res = tn.notion_call('POST', f'/v1/databases/{db_id}/query', body)
+-        if not isinstance(res, dict) or not isinstance(res.get('results'), list):
+-            raise RuntimeError(f'{label}: 응답 형식 이상 (results 없음) — {str(res)[:200]}')
+-        pages.extend(res['results'])
+-        n += 1
+-        cursor = res.get('next_cursor')
+-        if not res.get('has_more') or not cursor:
+-            break
+-        time.sleep(RATE_SLEEP)
+-    if not pages:
+-        raise RuntimeError(f'{label}: 0건 — API 오류 의심, 중단')
+-    log(f'  {label}: {len(pages):,}건 ({n}회 조회)')
+-    return pages
+-
+-
+-def fetch_property_text(page_id, prop_id):
+-    """속성 단독 조회(페이지네이션) — 잘린 rich_text 를 끝까지 받는다."""
+-    parts, cursor = [], None
+-    while True:
+-        path = f'/v1/pages/{page_id}/properties/{prop_id}?page_size=100'
+-        if cursor:
+-            path += f'&start_cursor={cursor}'
+-        res = tn.notion_call('GET', path)
+-        time.sleep(RATE_SLEEP)
+-        items = res.get('results') if res.get('object') == 'list' else [res]
+-        for it in items or []:
+-            parts.append(plain([it.get('rich_text')] if isinstance(it.get('rich_text'), dict) else it.get('rich_text')))
+-        cursor = res.get('next_cursor')
+-        if not res.get('has_more') or not cursor:
+-            break
+-    return ''.join(parts)
+-
+-
+-def blocks_body_md(page_id):
+-    """영상 페이지 본문 → 마크다운. 썸네일·'▶ 영상 보기'·구분선 다음부터가 요약 본문이다."""
+-    blocks = tn.get_blocks(page_id)
+-    time.sleep(RATE_SLEEP)
+-    idx = next((i for i, b in enumerate(blocks) if b.get('type') == 'divider'), None)
+-    body = blocks[idx + 1:] if idx is not None else [b for b in blocks if b.get('type') != 'image']
+-    return nfc('\n'.join(block_to_md(b) for b in body)).strip()
+-
+-
+-def video_row(page, stats):
+-    pr = page.get('properties', {})
+-    url = (pr.get('영상 URL', {}) or {}).get('url') or ''
+-    m = VID_RE.search(url)
+-    topics, seen = [], set()
+-    for t in (pr.get('주제', {}) or {}).get('multi_select') or []:
+-        name = nfc(t.get('name', ''))
+-        if name and name not in seen:
+-            seen.add(name); topics.append(name)
+-    sp = pr.get(SUMMARY_PROP, {}) or {}
+-    rt = sp.get('rich_text') or []
+-    if len(rt) >= RT_REFETCH_AT and sp.get('id'):
+-        summary = fetch_property_text(page['id'], sp['id'])
+-        stats['summary_refetch'] += 1
+-    else:
+-        summary = plain(rt)
+-    src = 'property'
+-    if not summary.strip():
+-        summary = blocks_body_md(page['id'])
+-        src = 'blocks' if summary else 'empty'
+-    return {
+-        'record_id': page['id'],
+-        'video_id': m.group(1) if m else None,
+-        'title': plain((pr.get('영상 제목', {}) or {}).get('title')),
+-        'channel': plain((pr.get('유튜브 채널', {}) or {}).get('rich_text')),
+-        'topics': topics,
+-        'upload_date': (((pr.get('업로드 일자', {}) or {}).get('date') or {}).get('start') or '')[:10] or None,
+-        'view_count': (pr.get('조회수', {}) or {}).get('number'),
+-        'subscriber_count': (pr.get('구독자수', {}) or {}).get('number'),
+-        'video_url': url or None,
+-        'thumbnail_url': (pr.get('썸네일 URL', {}) or {}).get('url') or None,
+-        'status': (((pr.get('처리 상태', {}) or {}).get('select')) or {}).get('name') or None,
+-        'summary': summary,
+-        'summary_src': src,
+-        'created_at': page.get('created_time', ''),
+-        'updated_at': page.get('last_edited_time', '') or page.get('created_time', ''),
+-    }
+-
+-
+-def tip_row(page):
+-    r = tn.page_to_row(page)
+-    try:
+-        body = nfc('\n'.join(block_to_md(b) for b in tn.get_blocks(page['id']))).strip()
+-    finally:
+-        time.sleep(RATE_SLEEP)
+-    return {
+-        'record_id': page['id'],
+-        'title': nfc(r['title']), 'url': r['url'], 'url_key': url_key(r['url']) if r['url'] else '',
+-        'source': r['source'], 'tags': [nfc(t) for t in r['tags']],
+-        'category': nfc(r['category']), 'status': nfc(r['status']), 'importance': nfc(r['importance']),
+-        'saved_date': (r['saved_date'] or '')[:10] or None, 'memo': nfc(r['memo']), 'body_md': body,
+-        'created_at': r['created_time'], 'updated_at': r['last_edited_time'] or r['created_time'],
+-    }
+-
+-
+-# ─────────────────────────── Vault ───────────────────────────
+-FM_RE = re.compile(r'\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)', re.S)
+-VAULT_IGNORED = []           # 본문(프론트매터 밖)에만 notion_id 가 있어 Vault id 로 세지 않은 파일 (Vault 상대 경로)
+-
+-
+-def fm_notion_id(path):
+-    """맨 앞 YAML 프론트매터 안의 notion_id. 없으면 None.
+-    schema.md 처럼 본문 코드블록에 예시 'notion_id: xxxxxxxx-…' 를 담은 문서를 영상 노트로 오인하지 않기 위함 (10-11 dry-run)."""
+-    try:
+-        text = nfc(open(path, encoding='utf-8', errors='ignore').read())
+-    except Exception:
+-        return None
+-    m = FM_RE.match(text)
+-    if not m:
+-        return None
+-    m2 = re.search(r'^notion_id:\s*(.+)$', m.group(1), re.MULTILINE)
+-    return m2.group(1).strip() if m2 else None
+-
+-
+-def vault_ids():
+-    """(영상 노트 notion_id 집합, 꿀팁 노트 notion_id 집합).
+-    폴더 스캔 규칙은 sync_obsidian.get_existing_vault_info 를 그대로 쓰되, notion_id 는 프론트매터 안의 것만 센다."""
+-    id_to_path, _, _ = so.get_existing_vault_info()
+-    VAULT_IGNORED.clear()
+-    video_ids = set()
+-    for i, path in id_to_path.items():
+-        if fm_notion_id(path) == i:
+-            video_ids.add(i)
+-        else:
+-            VAULT_IGNORED.append(nfc(os.path.relpath(path, so.VAULT)))
+-    tips_ids = set()
+-    tips_dir = os.path.join(so.VAULT, so.TIPS_FOLDER)
+-    if os.path.isdir(tips_dir):
+-        for f in os.listdir(tips_dir):
+-            if not f.endswith('.md'):
+-                continue
+-            i = fm_notion_id(os.path.join(tips_dir, f))
+-            if i:
+-                tips_ids.add(i)
+-    return video_ids, tips_ids
+-
+-
+-# ─────────────────────────── 중복 정리 ───────────────────────────
+-def dedupe(rows, vids_in_vault):
+-    groups = defaultdict(list)
+-    for r in rows:
+-        groups[r['video_id'] or ('__noid__', r['record_id'])].append(r)
+-    keepers, dups = [], []
+-    st = Counter()
+-    for key, g in groups.items():
+-        if len(g) == 1:
+-            keepers.append(g[0]); continue
+-        st['dup_groups'] += 1
+-        g.sort(key=lambda r: (r['created_at'], r['record_id']))
+-        noted = [r for r in g if r['record_id'] in vids_in_vault]
+-        keep = noted[0] if noted else g[0]
+-        st['keeper_by_vault' if noted else 'keeper_by_oldest'] += 1
+-        if len(noted) > 1:
+-            st['groups_multi_notes'] += 1
+-        merged = list(keep['topics'])
+-        for r in g:
+-            for t in r['topics']:
+-                if t not in merged:
+-                    merged.append(t)
+-        if merged != keep['topics']:
+-            st['keeper_topics_grew'] += 1
+-        keep = dict(keep, topics=merged)
+-        if not keep['summary'].strip():
+-            donor = next((r for r in g if r['summary'].strip()), None)
+-            if donor:
+-                keep.update(summary=donor['summary'], summary_src=donor['summary_src'])
+-                st['keeper_summary_from_dup'] += 1
+-        keepers.append(keep)
+-        for r in g:
+-            if r is not keep and r['record_id'] != keep['record_id']:
+-                dups.append(dict(r, keeper_record_id=keep['record_id'],
+-                                 has_vault_note=1 if r['record_id'] in vids_in_vault else 0))
+-    return keepers, dups, st
+-
+-
+-# ─────────────────────────── 요약 대조 (보고용) ───────────────────────────
+-def _norm(s):
+-    s = re.sub(r'\*\*|^#+\s*|^[-*]\s+|^1\.\s+', '', s or '', flags=re.MULTILINE)
+-    return re.sub(r'\s+', '', nfc(s))
+-
+-
+-def summary_check(rows, n):
+-    """n: 정수 = 무작위 n개 대조(보고만), 'all' = 전량 대조하고 불일치는 본문 블록 쪽으로 교체."""
+-    cand = [r for r in rows if r['summary_src'] == 'property']
+-    if n == 'all':
+-        sample, fix = cand, True
+-    else:
+-        if n <= 0 or not cand:
+-            return None
+-        sample, fix = random.Random(20261011).sample(cand, min(n, len(cand))), False
+-    bad = []
+-    for i, r in enumerate(sample, 1):
+-        body = blocks_body_md(r['record_id'])
+-        if _norm(r['summary']) != _norm(body):
+-            bad.append(r['record_id'])
+-            if fix and body:
+-                r['summary'], r['summary_src'] = body, 'blocks'
+-        if fix and i % 250 == 0:
+-            log(f'  요약 전량 대조 {i:,}/{len(sample):,} (불일치 {len(bad)})')
+-    return {'checked': len(sample), 'match': len(sample) - len(bad), 'mismatch_ids': bad[:10],
+-            'replaced_by_blocks': len(bad) if fix else 0}
+-
+-
+-# ─────────────────────────── 쓰기 ───────────────────────────
+-V_COLS = ['record_id', 'video_id', 'title', 'channel', 'topics', 'upload_date', 'view_count', 'subscriber_count',
+-          'video_url', 'thumbnail_url', 'status', 'summary', 'summary_src', 'created_at', 'updated_at']
+-D_COLS = V_COLS + ['keeper_record_id', 'has_vault_note']
+-T_COLS = ['record_id', 'title', 'url', 'url_key', 'source', 'tags', 'category', 'status', 'importance',
+-          'saved_date', 'memo', 'body_md', 'created_at', 'updated_at']
+-
+-
+-def _vals(r, cols):
+-    out = []
+-    for c in cols:
+-        v = r.get(c)
+-        if c in ('topics', 'tags'):
+-            v = json.dumps(v or [], ensure_ascii=False)
+-        out.append(v)
+-    return out
+-
+-
+-def write_db(keepers, dups, tips, meta, replace):
+-    final = ldb.DB_PATH
+-    tmp = final + '.tmp'
+-    for p in (tmp, tmp + '-journal'):
+-        if os.path.exists(p):
+-            os.remove(p)
+-    conn = ldb.open_db(tmp)
+-    try:
+-        ldb.apply_schema(conn)
+-        with conn:
+-            conn.executemany(f'INSERT INTO videos ({",".join(V_COLS)}) VALUES ({",".join("?" * len(V_COLS))})',
+-                             [_vals(r, V_COLS) for r in keepers])
+-            conn.executemany(f'INSERT INTO videos_dup ({",".join(D_COLS)}) VALUES ({",".join("?" * len(D_COLS))})',
+-                             [_vals(r, D_COLS) for r in dups])
+-            conn.executemany(f'INSERT INTO tips ({",".join(T_COLS)}) VALUES ({",".join("?" * len(T_COLS))})',
+-                             [_vals(r, T_COLS) for r in tips])
+-            conn.executemany('INSERT INTO meta (key, value) VALUES (?, ?)',
+-                             [(k, str(v)) for k, v in meta.items()])
+-        got = {t: conn.execute(f'SELECT COUNT(*) FROM {t}').fetchone()[0] for t in ('videos', 'videos_dup', 'tips')}
+-        want = {'videos': len(keepers), 'videos_dup': len(dups), 'tips': len(tips)}
+-        ic = conn.execute('PRAGMA integrity_check').fetchone()[0]
+-        if got != want or ic != 'ok':
+-            raise RuntimeError(f'쓰기 검사 실패 — 건수 {got} ≠ {want} 또는 integrity_check={ic}')
+-    finally:
+-        conn.close()
+-    backup = None
+-    if os.path.exists(final):
+-        if not replace:   # main 에서 이미 막지만 한 번 더
+-            raise RuntimeError(f'{final} 가 이미 있습니다 (--replace 필요)')
+-        backup = f'{final}.bak.{datetime.now().strftime("%Y%m%d_%H%M%S")}'
+-        os.replace(final, backup)
+-    os.replace(tmp, final)
+-    return got, backup
+-
+-
+-# ─────────────────────────── --verify ───────────────────────────
+-def verify():
+-    if not os.path.exists(ldb.DB_PATH):
+-        log(f'❌ {ldb.DB_PATH} 없음'); return 1
+-    conn = ldb.open_db(ldb.DB_PATH, readonly=True)
+-    q = lambda sql: conn.execute(sql).fetchall()
+-    uv = q('PRAGMA user_version')[0][0]
+-    ic = q('PRAGMA integrity_check')[0][0]
+-    n_v, n_d, n_t = (q(f'SELECT COUNT(*) FROM {t}')[0][0] for t in ('videos', 'videos_dup', 'tips'))
+-    live = {r[0] for r in q('SELECT record_id FROM videos')}
+-    dup = {r[0] for r in q('SELECT record_id FROM videos_dup')}
+-    tips = {r[0] for r in q('SELECT record_id FROM tips')}
+-    dup_vid = q('SELECT COUNT(*) FROM (SELECT video_id FROM videos WHERE video_id IS NOT NULL GROUP BY video_id HAVING COUNT(*) > 1)')[0][0]
+-    no_vid = q('SELECT COUNT(*) FROM videos WHERE video_id IS NULL')[0][0]
+-    src = dict(q('SELECT summary_src, COUNT(*) FROM videos GROUP BY summary_src'))
+-    meta = dict(q('SELECT key, value FROM meta'))
+-    conn.close()
+-
+-    vv, tv = vault_ids()
+-    v_live, v_dup = vv & live, vv & dup
+-    v_missing = vv - live - dup
+-    t_missing = tv - tips
+-    log('🔎 data/library.db 검증')
+-    log(f'  user_version {uv} · integrity_check {ic}')
+-    log(f'  videos {n_v:,} · videos_dup {n_d:,} · tips {n_t:,}  (적재 시각 {meta.get("loaded_at", "?")} · 전환 {meta.get("switched_at", "전")})')
+-    log(f'  videos 안 video_id 중복 {dup_vid} · video_id 없음 {no_vid} · summary_src {src}')
+-    log(f'  Vault 영상 노트 notion_id {len(vv):,} → videos {len(v_live):,} · videos_dup {len(v_dup):,}(2단계 고아 격리 예정) · 어디에도 없음 {len(v_missing):,}')
+-    log(f'  Vault 꿀팁 노트 notion_id {len(tv):,} → tips {len(tv & tips):,} · 없음 {len(t_missing):,}')
+-    if VAULT_IGNORED:
+-        log(f'  Vault: 프론트매터 밖 notion_id 라 제외 {len(VAULT_IGNORED)} {sorted(VAULT_IGNORED)[:10]}')
+-    for x in sorted(v_missing)[:10]:
+-        log(f'    [영상 없음] {x}')
+-    for x in sorted(t_missing)[:10]:
+-        log(f'    [꿀팁 없음] {x}')
+-    ok = (uv == ldb.SCHEMA_VERSION and ic == 'ok' and dup_vid == 0 and not v_missing and not t_missing and n_v > 0)
+-    log('RESULT_JSON ' + json.dumps({
+-        'mode': 'verify', 'ok': ok, 'videos': n_v, 'videos_dup': n_d, 'tips': n_t,
+-        'vault_video_ids': len(vv), 'vault_in_videos': len(v_live), 'vault_in_dup': len(v_dup),
+-        'vault_missing': len(v_missing), 'vault_tip_ids': len(tv), 'tips_missing': len(t_missing), 'vault_ignored': len(VAULT_IGNORED),
+-        'summary_src': src, 'no_video_id': no_vid, 'switched_at': meta.get('switched_at')}, ensure_ascii=False))
+-    log('✅ 검증 통과' if ok else '❌ 검증 실패 — 위 항목 확인')
+-    return 0 if ok else 1
+-
+-
+-# ─────────────────────────── 전환 표시 / 재적재 거부 (v4.0 2단계) ───────────────────────────
+-def switched_reasons(path):
+-    """기존 장부를 노션 스냅샷으로 덮으면 안 되는 이유 목록. 비면 덮어도 된다."""
+-    conn = ldb.open_db(path, readonly=True)
+-    try:
+-        meta = dict(conn.execute('SELECT key, value FROM meta').fetchall())
+-        why = []
+-        if meta.get('switched_at'):
+-            why.append(f"meta.switched_at={meta['switched_at']} (장부가 원본으로 확정됨)")
+-        n_app = conn.execute("SELECT COUNT(*) FROM videos WHERE summary_src = 'app'").fetchone()[0]
+-        if n_app:
+-            why.append(f'앱이 저장한 영상 {n_app}건 (summary_src=app)')
+-        if meta.get('loaded_at'):
+-            n_tip = conn.execute('SELECT COUNT(*) FROM tips WHERE created_at > ?', (meta['loaded_at'],)).fetchone()[0]
+-            if n_tip:
+-                why.append(f"적재 이후 생긴 꿀팁 {n_tip}건 (created_at > {meta['loaded_at']})")
+-        return why
+-    finally:
+-        conn.close()
+-
+-
+-def mark_switched():
+-    if not os.path.exists(ldb.DB_PATH):
+-        log(f'❌ {ldb.DB_PATH} 없음'); return 1
+-    conn = ldb.open_db(ldb.DB_PATH)
+-    try:
+-        meta = dict(conn.execute('SELECT key, value FROM meta').fetchall())
+-        if meta.get('switched_at'):
+-            log(f"❌ 이미 전환 표시됨 (switched_at={meta['switched_at']})"); return 1
+-        if meta.get('source') != 'notion':
+-            log(f"❌ meta.source={meta.get('source')!r} — 노션에서 적재한 장부가 아닙니다"); return 1
+-        ts = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+-        with conn:
+-            conn.execute("INSERT INTO meta (key, value) VALUES ('switched_at', ?)", (ts,))
+-        log(f'✅ 전환 표시 switched_at={ts} — 이후 --apply --replace 는 거부됩니다')
+-        log('RESULT_JSON ' + json.dumps({'mode': 'mark-switched', 'switched_at': ts}, ensure_ascii=False))
+-        return 0
+-    finally:
+-        conn.close()
+-
+-
+-# ─────────────────────────── main ───────────────────────────
+-def main(argv):
+-    if '--verify' in argv:
+-        return verify()
+-    if '--mark-switched' in argv:
+-        return mark_switched()
+-    apply_ = '--apply' in argv
+-    replace = '--replace' in argv
+-    n_check = 20
+-    for a in argv:
+-        if a.startswith('--summary-check='):
+-            v = a.split('=', 1)[1]
+-            n_check = 'all' if v == 'all' else int(v)
+-    if apply_ and os.path.exists(ldb.DB_PATH) and not replace:
+-        log(f'❌ {ldb.DB_PATH} 가 이미 있습니다. 다시 만들려면 --apply --replace'); return 1
+-    if apply_ and os.path.exists(ldb.DB_PATH):
+-        why = switched_reasons(ldb.DB_PATH)
+-        if why:
+-            log('❌ 장부가 이미 원본입니다 — 노션 스냅샷으로 덮으면 앱이 쓴 행이 사라집니다. 거부:')
+-            for w in why:
+-                log(f'   · {w}')
+-            return 1
+-
+-    t0 = time.time()
+-    log(f'🚚 노션 → SQLite 적재 ({"APPLY" if apply_ else "DRY-RUN"})')
+-    vv, tv = vault_ids()
+-    log(f'  Vault: 영상 노트 notion_id {len(vv):,} · 꿀팁 노트 notion_id {len(tv):,}')
+-    if VAULT_IGNORED:
+-        log(f'  Vault: 프론트매터 밖 notion_id 라 제외 {len(VAULT_IGNORED)} {sorted(VAULT_IGNORED)[:10]}')
+-    if not vv:
+-        log(f'❌ Vault 에서 영상 노트 notion_id 를 하나도 못 찾았습니다 ({so.VAULT}) — 중복 판정 근거가 없어 중단'); return 1
+-
+-    log('🔄 노션 조회 (읽기 전용)')
+-    vpages = query_all(NOTION_DB_ID, '「AI YouTube 요약 자료」')
+-    tpages = query_all(TIPS_DB_ID, '「AI 꿀팁」')
+-
+-    stats = Counter()
+-    rows = []
+-    for i, p in enumerate(vpages, 1):
+-        rows.append(video_row(p, stats))
+-        if i % 500 == 0:
+-            log(f'  영상 변환 {i:,}/{len(vpages):,}')
+-    keepers, dups, dst = dedupe(rows, vv)
+-    tips = [tip_row(p) for p in tpages]
+-
+-    no_vid = sum(1 for r in keepers if not r['video_id'])
+-    ids_all = {r['record_id'] for r in rows}
+-    v_missing = vv - ids_all
+-    t_missing = tv - {t['record_id'] for t in tips}
+-    tip_key_dup = sum(c - 1 for c in Counter(t['url_key'] for t in tips if t['url_key']).values() if c > 1)
+-    sc = summary_check(keepers, n_check)
+-    src = Counter(r['summary_src'] for r in keepers)   # 'all' 이면 교체분 반영
+-
+-    log('')
+-    log('📊 결과')
+-    log(f'  영상 페이지 {len(rows):,} → videos {len(keepers):,} · videos_dup {len(dups):,}  (중복 그룹 {dst["dup_groups"]})')
+-    log(f'    남길 행 선택: Vault 노트 기준 {dst["keeper_by_vault"]} · 가장 오래된 것 {dst["keeper_by_oldest"]} · '
+-        f'노트 2개 이상 그룹 {dst["groups_multi_notes"]} · topics 합쳐짐 {dst["keeper_topics_grew"]} · 요약 dup 에서 보충 {dst["keeper_summary_from_dup"]}')
+-    log(f'    videos_dup 중 Vault 노트 있음 {sum(d["has_vault_note"] for d in dups)} (2단계에서 고아 격리 대상)')
+-    log(f'    summary_src {dict(src)} · rich_text 재조회 {stats["summary_refetch"]} · video_id 없음 {no_vid}')
+-    log(f'  꿀팁 {len(tips):,} · url_key 중복 {tip_key_dup} · 본문 블록 있음 {sum(1 for t in tips if t["body_md"])}')
+-    log(f'  Vault 대조: 영상 노트 중 노션에 없는 id {len(v_missing)} · 꿀팁 노트 중 없는 id {len(t_missing)}')
+-    for x in sorted(v_missing)[:10]:
+-        log(f'    [영상 없음] {x}')
+-    for x in sorted(t_missing)[:10]:
+-        log(f'    [꿀팁 없음] {x}')
+-    if sc:
+-        log(f'  요약 대조({"전량" if n_check == "all" else "무작위"} {sc["checked"]}): 일치 {sc["match"]} · '
+-            f'불일치 {sc["checked"] - sc["match"]} {sc["mismatch_ids"]}'
+-            + (f' → 블록 본문으로 교체 {sc["replaced_by_blocks"]}' if n_check == 'all' else ''))
+-
+-    result = {'mode': 'apply' if apply_ else 'dry-run', 'video_pages': len(rows), 'videos': len(keepers),
+-              'videos_dup': len(dups), 'dup_groups': dst['dup_groups'], 'tips': len(tips),
+-              'summary_src': dict(src), 'summary_refetch': stats['summary_refetch'], 'no_video_id': no_vid,
+-              'vault_missing': len(v_missing), 'tips_missing': len(t_missing), 'vault_ignored': len(VAULT_IGNORED),
+-              'tip_url_key_dup': tip_key_dup,
+-              'summary_check': sc, 'elapsed_s': round(time.time() - t0, 1)}
+-
+-    if apply_:
+-        meta = {'loaded_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'source': 'notion',
+-                'notion_video_pages': len(rows), 'notion_tip_pages': len(tips), 'schema_version': ldb.SCHEMA_VERSION}
+-        got, backup = write_db(keepers, dups, tips, meta, replace)
+-        log(f'💾 {ldb.DB_PATH} 작성 {got}' + (f' · 이전 파일 → {os.path.basename(backup)}' if backup else ''))
+-        result['written'] = got
+-        result['backup'] = os.path.basename(backup) if backup else None
+-    else:
+-        log('ℹ️  dry-run — 파일을 쓰지 않았습니다. 적재하려면 --apply')
+-    log('RESULT_JSON ' + json.dumps(result, ensure_ascii=False))
+-    return 0
+-
+-
+-if __name__ == '__main__':
+-    try:
+-        sys.exit(main(sys.argv[1:]))
+-    except tn.NotionAuthError as e:
+-        log(f'🛑 {e} — 즉시 종료 (보안 원칙 1). 아무것도 쓰지 않았습니다')
+-        sys.exit(2)
+diff --git a/scripts/test_notion_to_sqlite.py b/scripts/test_notion_to_sqlite.py
+deleted file mode 100644
+index ae4d9d1..0000000
+--- a/scripts/test_notion_to_sqlite.py
++++ /dev/null
+@@ -1,323 +0,0 @@
+-#!/usr/bin/env python3
+-"""
+-scripts/notion_to_sqlite.py 회귀 테스트 — 네트워크 0회, 실제 Vault·data/ 무변경.
+-
+-  /opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py
+-
+-가짜 노션(urlopen 교체)·임시 Vault·임시 data/ 로 돌린다. 끝에 'N/N PASS' 를 찍고 실패가 있으면 종료 코드 1.
+-"""
+-import io, json, os, shutil, sqlite3, sys, tempfile
+-from urllib.error import HTTPError
+-
+-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+-sys.path.insert(0, os.path.join(REPO_ROOT, 'scripts'))
+-sys.path.insert(0, os.path.join(REPO_ROOT, 'lib'))
+-sys.path.insert(0, REPO_ROOT)
+-
+-import notion_to_sqlite as m   # noqa: E402
+-import tips_notion as tn       # noqa: E402
+-import sync_obsidian as so     # noqa: E402
+-import library_db as ldb       # noqa: E402
+-
+-VDB, TDB = 'vdb-test', 'tdb-test'
+-m.NOTION_DB_ID, m.TIPS_DB_ID = VDB, TDB
+-m.RATE_SLEEP = 0
+-tn.time.sleep = lambda s: None
+-m.time.sleep = lambda s: None
+-
+-
+-def rt(s):
+-    return [{'type': 'text', 'text': {'content': s}, 'plain_text': s}]
+-
+-
+-def vpage(pid, vid, title, topics, created, summary='요약 **본문**', url=None):
+-    return {'object': 'page', 'id': pid, 'created_time': created, 'last_edited_time': created, 'properties': {
+-        '영상 제목': {'id': 'title', 'title': rt(title)},
+-        '유튜브 채널': {'id': 'ch', 'rich_text': rt('채널')},
+-        '주제': {'id': 'tp', 'multi_select': [{'name': t} for t in topics]},
+-        '업로드 일자': {'id': 'ud', 'date': {'start': '2026-09-01'}},
+-        '조회수': {'id': 'vc', 'number': 100}, '구독자수': {'id': 'sc', 'number': 10},
+-        '영상 URL': {'id': 'vu', 'url': url if url is not None else f'https://www.youtube.com/watch?v={vid}'},
+-        '썸네일 URL': {'id': 'th', 'url': 'https://img/x.jpg'},
+-        '처리 상태': {'id': 'st', 'select': {'name': '완료'}},
+-        '요약 내용': {'id': 'sum1', 'rich_text': rt(summary) if summary else []},
+-    }}
+-
+-
+-LONG = ['가' * 1900] * 30
+-VPAGES = [
+-    vpage('aaaa-1', 'AAAAAAAAAAA', 'A 원본', ['Claude'], '2026-08-01T00:00:00.000Z'),
+-    vpage('aaaa-2', 'AAAAAAAAAAA', 'A 중복', ['Claude'], '2026-08-25T00:00:00.000Z'),
+-    vpage('aaaa-3', 'AAAAAAAAAAA', 'A 중복2', ['Gemini'], '2026-09-01T00:00:00.000Z'),
+-    vpage('bbbb-1', 'BBBBBBBBBBB', 'B 새것', ['Claude'], '2026-09-10T00:00:00.000Z'),
+-    vpage('bbbb-0', 'BBBBBBBBBBB', 'B 옛것', ['Claude'], '2026-07-10T00:00:00.000Z'),
+-    vpage('cccc-1', 'CCCCCCCCCCC', 'C 요약없음', ['MCP'], '2026-08-02T00:00:00.000Z', summary=''),
+-    vpage('dddd-1', 'DDDDDDDDDDD', 'D 긴요약', ['MCP'], '2026-08-03T00:00:00.000Z'),
+-    vpage('eeee-1', None, 'E 주소없음', ['기타'], '2026-08-04T00:00:00.000Z', url=''),
+-    vpage('ffff-1', 'FFFFFFFFFFF', 'F 쇼츠', ['기타'], '2026-08-05T00:00:00.000Z', url='https://youtube.com/shorts/FFFFFFFFFFF'),
+-    vpage('hhhh-0', 'HHHHHHHHHHH', 'H 옛것', ['Claude'], '2026-07-01T00:00:00.000Z'),
+-    vpage('hhhh-1', 'HHHHHHHHHHH', 'H 새것(노트)', ['Claude'], '2026-09-20T00:00:00.000Z'),
+-    vpage('gggg-1', 'GGGGGGGGGGG', 'G 가 NFD', ['가'], '2026-08-06T00:00:00.000Z'),
+-]
+-VPAGES[6]['properties']['요약 내용']['rich_text'] = [rt(x)[0] for x in LONG[:25]]   # 잘린 것처럼 25개만
+-
+-
+-def tpage(pid, title, url):
+-    return {'object': 'page', 'id': pid, 'created_time': '2026-09-06T00:00:00.000Z', 'last_edited_time': '2026-09-06T00:00:00.000Z',
+-            'properties': {'제목': {'title': rt(title)}, 'URL': {'url': url}, '출처': {'url': 'github.com'},
+-                           '태그': {'rich_text': rt('a,b')}, '카테고리': {'select': {'name': '개발툴'}},
+-                           '상태': {'select': {'name': '미확인'}}, '중요도': {'select': {'name': '중'}},
+-                           '저장일': {'date': {'start': '2026-09-06'}}, '메모': {'rich_text': []}}}
+-
+-
+-TPAGES = [tpage('tttt-1', '팁1', 'https://github.com/x/y?utm_source=k'), tpage('tttt-2', '팁2', 'https://example.com/z')]
+-
+-BLOCKS = {
+-    'cccc-1': [{'type': 'image', 'image': {}},
+-               {'type': 'paragraph', 'paragraph': {'rich_text': rt('▶ 영상 보기: https://youtu.be/x')}},
+-               {'type': 'divider', 'divider': {}},
+-               {'type': 'heading_2', 'heading_2': {'rich_text': rt('핵심')}},
+-               {'type': 'bulleted_list_item', 'bulleted_list_item': {'rich_text': rt('블록에서 복원')}}],
+-    'tttt-1': [{'type': 'paragraph', 'paragraph': {'rich_text': rt('사용자 메모 블록')}}],
+-}
+-
+-
+-class Fake:
+-    def __init__(self):
+-        self.calls = []
+-        self.fail_plan = []   # [(predicate, code)] 한 번씩 소비
+-        self.vpages = VPAGES
+-        self.tpages = TPAGES
+-
+-    def __call__(self, req, context=None, timeout=None):
+-        method, url = req.get_method(), req.full_url
+-        path = url.split('api.notion.com', 1)[1]
+-        self.calls.append((method, path))
+-        for i, (pred, code) in enumerate(self.fail_plan):
+-            if pred(method, path):
+-                self.fail_plan.pop(i)
+-                raise HTTPError(url, code, 'x', {}, io.BytesIO(b'{"message":"fake"}'))
+-        body = json.loads(req.data) if req.data else {}
+-        if method == 'POST' and path == f'/v1/databases/{VDB}/query':
+-            return self._page(self.vpages, body)
+-        if method == 'POST' and path == f'/v1/databases/{TDB}/query':
+-            return self._page(self.tpages, body)
+-        if method == 'GET' and '/properties/sum1' in path:
+-            start = int((path.split('start_cursor=')[1]) if 'start_cursor=' in path else 0)
+-            items = [{'object': 'property_item', 'type': 'rich_text', 'rich_text': rt(x)[0]} for x in LONG]
+-            chunk = items[start:start + 20]
+-            nxt = start + 20 if start + 20 < len(items) else None
+-            return self._json({'object': 'list', 'results': chunk, 'has_more': nxt is not None, 'next_cursor': str(nxt) if nxt else None})
+-        if method == 'GET' and path.startswith('/v1/blocks/'):
+-            pid = path.split('/')[3]
+-            blocks = BLOCKS.get(pid)
+-            if blocks is None:   # 요약이 속성에 있는 영상 페이지: buildBlocks 와 같은 모양
+-                p = next((x for x in self.vpages if x['id'] == pid), None)
+-                s = p['properties']['요약 내용']['rich_text'] if p else []
+-                if pid == 'dddd-1':
+-                    s = [rt(x)[0] for x in LONG]   # 본문에는 잘리지 않은 전체가 있다
+-                blocks = [{'type': 'image', 'image': {}}, {'type': 'divider', 'divider': {}},
+-                          {'type': 'paragraph', 'paragraph': {'rich_text': [dict(t) for t in s]}}]
+-            return self._json({'results': blocks, 'has_more': False, 'next_cursor': None})
+-        raise AssertionError(f'예상 밖 호출 {method} {path}')
+-
+-    def _page(self, items, body):
+-        start = int(body.get('start_cursor') or 0)
+-        chunk = items[start:start + 4]   # 페이지네이션을 타게 4개씩
+-        nxt = start + 4 if start + 4 < len(items) else None
+-        return self._json({'results': chunk, 'has_more': nxt is not None, 'next_cursor': str(nxt) if nxt else None})
+-
+-    @staticmethod
+-    def _json(obj):
+-        class R(io.BytesIO):
+-            def __enter__(self): return self
+-            def __exit__(self, *a): return False
+-        return R(json.dumps(obj).encode())
+-
+-
+-def make_vault(root):
+-    def note(rel, nid, extra='video_url: https://www.youtube.com/watch?v=x'):
+-        p = os.path.join(root, rel)
+-        os.makedirs(os.path.dirname(p), exist_ok=True)
+-        open(p, 'w', encoding='utf-8').write(f'---\ntitle: "t"\n{extra}\nnotion_id: {nid}\n---\n본문\n')
+-    note('Claude/a1.md', 'aaaa-1')
+-    note('Gemini/a3.md', 'aaaa-3')
+-    note('MCP/c1.md', 'cccc-1')
+-    note('Claude/h1.md', 'hhhh-1')
+-    note('AI 꿀팁/20260906_팁1.md', 'tttt-1', extra='link_url: https://github.com/x/y')
+-    note('_trash/old/x.md', 'zzzz-trash')   # _trash 는 스캔하지 않아야 한다
+-    # schema.md 처럼 본문 코드블록에만 예시 notion_id 가 있는 시스템 문서 — Vault id 로 세면 안 된다 (10-11 실측)
+-    open(os.path.join(root, 'schema.md'), 'w', encoding='utf-8').write(
+-        '# Schema\n\n```yaml\n---\ntitle: "영상 제목"\nvideo_url: https://youtube.com/watch?v=xxxxx\nnotion_id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\n---\n```\n')
+-    open(os.path.join(root, 'AI 꿀팁', 'README.md'), 'w', encoding='utf-8').write('# 안내\n\nnotion_id: yyyy-tip-example\n')
+-
+-
+-results = []
+-
+-
+-def check(name, cond, detail=''):
+-    results.append(bool(cond))
+-    print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f'  — {detail}' if detail and not cond else ''), flush=True)
+-
+-
+-def run(argv, fake):
+-    tn.urlopen = fake
+-    buf = io.StringIO()
+-    old = sys.stdout
+-    sys.stdout = buf
+-    try:
+-        try:
+-            code = m.main(argv)
+-        except tn.NotionAuthError:
+-            code = 2
+-    finally:
+-        sys.stdout = old
+-    out = buf.getvalue()
+-    rj = next((json.loads(l[len('RESULT_JSON '):]) for l in out.splitlines() if l.startswith('RESULT_JSON ')), None)
+-    return code, out, rj
+-
+-
+-def main():
+-    tmp = tempfile.mkdtemp(prefix='n2s-test-')
+-    vault = os.path.join(tmp, 'vault')
+-    make_vault(vault)
+-    so.VAULT = vault
+-    ldb.DB_PATH = os.path.join(tmp, 'data', 'library.db')
+-    try:
+-        print('▶ dry-run')
+-        f = Fake()
+-        code, out, rj = run(['--summary-check=3'], f)
+-        check('dry-run 종료 0', code == 0, out[-500:])
+-        check('dry-run 은 파일을 쓰지 않는다', not os.path.exists(ldb.DB_PATH))
+-        check('노션 쓰기 요청 0건 (POST 는 query 만, PATCH/DELETE 없음)',
+-              all(meth == 'GET' or (meth == 'POST' and p.endswith('/query')) for meth, p in f.calls))
+-        check('영상 12 → videos 8 · dup 4', rj and rj['videos'] == 8 and rj['videos_dup'] == 4, rj)
+-        check('요약 대조 3/3 일치', rj and rj['summary_check']['match'] == 3, rj and rj['summary_check'])
+-        # v4.0 2단계: sync_obsidian.get_existing_vault_info 가 프론트매터만 보게 바뀌어 schema.md 는 처음부터 안 잡힌다 (vault_ignored 1 → 0)
+-        check('본문에만 notion_id 가 있는 문서는 Vault id 에서 제외 (없음 0 · 제외 대상도 처음부터 안 잡힘)',
+-              rj and rj['vault_missing'] == 0 and rj['tips_missing'] == 0 and rj['vault_ignored'] == 0, rj)
+-
+-        print('▶ apply')
+-        code, out, rj = run(['--apply', '--summary-check=0'], Fake())
+-        check('apply 종료 0', code == 0, out[-500:])
+-        db = sqlite3.connect(ldb.DB_PATH)
+-        q = lambda s, *a: db.execute(s, a).fetchall()
+-        check('user_version 1', q('PRAGMA user_version')[0][0] == 1)
+-        a = q("SELECT record_id, topics FROM videos WHERE video_id='AAAAAAAAAAA'")
+-        check('A: Vault 노트가 가리키는 것 중 가장 오래된 aaaa-1 을 남긴다', a and a[0][0] == 'aaaa-1', a)
+-        check('A: topics 합집합 [Claude, Gemini]', a and json.loads(a[0][1]) == ['Claude', 'Gemini'], a)
+-        h = q("SELECT record_id FROM videos WHERE video_id='HHHHHHHHHHH'")
+-        check('H: 더 오래된 행이 있어도 Vault 노트가 가리키는 hhhh-1 을 남긴다', h == [('hhhh-1',)], h)
+-        b = q("SELECT record_id FROM videos WHERE video_id='BBBBBBBBBBB'")
+-        check('B: 노트 없으면 가장 오래된 bbbb-0', b == [('bbbb-0',)], b)
+-        d = dict(q('SELECT record_id, has_vault_note FROM videos_dup'))
+-        check('dup: aaaa-2(노트 없음) · aaaa-3(노트 있음) · bbbb-1 · hhhh-0', d == {'aaaa-2': 0, 'aaaa-3': 1, 'bbbb-1': 0, 'hhhh-0': 0}, d)
+-        c = q("SELECT summary, summary_src FROM videos WHERE record_id='cccc-1'")
+-        check('C: 빈 요약은 블록(구분선 뒤)에서 복원', c and c[0][1] == 'blocks' and c[0][0] == '## 핵심\n- 블록에서 복원', c)
+-        dd = q("SELECT length(summary) FROM videos WHERE record_id='dddd-1'")
+-        check('D: 25개 이상 rich_text 는 속성 재조회로 끝까지 (1900×30)', dd and dd[0][0] == 1900 * 30, dd)
+-        e = q("SELECT video_id FROM videos WHERE record_id='eeee-1'")
+-        check('E: URL 없으면 video_id NULL 로 보존', e == [(None,)], e)
+-        ff = q("SELECT video_id FROM videos WHERE record_id='ffff-1'")
+-        check('F: shorts URL 에서도 video_id', ff == [('FFFFFFFFFFF',)], ff)
+-        g = q("SELECT title, topics FROM videos WHERE record_id='gggg-1'")
+-        check('G: NFD → NFC', g and g[0][0] == 'G 가 NFD' and json.loads(g[0][1]) == ['가'], g)
+-        t = dict(q('SELECT record_id, url_key FROM tips'))
+-        check('tips 2건 · url_key 에서 utm 제거', t.get('tttt-1') == 'https://github.com/x/y', t)
+-        tb = q("SELECT body_md FROM tips WHERE record_id='tttt-1'")
+-        check('tips 본문 블록 보존', tb == [('사용자 메모 블록',)], tb)
+-        db.close()
+-
+-        print('▶ --summary-check=all')
+-        f = Fake()
+-        f.vpages = [dict(x) for x in VPAGES]
+-        trunc = vpage('iiii-1', 'IIIIIIIIIII', 'I 잘린속성', ['MCP'], '2026-08-07T00:00:00.000Z', summary='앞부분만')
+-        f.vpages.append(trunc)
+-        BLOCKS['iiii-1'] = [{'type': 'divider', 'divider': {}},
+-                            {'type': 'paragraph', 'paragraph': {'rich_text': rt('앞부분만 그리고 뒷부분')}}]
+-        code, out, rj = run(['--summary-check=all'], f)
+-        check('all: 불일치 1건(iiii-1)을 블록 본문으로 교체', code == 0 and rj['summary_check']['mismatch_ids'] == ['iiii-1']
+-              and rj['summary_check']['replaced_by_blocks'] == 1 and rj['summary_src'].get('blocks') == 2, out[-400:])
+-        del BLOCKS['iiii-1']
+-
+-        print('▶ 재실행 보호')
+-        f = Fake()
+-        code, out, _ = run(['--apply'], f)
+-        check('이미 있으면 --replace 없이 거부 (노션 호출 0)', code == 1 and not f.calls, out[-300:])
+-        code, out, rj = run(['--apply', '--replace', '--summary-check=0'], Fake())
+-        bak = [x for x in os.listdir(os.path.dirname(ldb.DB_PATH)) if '.bak.' in x]
+-        check('--replace 는 기존 파일을 .bak.<시각> 으로 옮긴다', code == 0 and len(bak) == 1, (code, bak))
+-
+-        print('▶ verify')
+-        code, out, rj = run(['--verify'], Fake())
+-        check('verify 통과 (Vault 영상 id 4 → videos 3 · dup 1 · 없음 0)',
+-              code == 0 and rj['vault_in_videos'] == 3 and rj['vault_in_dup'] == 1 and rj['vault_missing'] == 0, out[-600:])
+-
+-        print('▶ 전환 표시 (v4.0 2단계)')
+-        code, out, rj = run(['--mark-switched'], Fake())
+-        check('--mark-switched 종료 0 · switched_at 기록', code == 0 and rj and rj.get('switched_at'), out[-300:])
+-        code, out, _ = run(['--mark-switched'], Fake())
+-        check('두 번째 --mark-switched 는 거부', code == 1, out[-200:])
+-        snap = open(ldb.DB_PATH, 'rb').read()
+-        f = Fake()
+-        code, out, _ = run(['--apply', '--replace'], f)
+-        check('전환 후 --apply --replace 거부 (노션 호출 0 · 파일 무변경)', code == 1 and not f.calls
+-              and open(ldb.DB_PATH, 'rb').read() == snap, out[-300:])
+-        db = sqlite3.connect(ldb.DB_PATH)
+-        with db:
+-            db.execute("DELETE FROM meta WHERE key = 'switched_at'")
+-            db.execute("UPDATE videos SET summary_src = 'app' WHERE record_id = 'bbbb-0'")
+-        db.close()
+-        f = Fake()
+-        code, out, _ = run(['--apply', '--replace'], f)
+-        check('표시가 없어도 앱이 쓴 영상이 있으면 거부', code == 1 and not f.calls and 'summary_src=app' in out, out[-300:])
+-        db = sqlite3.connect(ldb.DB_PATH)
+-        with db:
+-            db.execute("UPDATE videos SET summary_src = 'property' WHERE record_id = 'bbbb-0'")
+-            db.execute("UPDATE tips SET created_at = '2099-01-01T00:00:00.000Z' WHERE record_id = 'tttt-1'")
+-        db.close()
+-        f = Fake()
+-        code, out, _ = run(['--apply', '--replace'], f)
+-        check('적재 이후 생긴 꿀팁이 있어도 거부', code == 1 and not f.calls and '꿀팁' in out, out[-300:])
+-        db = sqlite3.connect(ldb.DB_PATH)
+-        with db:
+-            db.execute("UPDATE tips SET created_at = '2026-01-01T00:00:00.000Z' WHERE record_id = 'tttt-1'")
+-        db.close()
+-
+-        print('▶ 안전장치')
+-        before = open(ldb.DB_PATH, 'rb').read()
+-        f = Fake(); f.fail_plan = [(lambda meth, p: p.endswith(f'{TDB}/query'), 401)]
+-        code, out, _ = run(['--apply', '--replace'], f)
+-        check('401 → 종료 코드 2', code == 2, out[-300:])
+-        check('401 후 401 요청 다음 호출 0건', f.calls[-1][1].endswith(f'{TDB}/query'), f.calls[-3:])
+-        check('401 이면 기존 library.db 무변경', open(ldb.DB_PATH, 'rb').read() == before)
+-        f = Fake(); f.fail_plan = [(lambda meth, p: p.endswith(f'{VDB}/query'), 503)] * 2
+-        code, out, rj = run(['--summary-check=0'], f)
+-        check('503 두 번은 백오프 재시도 후 성공', code == 0 and rj['videos'] == 8, out[-300:])
+-        f = Fake(); f.fail_plan = [(lambda meth, p: p.endswith(f'{VDB}/query'), 503)] * 4
+-        try:
+-            code, out, _ = run(['--apply', '--replace'], f)
+-            ok = False
+-        except RuntimeError as ex:
+-            ok = '재시도 초과' in str(ex)
+-        check('503 네 번이면 실패로 끝나고', ok)
+-        check('  library.db 는 그대로', open(ldb.DB_PATH, 'rb').read() == before)
+-        f = Fake(); f.vpages = []
+-        try:
+-            run(['--apply', '--replace'], f); ok = False
+-        except RuntimeError as ex:
+-            ok = '0건' in str(ex)
+-        check('노션 0건이면 중단', ok and open(ldb.DB_PATH, 'rb').read() == before)
+-        so.VAULT = os.path.join(tmp, 'empty-vault'); os.makedirs(so.VAULT)
+-        f = Fake()
+-        code, out, _ = run(['--apply', '--replace'], f)
+-        check('Vault 에서 notion_id 0건이면 노션 호출 전에 중단', code == 1 and not f.calls, out[-300:])
+-    finally:
+-        shutil.rmtree(tmp, ignore_errors=True)
+-    n = len(results); p = sum(results)
+-    print(f'\n{p}/{n} PASS')
+-    return 0 if p == n else 1
+-
+-
+-if __name__ == '__main__':
+-    sys.exit(main())
+diff --git a/scripts/test_verify_library.py b/scripts/test_verify_library.py
+new file mode 100644
+index 0000000..f0d4c5d
+--- /dev/null
++++ b/scripts/test_verify_library.py
+@@ -0,0 +1,164 @@
++#!/usr/bin/env python3
++"""
++scripts/verify_library.py 회귀 테스트 — 네트워크 0회, 실제 Vault·data/ 무변경 (v4.3)
++
++  /opt/homebrew/bin/python3 scripts/test_verify_library.py
++
++임시 Vault·임시 장부로 돌린다. 끝에 'N/N PASS' 를 찍고 실패가 있으면 종료 코드 1.
++"""
++import io, json, os, shutil, sys, tempfile
++import urllib.request
++
++REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.insert(0, os.path.join(REPO_ROOT, 'scripts'))
++sys.path.insert(0, os.path.join(REPO_ROOT, 'lib'))
++sys.path.insert(0, REPO_ROOT)
++
++NET_CALLS = []
++def _no_net(*a, **k):
++    NET_CALLS.append(a)
++    raise RuntimeError('네트워크 호출 금지')
++urllib.request.urlopen = _no_net
++
++import verify_library as m      # noqa: E402
++import sync_obsidian as so      # noqa: E402
++import library_db as ldb        # noqa: E402
++
++TS = '2026-10-12T00:00:00.000Z'
++
++
++def make_vault(root):
++    def note(rel, nid, extra='video_url: https://www.youtube.com/watch?v=x'):
++        p = os.path.join(root, rel)
++        os.makedirs(os.path.dirname(p), exist_ok=True)
++        open(p, 'w', encoding='utf-8').write(f'---\ntitle: "t"\n{extra}\nnotion_id: {nid}\n---\n본문\n')
++    note('Claude/a1.md', 'aaaa-1')
++    note('Gemini/a3.md', 'aaaa-3')
++    note('MCP/c1.md', 'cccc-1')
++    note('Claude/h1.md', 'hhhh-1')
++    note('AI 꿀팁/20260906_팁1.md', 'tttt-1', extra='link_url: https://github.com/x/y')
++    note('_trash/old/x.md', 'zzzz-trash')   # _trash 는 스캔하지 않아야 한다
++    # schema.md 처럼 본문 코드블록에만 예시 notion_id 가 있는 시스템 문서 — Vault id 로 세면 안 된다 (10-11 실측)
++    open(os.path.join(root, 'schema.md'), 'w', encoding='utf-8').write(
++        '# Schema\n\n```yaml\n---\ntitle: "영상 제목"\nvideo_url: https://youtube.com/watch?v=xxxxx\nnotion_id: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\n---\n```\n')
++    open(os.path.join(root, 'AI 꿀팁', 'README.md'), 'w', encoding='utf-8').write('# 안내\n\nnotion_id: yyyy-tip-example\n')
++
++
++def make_db(path):
++    conn = ldb.open_db(path)
++    ldb.apply_schema(conn)
++    for rid, vid in (('aaaa-1', 'AAAAAAAAAAA'), ('cccc-1', 'CCCCCCCCCCC'), ('hhhh-1', 'HHHHHHHHHHH'), ('bbbb-0', None)):
++        conn.execute('INSERT INTO videos (record_id, video_id, created_at, updated_at) VALUES (?,?,?,?)', (rid, vid, TS, TS))
++    conn.execute('INSERT INTO videos_dup (record_id, keeper_record_id, video_id, created_at, updated_at) VALUES (?,?,?,?,?)',
++                 ('aaaa-3', 'aaaa-1', 'AAAAAAAAAAA', TS, TS))
++    conn.execute('INSERT INTO tips (record_id, created_at, updated_at) VALUES (?,?,?)', ('tttt-1', TS, TS))
++    conn.execute("INSERT INTO meta (key, value) VALUES ('loaded_at', ?), ('switched_at', ?)", (TS, TS))
++    conn.commit()
++    conn.close()
++
++
++def sql(path, stmt):
++    conn = ldb.open_db(path)
++    conn.execute(stmt)
++    conn.commit()
++    conn.close()
++
++
++results = []
++
++
++def check(name, cond, detail=''):
++    results.append(bool(cond))
++    print(f"  {'PASS' if cond else 'FAIL'}  {name}" + (f'  — {detail}' if detail and not cond else ''), flush=True)
++
++
++def run(argv):
++    buf = io.StringIO()
++    old = sys.stdout
++    sys.stdout = buf
++    try:
++        code = m.main(argv)
++    finally:
++        sys.stdout = old
++    out = buf.getvalue()
++    rj = next((json.loads(l[len('RESULT_JSON '):]) for l in out.splitlines() if l.startswith('RESULT_JSON ')), None)
++    return code, out, rj
++
++
++def snapshot(root):
++    """파일 경로 → (크기, mtime_ns, 내용) — 읽기 전용 확인용"""
++    snap = {}
++    for dp, _, fns in os.walk(root):
++        for f in fns:
++            p = os.path.join(dp, f)
++            st = os.stat(p)
++            snap[p] = (st.st_size, st.st_mtime_ns, open(p, 'rb').read())
++    return snap
++
++
++def main():
++    tmp = tempfile.mkdtemp(prefix='verify-lib-test-')
++    vault = os.path.join(tmp, 'vault')
++    make_vault(vault)
++    so.VAULT = vault
++    db = os.path.join(tmp, 'data', 'library.db')
++    ldb.DB_PATH = db
++    try:
++        print('▶ 장부 없음')
++        code, out, rj = run([])
++        check('장부 파일이 없으면 종료 1 · 만들지 않는다', code == 1 and not os.path.exists(db) and '없음' in out, out[-300:])
++
++        make_db(db)
++        print('▶ 정상')
++        before_db = open(db, 'rb').read()
++        before_vault = snapshot(vault)
++        code, out, rj = run([])
++        check('통과 종료 0 · ok true', code == 0 and rj and rj['ok'] is True, out[-600:])
++        check('Vault 영상 id 4 → videos 3 · dup 1 · 없음 0',
++              rj and rj['vault_video_ids'] == 4 and rj['vault_in_videos'] == 3 and rj['vault_in_dup'] == 1 and rj['vault_missing'] == 0, rj)
++        check('꿀팁 id 1 (README 본문 notion_id 는 세지 않음) · 없음 0', rj and rj['vault_tip_ids'] == 1 and rj['tips_missing'] == 0, rj)
++        check('schema.md 예시 id·_trash 는 Vault id 가 아니다',
++              'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' not in out and 'zzzz-trash' not in out and rj and rj['vault_video_ids'] == 4, out[-600:])
++        check('RESULT_JSON 키 유지 (videos 4 · tips 1 · no_video_id 1 · switched_at)',
++              rj and rj['videos'] == 4 and rj['tips'] == 1 and rj['no_video_id'] == 1 and rj['switched_at'] == TS and rj['mode'] == 'verify', rj)
++        check('장부 바이트 무변경', open(db, 'rb').read() == before_db)
++        check('Vault 파일 무변경 (내용·mtime)', snapshot(vault) == before_vault)
++        check('노션 모듈을 import 하지 않음', 'tips_notion' not in sys.modules and 'notion_to_sqlite' not in sys.modules)
++        check('네트워크 호출 0', not NET_CALLS, NET_CALLS[:2])
++
++        print('▶ 실패 판정')
++        sql(db, "DELETE FROM videos WHERE record_id = 'cccc-1'")
++        code, out, rj = run([])
++        check('Vault 영상 노트가 장부에 없으면 종료 1 · vault_missing 1', code == 1 and rj and rj['vault_missing'] == 1 and '[영상 없음] cccc-1' in out, out[-400:])
++        sql(db, "INSERT INTO videos (record_id, video_id, created_at, updated_at) VALUES ('cccc-1', 'CCCCCCCCCCC', '%s', '%s')" % (TS, TS))
++
++        sql(db, "DELETE FROM tips")
++        code, out, rj = run([])
++        check('꿀팁 노트가 장부에 없으면 종료 1 · tips_missing 1', code == 1 and rj and rj['tips_missing'] == 1 and '[꿀팁 없음] tttt-1' in out, out[-400:])
++        sql(db, "INSERT INTO tips (record_id, created_at, updated_at) VALUES ('tttt-1', '%s', '%s')" % (TS, TS))
++
++        sql(db, 'PRAGMA user_version = %d' % (ldb.SCHEMA_VERSION + 1))
++        code, out, rj = run([])
++        check('user_version 이 스키마와 다르면 종료 1', code == 1 and rj and rj['ok'] is False, out[-300:])
++        sql(db, 'PRAGMA user_version = %d' % ldb.SCHEMA_VERSION)
++
++        code, out, rj = run([])
++        check('되돌리면 다시 통과', code == 0, out[-300:])
++
++        so.VAULT = os.path.join(tmp, 'empty-vault'); os.makedirs(so.VAULT)
++        sql(db, 'DELETE FROM videos')
++        code, out, rj = run([])
++        check('videos 0건이면 종료 1 (Vault 가 비어도)', code == 1 and rj and rj['videos'] == 0, out[-300:])
++
++        print('▶ 인자')
++        code, out, rj = run(['--apply'])
++        check('인자를 주면 종료 2 · 아무것도 하지 않음', code == 2 and rj is None, out[-200:])
++    finally:
++        shutil.rmtree(tmp, ignore_errors=True)
++    n = len(results); p = sum(results)
++    print(f'\n{p}/{n} PASS')
++    return 0 if p == n else 1
++
++
++if __name__ == '__main__':
++    sys.exit(main())
+diff --git a/scripts/verify_library.py b/scripts/verify_library.py
+new file mode 100644
+index 0000000..dce9976
+--- /dev/null
++++ b/scripts/verify_library.py
+@@ -0,0 +1,125 @@
++#!/usr/bin/env python3
++"""
++장부(data/library.db) ↔ Obsidian Vault 대조 — 읽기 전용 (v4.3)
++
++  /opt/homebrew/bin/python3 scripts/verify_library.py        # 통과 0 · 실패 1 · 인자 오류 2
++
++v4.3(노션 해지)에서 scripts/notion_to_sqlite.py --verify 를 노션 의존 없이 떼어 왔다. 검사 항목·RESULT_JSON 키는 그대로다.
++  - 장부: user_version = lib/library_db.py:SCHEMA_VERSION · integrity_check ok · videos ≥ 1 · videos 안 video_id 중복 0
++  - Vault 영상 노트의 notion_id(= 장부 record_id) 가 전부 videos 또는 videos_dup 에 있다 (vault_missing 0)
++  - Vault 「AI 꿀팁」 노트의 notion_id 가 전부 tips 에 있다 (tips_missing 0)
++장부는 mode=ro 로 열고, Vault 는 읽기만 한다. 네트워크 호출 없음.
++
++notion_id 는 프론트매터 안의 것만 센다 — schema.md 처럼 본문 코드블록에 예시 'notion_id: xxxxxxxx-…' 를 담은 문서를
++영상 노트로 오인하지 않기 위함 (2026-10-11 실측). 같은 규칙: sync_obsidian.py, build_search_index.py.
++프론트매터 키 이름 notion_id 는 노션 시절 이름이지만 바꾸지 않는다(wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다).
++"""
++import json, os, re, sys, unicodedata
++
++REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.insert(0, REPO_ROOT)
++sys.path.insert(0, os.path.join(REPO_ROOT, 'lib'))
++
++import sync_obsidian as so                     # noqa: E402  VAULT 경로·Vault 스캔 재사용
++import library_db as ldb                       # noqa: E402
++
++FM_RE = re.compile(r'\A﻿?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)', re.S)
++VAULT_IGNORED = []           # 본문(프론트매터 밖)에만 notion_id 가 있어 Vault id 로 세지 않은 파일 (Vault 상대 경로)
++
++
++def log(msg=''):
++    print(msg, flush=True)
++
++
++def nfc(s):
++    return unicodedata.normalize('NFC', s or '')
++
++
++def fm_notion_id(path):
++    """맨 앞 YAML 프론트매터 안의 notion_id. 없으면 None."""
++    try:
++        text = nfc(open(path, encoding='utf-8', errors='ignore').read())
++    except Exception:
++        return None
++    m = FM_RE.match(text)
++    if not m:
++        return None
++    m2 = re.search(r'^notion_id:\s*(.+)$', m.group(1), re.MULTILINE)
++    return m2.group(1).strip() if m2 else None
++
++
++def vault_ids():
++    """(영상 노트 notion_id 집합, 꿀팁 노트 notion_id 집합).
++    폴더 스캔 규칙은 sync_obsidian.get_existing_vault_info 를 그대로 쓰되, notion_id 는 프론트매터 안의 것만 센다."""
++    id_to_path, _, _ = so.get_existing_vault_info()
++    VAULT_IGNORED.clear()
++    video_ids = set()
++    for i, path in id_to_path.items():
++        if fm_notion_id(path) == i:
++            video_ids.add(i)
++        else:
++            VAULT_IGNORED.append(nfc(os.path.relpath(path, so.VAULT)))
++    tips_ids = set()
++    tips_dir = os.path.join(so.VAULT, so.TIPS_FOLDER)
++    if os.path.isdir(tips_dir):
++        for f in os.listdir(tips_dir):
++            if not f.endswith('.md'):
++                continue
++            i = fm_notion_id(os.path.join(tips_dir, f))
++            if i:
++                tips_ids.add(i)
++    return video_ids, tips_ids
++
++
++def verify():
++    if not os.path.exists(ldb.DB_PATH):
++        log(f'❌ {ldb.DB_PATH} 없음'); return 1
++    conn = ldb.open_db(ldb.DB_PATH, readonly=True)
++    q = lambda sql: conn.execute(sql).fetchall()
++    uv = q('PRAGMA user_version')[0][0]
++    ic = q('PRAGMA integrity_check')[0][0]
++    n_v, n_d, n_t = (q(f'SELECT COUNT(*) FROM {t}')[0][0] for t in ('videos', 'videos_dup', 'tips'))
++    live = {r[0] for r in q('SELECT record_id FROM videos')}
++    dup = {r[0] for r in q('SELECT record_id FROM videos_dup')}
++    tips = {r[0] for r in q('SELECT record_id FROM tips')}
++    dup_vid = q('SELECT COUNT(*) FROM (SELECT video_id FROM videos WHERE video_id IS NOT NULL GROUP BY video_id HAVING COUNT(*) > 1)')[0][0]
++    no_vid = q('SELECT COUNT(*) FROM videos WHERE video_id IS NULL')[0][0]
++    src = dict(q('SELECT summary_src, COUNT(*) FROM videos GROUP BY summary_src'))
++    meta = dict(q('SELECT key, value FROM meta'))
++    conn.close()
++
++    vv, tv = vault_ids()
++    v_live, v_dup = vv & live, vv & dup
++    v_missing = vv - live - dup
++    t_missing = tv - tips
++    log('🔎 data/library.db ↔ Obsidian Vault 대조')
++    log(f'  user_version {uv} · integrity_check {ic}')
++    log(f'  videos {n_v:,} · videos_dup {n_d:,} · tips {n_t:,}  (적재 시각 {meta.get("loaded_at", "?")} · 전환 {meta.get("switched_at", "전")})')
++    log(f'  videos 안 video_id 중복 {dup_vid} · video_id 없음 {no_vid} · summary_src {src}')
++    log(f'  Vault 영상 노트 notion_id {len(vv):,} → videos {len(v_live):,} · videos_dup {len(v_dup):,} · 어디에도 없음 {len(v_missing):,}')
++    log(f'  Vault 꿀팁 노트 notion_id {len(tv):,} → tips {len(tv & tips):,} · 없음 {len(t_missing):,}')
++    if VAULT_IGNORED:
++        log(f'  Vault: 프론트매터 밖 notion_id 라 제외 {len(VAULT_IGNORED)} {sorted(VAULT_IGNORED)[:10]}')
++    for x in sorted(v_missing)[:10]:
++        log(f'    [영상 없음] {x}')
++    for x in sorted(t_missing)[:10]:
++        log(f'    [꿀팁 없음] {x}')
++    ok = (uv == ldb.SCHEMA_VERSION and ic == 'ok' and dup_vid == 0 and not v_missing and not t_missing and n_v > 0)
++    log('RESULT_JSON ' + json.dumps({
++        'mode': 'verify', 'ok': ok, 'videos': n_v, 'videos_dup': n_d, 'tips': n_t,
++        'vault_video_ids': len(vv), 'vault_in_videos': len(v_live), 'vault_in_dup': len(v_dup),
++        'vault_missing': len(v_missing), 'vault_tip_ids': len(tv), 'tips_missing': len(t_missing), 'vault_ignored': len(VAULT_IGNORED),
++        'summary_src': src, 'no_video_id': no_vid, 'switched_at': meta.get('switched_at')}, ensure_ascii=False))
++    log('✅ 검증 통과' if ok else '❌ 검증 실패 — 위 항목 확인')
++    return 0 if ok else 1
++
++
++def main(argv):
++    if argv:
++        log(f'인자를 받지 않습니다: {argv}  (사용법: python3 scripts/verify_library.py)')
++        return 2
++    return verify()
++
++
++if __name__ == '__main__':
++    sys.exit(main(sys.argv[1:]))
+diff --git a/sync_obsidian.py b/sync_obsidian.py
+index ffa1940..38539b0 100644
+--- a/sync_obsidian.py
++++ b/sync_obsidian.py
+@@ -66,7 +66,7 @@ def log(msg): print(msg, flush=True)
+ 
+ # ── 프론트매터 (맨 앞 YAML 블록) ──
+ # notion_id·video_url 은 프론트매터 안의 것만 센다. schema.md 처럼 본문 코드블록에 예시
+-# 'notion_id: xxxxxxxx-…' 를 담은 문서를 영상 노트로 오인하지 않기 위함 (2026-10-11 dry-run 실측, scripts/notion_to_sqlite.py 와 같은 규칙).
++# 'notion_id: xxxxxxxx-…' 를 담은 문서를 영상 노트로 오인하지 않기 위함 (2026-10-11 dry-run 실측, scripts/verify_library.py 와 같은 규칙).
+ FM_RE = re.compile(r'\A﻿?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)', re.S)
+ 
+ def fm_text(content):

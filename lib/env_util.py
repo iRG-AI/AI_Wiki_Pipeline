@@ -2,7 +2,7 @@
 """
 레포 루트 .env 읽기 — 네트워크 없음, 의존성 없음 (v4.0 3단계).
 
-kakao_ingest.py 가 노션 래퍼(lib/tips_notion.py)를 .env 읽기용으로만 import 하던 것을 대신한다.
+kakao_ingest.py 가 노션 래퍼(lib/tips_notion.py, v4.3 에서 삭제)를 .env 읽기용으로만 import 하던 것을 대신한다.
 형식: KEY=VALUE 한 줄씩. '#' 주석·빈 줄 무시. 값 양끝의 따옴표(" ')는 벗긴다 (tips_notion.load_env 와 같은 규칙).
 """
 import os

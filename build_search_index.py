@@ -90,7 +90,7 @@ def batch_embed(texts):
 SKIP_FILES = {'log.md', 'schema.md', '캔버스.md'}
 
 # 프론트매터(맨 앞 YAML 블록) 안의 키만 읽는다 — 본문 코드블록의 'notion_id: …' 예시를 노트로 오인하지 않게
-# (v4.0 3단계. sync_obsidian.py:FM_RE·scripts/notion_to_sqlite.py 와 같은 규칙)
+# (v4.0 3단계. sync_obsidian.py:FM_RE·scripts/verify_library.py 와 같은 규칙)
 FM_RE = re.compile(r'\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)', re.S)
 
 def fm_text(content):

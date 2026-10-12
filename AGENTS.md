@@ -4,16 +4,17 @@
 > 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
 > (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
 
-**현재 버전: v4.2** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.3** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
 > v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
+> v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠다. 장부 ↔ Vault 대조는 `scripts/verify_library.py`.
 
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
 > 구 백업: `~/Claude/Youtube_Notion_Grap_BACKUP_20260717`.
-> 2026-10-13에 이름을 `Youtube_Notion_Grap`(GitHub `YouTube_Notion_Grab`) → `AI_Wiki_Pipeline`(폴더·GitHub 동일)으로 바꿨습니다. 옛 이름·경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다(`docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둡니다).
+> 2026-10-12에 이름을 `Youtube_Notion_Grap`(GitHub `YouTube_Notion_Grab`) → `AI_Wiki_Pipeline`(폴더·GitHub 동일)으로 바꿨습니다. 옛 이름·경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다(`docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둡니다).
 
 ## Commands
 
@@ -57,7 +58,7 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
 
 # 회귀 테스트 7종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
 /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
-/opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py   # 37/37  (보관 스크립트) 적재·--verify
+/opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
 /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
 /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
 /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
@@ -68,9 +69,8 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
 node scripts/clean_pending_queue.js
 node scripts/clean_pending_queue.js --apply
 
-# 장부 ↔ Vault 대조 (노션 호출 없음) — 보관 스크립트지만 --verify 는 계속 쓴다
-/opt/homebrew/bin/python3 scripts/notion_to_sqlite.py --verify
-# ※ --apply --replace 는 금지(장부가 원본이 된 뒤라 스크립트가 거부한다). 노션 적재 기능은 노션 해지 때 파일째 지운다
+# 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음) — 통과 0 · 실패 1, 마지막 RESULT_JSON 의 vault_missing·tips_missing 0
+/opt/homebrew/bin/python3 scripts/verify_library.py
 
 # launchd 제어 (6시간 자동 실행)
 launchctl start com.irichgreen.ytsummarizer
@@ -165,7 +165,6 @@ YouTube "AI 영상목록" (마스터 모드)
 | `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. (v4.2) 실행 실패 알림(판정·점검 문구·상태 파일·`sendTelegram` 반환값) 포함. |
 | `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. |
 | `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
-| `lib/tips_notion.py` | (보관) 노션 「AI 꿀팁」 래퍼. **앱은 import 하지 않는다** — `scripts/notion_to_sqlite.py` 만 쓴다. 노션 해지 때 함께 삭제. |
 | `lib/env_util.py` | (v4.0 3단계) `.env` 읽기(의존성 0). `kakao_ingest.py`·`sheet_mirror.py` 가 쓴다. |
 | `sheet_mirror.py` | (v4.0 3단계) 장부 → 구글 시트 미러(보기 전용, 단방향). `updated_at` 워터마크로 변경분만, 200행씩 POST. `--dry-run`·`--full`·`--check`. 아래 "구글 시트 미러" 절. |
 | `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
@@ -176,7 +175,7 @@ YouTube "AI 영상목록" (마스터 모드)
 | `wiki_mcp.js` | 같은 코어를 Claude에 노출하는 stdio MCP(`search_wiki`, `read_note`). 웹 서버 없이 동작. |
 | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
 | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
-| `scripts/notion_to_sqlite.py` | (보관, v4.0 1단계) 노션 두 DB → `data/library.db` 적재 스크립트. 지금 쓰는 기능은 `--verify`(장부 ↔ Vault 대조, 노션 호출 없음)뿐. 노션 rich_text → 마크다운 변환(`block_to_md`)도 여기로 옮겼다. 노션 해지 때 삭제. |
+| `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
 | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
 | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
 | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
@@ -316,16 +315,15 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
 - **Google Apps Script 웹앱** (v4.0, 시트 미러 받는 쪽): `SHEET_MIRROR_URL`, `SHEET_MIRROR_TOKEN`
 - **Telegram Bot**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 - **구글 드라이브 데스크톱 앱** (v4.1, 장부 백업 사본): `LIBRARY_BACKUP_DIR` — API 호출 없음, 앱이 동기화하는 로컬 폴더에 파일만 쓴다
-- (보관) **Notion API**: `NOTION_TOKEN`·`NOTION_DB_ID`·`NOTION_TIPS_DB_ID` — 앱은 쓰지 않는다. `scripts/notion_to_sqlite.py` 만 읽는다. 「Notion 데이터 이관」이 끝나 노션을 해지할 때 `lib/tips_notion.py`·`notion_to_sqlite.py` 와 함께 지운다.
 
 모든 API 키는 `.env`에서 로드. `scheduler.js`와 `lib/*.js` 각각 자체 `loadEnv()` 포함.
 
 ### v4.0 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
 
-- **장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py`·`sheet_mirror.py` 는 장부를 읽어 노트·시트를 만든다(`sheet_mirror.py` 는 `meta` 의 `sheet_*` 키만 쓴다). 파이프라인에 노션 호출이 없고 앱 코드는 노션 모듈을 import 하지 않는다. 노션은 낡은 사본(해지 대기).
+- **장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py`·`sheet_mirror.py` 는 장부를 읽어 노트·시트를 만든다(`sheet_mirror.py` 는 `meta` 의 `sheet_*` 키만 쓴다). 파이프라인에 노션 호출이 없고 앱 코드는 노션 모듈을 import 하지 않는다. 노션은 2026-10-12 해지했다(v4.3 에서 노션 모듈·`.env NOTION_*` 삭제).
 - **장부는 이 맥에만 있는 원본이다.** 지우거나 새로 만들지 말 것 — 파일이 없으면 Node·Python 모두 만들지 않고 던진다. 복원은 `data/backups/library-YYYYMMDD.db.gz`(v4.1, 하루 1회 · 드라이브에도 사본) 또는 `data/library.db.bak.*` 에서 — 절차는 README 「장부 백업」.
 - 새 영상 노트 본문 = 장부 `summary`(Gemini 요약 원문 마크다운). 모양은 노션 시절 노트와 같다(빈 줄 · `**▶ 영상 보기: **URL` · `---` · 요약).
-- **`meta.switched_at` 이 찍힌 장부에 `notion_to_sqlite.py --apply --replace` 를 돌리지 말 것** — 스크립트가 거부한다(앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다).
+- 노션 → 장부 적재 스크립트(`notion_to_sqlite.py`)는 v4.3 에서 지웠다. 장부를 되살리는 경로는 백업 복원뿐이다(README 「장부 백업」).
 - journal_mode 는 기본(DELETE) 그대로 둔다. 접근이 scheduler → kakao_ingest → sync_obsidian 순차라 WAL 이 필요 없다. 겹치면 Node·Python 모두 busy_timeout 5초 대기.
 - `record_id` = 노션 page id(하이픈 포함) = Obsidian `notion_id`. **프론트매터 키 이름 `notion_id` 를 바꾸지 말 것** — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있다. 새 행은 uuid4.
 - `data/` 는 gitignore. 개인 요약 전체가 들어 있다 — `git check-ignore -q data/library.db` 로 확인.
@@ -496,7 +494,8 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
-- **2026-10-13 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
+- **2026-10-12 (v4.3 — 노션 잔재 정리)** — 노션 해지(10-12)에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`·`scripts/test_notion_to_sqlite.py` 삭제, `.env` 의 `NOTION_*` 3키 삭제. 그중 계속 쓰던 장부 ↔ Vault 대조(`--verify`)는 `scripts/verify_library.py`(+ `scripts/test_verify_library.py` 16/16)로 떼어 냈다 — 검사 항목·`RESULT_JSON` 키 동일, 실데이터 결과 동일(영상 2,999 · 꿀팁 148 · 없음 0). 앱 코드 변경 없음(주석 3곳). 회귀 테스트 7종 유지. 이름 변경 날짜 표기를 실제 실행일(10-12)로 정정.
+- **2026-10-12 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
 - **2026-10-12 (문서 현행화, 버전 유지)** — README 전수 대조 후 수정: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·`.run_state.json` 추가), 사이클 표 순서(대기 큐 소진이 인제스트보다 먼저 — `scheduler.js` 실제 순서), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 4개 표, 프로젝트 구조 누락 파일 5개, 장부 `meta`·`tips` 열, v4.0 이력의 낡은 표기. 레포 `com.irichgreen.wiki-ingest.plist` 를 설치본과 같게(17:30 · Homebrew python3 · 증분), `install-wiki-ingest.sh`·`install-scheduler.sh`·`deploy.sh` 의 낡은 문구(03:00·노션·00:30) 정리. 코드 동작 무변경, 데몬 재기동 불필요. 지시서 `docs/tasks/2026-10-12-docs-sync.md`.
 - **2026-10-12 (v4.2 — 실행 실패 알림)** — 10-04 ~ 10-12 실행 35회 재집계: 프로세스가 죽은 실행 0, "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2(10-04 06:00·10-05 00:00 ENOTFOUND), 아예 돌지 않은 정시 실행 1(10-09 12:00) — 셋 다 텔레그램 없이 지나갔다(`hasNewOrUpdated` 에 안 걸리고, `main().catch` 는 로그만). `scheduler.js`: 통째 실패면 `[실행 실패]` 텔레그램, `main().catch` 도 기록 후 알림, 실행 상태 파일 `.run_state.json` 으로 못 보낸 실패·끝나지 못한 실행·9시간 넘는 간격을 다음 실행이 `[직전 실행 점검]` 으로 알림(못 보내면 pending 으로 넘김, 최대 10줄). `sendTelegram` 이 성공 여부(true/false)를 돌려주고 JSON 아닌 응답에 죽던 잠복 결함·무응답 대기를 막음(20초). `.gitignore` 에 `.run_state.json*`. 테스트: `test_scheduler_guards.js` 29/29(+7), 사본 폴더 `main()` 모의 실행 10종(가짜 https·하위 스크립트). 지시서 `docs/tasks/2026-10-12-run-failure-alert.md`.
 - **2026-10-12 (v4.1 — 장부 자동 백업)** — `backup_library.py` 신설: 장부를 하루 1회(KST 날짜 파일 유무로 판단, 상태 파일 없음) SQLite 온라인 백업 → `integrity_check`·`user_version`·`videos≥1` 검사 → gzip → 압축 해제 sha256 대조 후 `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브 데스크톱 앱 폴더)에 저장, 최신 7개 + 주별 4개 보관(형식 맞는 이름만 정리). 드라이브 부모 폴더가 없으면 만들지 않고 실패. 장부는 읽기 전용. `scheduler.js:runLibraryBackup()`(reject 없음, 실패는 텔레그램 별도). 배경: 타임머신 디스크 미마운트·iCloud 동기화 꺼짐으로 장부 사본이 같은 디스크의 `.bak` 하나뿐이었다. 테스트: 신규 `test_backup_library.py` 50/50, `test_scheduler_guards.js` 22/22(+3). 지시서 `docs/tasks/2026-10-12-library-backup.md`.

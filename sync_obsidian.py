@@ -66,7 +66,7 @@ def log(msg): print(msg, flush=True)
 
 # ── 프론트매터 (맨 앞 YAML 블록) ──
 # notion_id·video_url 은 프론트매터 안의 것만 센다. schema.md 처럼 본문 코드블록에 예시
-# 'notion_id: xxxxxxxx-…' 를 담은 문서를 영상 노트로 오인하지 않기 위함 (2026-10-11 dry-run 실측, scripts/notion_to_sqlite.py 와 같은 규칙).
+# 'notion_id: xxxxxxxx-…' 를 담은 문서를 영상 노트로 오인하지 않기 위함 (2026-10-11 dry-run 실측, scripts/verify_library.py 와 같은 규칙).
 FM_RE = re.compile(r'\A﻿?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)', re.S)
 
 def fm_text(content):

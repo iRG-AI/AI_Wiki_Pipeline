@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.2** (2026-10-12)
+**현재 버전: v4.3** (2026-10-12)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -9,7 +9,8 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.0 에서 노션을 뺐습니다. 원본 = 장부(`data/library.db`), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없습니다.
 > v4.1: 장부를 하루 1회 로컬(`data/backups/`)과 구글 드라이브에 자동 백업합니다(최신 7개 + 주별 4개).
 > v4.2: 실행이 통째로 실패하거나, 알림을 못 보냈거나, 정시 실행이 빠지면 텔레그램으로 알립니다(못 보낸 알림은 다음 실행이 보냄).
-> 2026-10-13: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
+> v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠습니다. 장부 ↔ Vault 대조는 `scripts/verify_library.py` 입니다.
+> 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
 ---
@@ -199,10 +200,9 @@ AI_Wiki_Pipeline/
 │   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
 │   ├── classifier.js                  # Gemini 기반 토픽 분류기
 │   ├── wiki_search.js                 # Wiki 검색 코어 (임베딩 코사인 + 키워드 폴백)
-│   ├── kakao_parse.py                 # URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
-│   └── tips_notion.py                 # (보관) 노션 래퍼 — notion_to_sqlite.py 만 쓴다. 노션 해지 때 삭제
+│   └── kakao_parse.py                 # URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
 ├── scripts/
-│   ├── notion_to_sqlite.py            # (보관) v4.0 1단계 노션 → 장부 적재 · --verify (장부 ↔ Vault 대조)
+│   ├── verify_library.py              # (v4.3) 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음)
 │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
 │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
 │   └── test_*.{js,py}                 # 회귀 테스트 7종 (네트워크 0회)
@@ -272,11 +272,6 @@ YOUTUBE_OAUTH_CLIENT_SECRET=...
 YOUTUBE_OAUTH_REFRESH_TOKEN=...
 YOUTUBE_MASTER_PLAYLIST_ID=PLxxxxxxxxxxxxxxxxxxxxxxxx
 YOUTUBE_PLAYLIST_SYNC=true                          # false 면 토픽 재생목록 추가·대기 큐 재시도를 건너뛴다 (요약·분류·장부 저장은 그대로). 현재 운영값 false
-
-# (보관) 노션 — scripts/notion_to_sqlite.py 만 읽는다. 앱은 쓰지 않는다. 노션 해지 때 함께 지운다
-NOTION_TOKEN=ntn_...
-NOTION_DB_ID=...
-NOTION_TIPS_DB_ID=...
 ```
 
 ---
@@ -414,6 +409,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.3** | 2026-10-12 | **노션 잔재 정리**: 노션 해지에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`(+ 테스트)와 `.env` 의 `NOTION_*` 3키를 지움. 계속 쓰던 장부 ↔ Vault 대조만 `scripts/verify_library.py` 로 떼어 냄(검사 항목·`RESULT_JSON` 동일, 테스트 16/16). 앱 코드 동작 무변경. |
 | **v4.2** | 2026-10-12 | **실행 실패 알림**: "저장 0 · Skip 0 · 오류 ≥1"(영상을 하나도 확인하지 못한 실행)과 치명적 오류가 텔레그램 없이 지나가던 구멍을 막음. 실행 상태 파일 `.run_state.json` 으로 네트워크가 죽어 못 보낸 실패·끝을 기록하지 못한 실행·9시간 넘게 빈 간격(빠진 정시 실행)을 다음 실행이 `[직전 실행 점검]` 으로 알림. `sendTelegram` 이 성공 여부를 돌려주고 JSON 아닌 응답에 죽지 않음 |
 | **v4.1** | 2026-10-12 | **장부 자동 백업**: 장부(`data/library.db`)를 하루 1회 SQLite 온라인 백업 → 무결성 검사 → gzip 해 로컬 `data/backups/` 와 구글 드라이브 폴더(`.env LIBRARY_BACKUP_DIR`)에 저장(`backup_library.py`). 최신 7개 + 주별 4개 보관. 장부는 읽기 전용으로만 연다. 스케줄러 훅은 reject 없음, 실패는 텔레그램. 회귀 테스트 7종 |
 | **v4.0** | 2026-10-12 | **노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러**: 원본을 노션에서 맥의 SQLite 장부 `data/library.db` 로 옮김(1단계 적재 · 2단계 쓰기/읽기 전환 · 3단계 정리, 단계마다 실데이터 판정). 파이프라인 노션 호출 0. 장부 → 구글 시트(탭 영상·꿀팁) 단방향 미러 `sheet_mirror.py` + Apps Script 웹앱 `gas/sheet_mirror.gs`(변경분만, 인증 오류 즉시 중단). 앱의 노션 코드 의존 제거, `/api/sync-obsidian` 제거, 재구성 시 내용 같은 파일 안 쓰기(Vault 전체 mtime 갱신 해소). 회귀 테스트 6종 |
@@ -438,6 +434,20 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
 
+#### [v4.3] — 2026-10-12 (🧹 노션 잔재 정리)
+
+**배경.** v4.0 부터 파이프라인은 노션을 부르지 않았고, 노션 모듈은 「Notion 데이터 이관」이 끝날 때까지 보관만 했다. 10-12 이관이 끝나 노션을 해지했다. 보관 파일 중 실제로 쓰던 기능은 `notion_to_sqlite.py --verify`(장부 ↔ Vault 대조, 노션 호출 없음) 하나였다.
+
+| 항목 | 내용 |
+|---|---|
+| 삭제 | `lib/tips_notion.py` · `scripts/notion_to_sqlite.py` · `scripts/test_notion_to_sqlite.py`, `.env` 의 `NOTION_TOKEN`·`NOTION_DB_ID`·`NOTION_TIPS_DB_ID` |
+| 신규 | `scripts/verify_library.py` — `--verify` 를 노션 import 없이 떼어 옴. 장부 `mode=ro`, Vault 읽기만, 네트워크 0. 통과 0 · 실패 1 · 인자 2. 검사 항목·`RESULT_JSON` 키 동일 |
+| 실데이터 | 옛 `--verify` 와 새 스크립트의 `RESULT_JSON` 이 글자까지 같음(영상 2,999 · dup 203 · 꿀팁 148 · `vault_missing` 0 · `tips_missing` 0) |
+| 테스트 | 신규 `scripts/test_verify_library.py` 16/16(임시 장부·Vault — 장부·Vault 무변경, 노션 모듈 import 0, 네트워크 0 확인). 회귀 테스트 7종 유지 |
+| 그대로 | 노트 프론트매터 키 `notion_id`(= 장부 `record_id`) — wiki_ingest·검색 인덱스 상태가 이 값에 묶여 있어 이름을 바꾸지 않는다 |
+| 문서 | 이름 변경 날짜 표기를 실제 실행일 10-12 로 정정(지시서 파일 이름은 그대로) |
+| 지시서 | `docs/tasks/2026-10-12-notion-cleanup.md` |
+
 #### [v4.2] — 2026-10-12 (🚨 실행 실패 알림)
 
 **배경.** 10-04 ~ 10-12 실행 35회를 다시 세었다. 프로세스가 죽은 실행은 0회(v3.2.1 재시도가 흡수)였지만, 마스터 인제스트가 ENOTFOUND 로 통째 실패해 "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2회(10-04 06:00, 10-05 00:00)와 아예 돌지 않은 정시 실행 1회(10-09 12:00)가 **텔레그램 없이** 지나갔다. 완료 알림은 신규·갱신이 있을 때만 보내고, `main().catch` 는 로그만 남겼다. 네트워크가 죽은 실행은 그 자리에서 알림도 못 보내므로 "다음 실행이 알리는" 길이 함께 필요했다.
@@ -450,7 +460,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 | 테스트 | `test_scheduler_guards.js` 29/29(+7). 사본 폴더에서 가짜 https·하위 스크립트로 `main()` 모의 실행 10종(전면 다운 → 복구, 연속 실패 누적, 빠진 실행, 도중 종료, 겹친 실행, 장부 없음, 치명적 오류) |
 | 지시서 | `docs/tasks/2026-10-12-run-failure-alert.md` |
 | 문서 현행화 (같은 날, 버전 유지) | README 전수 대조: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·실행 상태 추가), 사이클 표 순서(대기 큐가 인제스트보다 먼저), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 표, 프로젝트 구조 누락 파일, 장부 `meta`·`tips` 열. 레포 `com.irichgreen.wiki-ingest.plist` 를 실제 설치본(17:30 · Homebrew python3 · 증분)과 같게 맞춤 — 그전 원본(03:00 · `/usr/bin/python3` · `--full`)으로 재설치하면 라이브러리가 갈리고 Gemini 무료 한도를 소진했다. 설치·배포 스크립트의 낡은 문구(노션·03:00·00:30) 정리. 지시서 `docs/tasks/2026-10-12-docs-sync.md` |
-| 이름 변경 (2026-10-13, 버전 유지) | 노션을 뺀 뒤에도 이름에 남아 있던 Notion 을 정리: 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab`(철자도 서로 달랐다) → 둘 다 `AI_Wiki_Pipeline`. 레포 plist 원본 4개 · 설치 스크립트 sed 패턴 · `package.json` 이름 · 문서 경로. 코드 동작 무변경(코드에 레포 절대경로 없음). 레포 밖 맥 설정(설치된 plist · 로그 회전 스크립트 · Claude Code MCP 등록)은 지시서 절차로 함께 옮김. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md` |
+| 이름 변경 (2026-10-12, 버전 유지) | 노션을 뺀 뒤에도 이름에 남아 있던 Notion 을 정리: 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab`(철자도 서로 달랐다) → 둘 다 `AI_Wiki_Pipeline`. 레포 plist 원본 4개 · 설치 스크립트 sed 패턴 · `package.json` 이름 · 문서 경로. 코드 동작 무변경(코드에 레포 절대경로 없음). 레포 밖 맥 설정(설치된 plist · 로그 회전 스크립트 · Claude Code MCP 등록)은 지시서 절차로 함께 옮김. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md` |
 
 #### [v4.1] — 2026-10-12 (🛟 장부 자동 백업)
 
