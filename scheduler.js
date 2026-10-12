@@ -155,6 +155,34 @@ function runSheetMirror(python3) {
   });
 }
 
+// ── (v4.1) 장부 하루 1회 백업 — 로컬 data/backups/ + 구글 드라이브 폴더(.env LIBRARY_BACKUP_DIR) ──
+// backup_library.py 실행. 오늘(KST) 백업이 이미 있으면 Python 쪽이 skipped 로 즉시 끝난다 → 00시 실행이 만들고 나머지는 건너뜀.
+// 실패해도 reject 하지 않는다(시트 미러 훅과 같은 원칙). 텔레그램은 main 이 보낸다 — 이 함수는 네트워크를 쓰지 않는다.
+function runLibraryBackup(python3) {
+  return new Promise((resolve) => {
+    const { execFile } = require('child_process');
+    const script = path.join(__dirname, 'backup_library.py');
+    if (!fs.existsSync(script)) { log('ℹ️  backup_library.py 없음 — 건너뜀'); return resolve(null); }
+    execFile(python3, [script], { cwd: __dirname, timeout: 10 * 60 * 1000 },
+      (err, stdout, stderr) => {
+        let r = null;
+        const line = String(stdout || '').split('\n').find(l => l.startsWith('RESULT_JSON:'));
+        if (line) { try { r = JSON.parse(line.slice('RESULT_JSON:'.length)); } catch (e) { log(`⚠️ 장부 백업 결과 파싱 오류: ${e.message}`); } }
+        if (err) {
+          log(`⚠️ 장부 백업 오류 (exit ${err.code}${r && r.error ? `, ${r.error}` : ''}): ${String(stderr || '').slice(-300)}`);
+          if (!r) r = { error: 'exit_' + err.code };
+          if (!r.error) r.error = 'exit_' + err.code;
+        } else if (r && r.skipped) {
+          log(`ℹ️  장부 백업 건너뜀: ${r.skipped} (${r.file})`);
+        } else if (r) {
+          const d = r.dests || {};
+          log(`🗄  장부 백업: ${r.file} ${((r.bytes || 0) / 1048576).toFixed(1)}MB · 로컬 ${d.local} · 드라이브 ${d.drive}`);
+        }
+        resolve(r);
+      });
+  });
+}
+
 // ══════════════════════════════════
 // 이메일 알림 전송 (Gmail SMTP over TLS)
 // ══════════════════════════════════
@@ -1321,6 +1349,15 @@ async function main() {
   const mirrorSent = mirror && !mirror.skipped ? (mirror.videos_sent || 0) + (mirror.tips_sent || 0) : 0;
   const mirrorFailed = !!(mirror && mirror.error);
 
+  // ── (v4.1) 장부 하루 1회 백업 (오늘 것 있으면 skipped). 실패는 텔레그램 별도 한 줄 — 저장 0건 실행에도 알린다 ──
+  log('\n🗄  장부 백업...');
+  const backup = await runLibraryBackup(python3);
+  if (backup && backup.error) {
+    const d = backup.dests || {};
+    await sendTelegram(`⚠️ <b>[장부 백업 실패]</b>\n${backup.error}\n로컬: ${d.local || '-'} · 드라이브: ${d.drive || '-'}\n` +
+      (String(backup.error).includes('drive') ? '구글 드라이브 앱 실행·로그인 확인' : 'backup_library.py --status 로 확인'));
+  }
+
   // ── Obsidian 동기화 (항상 실행 - 장부·카톡·시트·Obsidian 결과 합쳐서 1개 메시지 전송) ──
   log('\n🔄 Obsidian 동기화 시작...');
   const { execFile } = require('child_process');
@@ -1395,7 +1432,7 @@ if (require.main === module) {
   });
 } else {
   module.exports = {
-    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror,
+    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror, runLibraryBackup,
     _setLibDb: (db) => { libDb = db; },   // 테스트 전용 (scripts/test_scheduler_guards.js)
   };
 }

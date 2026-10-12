@@ -1,12 +1,13 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.0** (2026-10-12)
+**현재 버전: v4.1** (2026-10-12)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
 장부 내용은 **구글 시트**에 보기용 사본(미러)으로 자동 복사됩니다.
 
 > v4.0 에서 노션을 뺐습니다. 원본 = 장부(`data/library.db`), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없습니다.
+> v4.1: 장부를 하루 1회 로컬(`data/backups/`)과 구글 드라이브에 자동 백업합니다(최신 7개 + 주별 4개).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
 ---
@@ -29,6 +30,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 - 📎 **카카오톡 링크 자동 수집 (v3.0)** — '나와의 채팅' 내보내기 CSV에서 AI 자료 링크를 추출·정규화해 장부 `tips` 에 신규만 적재 (장부 대조 기반 멱등성)
 - 📓 **Obsidian 자동 동기화** — 장부의 영상·꿀팁 신규 항목을 Obsidian 노트로 생성, LLM Wiki 자동 합성
 - 📗 **구글 시트 미러 (v4.0)** — 장부의 영상·꿀팁을 구글 시트 두 탭에 보기용으로 복사 (매 실행 끝에 변경분만)
+- 🛟 **장부 자동 백업 (v4.1)** — 하루 1회 장부 스냅샷(무결성 검사 + gzip)을 로컬 `data/backups/` 와 구글 드라이브 폴더에 저장, 최신 7개 + 주별 4개 보관
 - 🔗 **Wiki 링크 자동 구성** — 재생목록별 MOC, 채널별 목차, 키워드 링크 자동 생성 (내용이 같으면 파일을 다시 쓰지 않음)
 - 🔎 **Wiki 검색 (v3.2)** — 이 맥·집 안 다른 컴퓨터·Claude(MCP)에서 의미 검색 + AI 답변
 - 📱 **텔레그램 알림** — 장부 저장·카톡·시트·Obsidian 결과 통합 전송
@@ -116,12 +118,13 @@ flowchart TD
 | 2 | 대기 큐 소진 | `scheduler.js:flushPendingQueue()` | `pending_playlist_adds.json` | 재생목록 추가 (quota 한도 내) | 큐 비어 있으면 생략 |
 | 3 | 카톡 인제스트 | `kakao_ingest.py --apply --if-new` | `~/Downloads` 최신 CSV | 장부 `tips` 신규 행 | 같은 CSV(mtime)면 장부 조회 없이 즉시 종료 |
 | 4 | 시트 미러 (v4.0) | `sheet_mirror.py` | 장부 중 `updated_at` > 워터마크 | 시트 '영상'·'꿀팁' 탭 덮어쓰기/추가 | 바뀐 행 0이면 요청 0. `.env` 미설정이면 건너뜀 |
+| 4b | 장부 백업 (v4.1) | `backup_library.py` | 장부 전체 (읽기 전용) | `data/backups/`·드라이브 폴더의 `library-YYYYMMDD.db.gz` | 오늘(KST) 파일이 있으면 건너뜀 → 실제로는 하루 1회. 실패는 텔레그램 별도 알림 |
 | 5 | 영상 노트 동기화 | `sync_obsidian.py` | 장부 `videos` | `VAULT/<토픽>/*.md` | 0건 |
 | 6 | 고아 격리 | `sync_obsidian.py:quarantine_orphans()` | Vault 영상 노트 vs 장부 | `_trash/<ts>/` 이동 | 3중 안전장치 하나라도 걸리면 아무것도 안 함 |
 | 7 | 꿀팁 노트 동기화 | `sync_obsidian.py:sync_tips()` | 장부 `tips` | `VAULT/AI 꿀팁/*.md` | 0건 |
 | 8 | MOC·키워드 재구성 | `build_obsidian_wiki.py` | Vault 전체 | `_MOC/*.md`, 노트 하단 관련 항목 | 내용이 같으면 파일을 쓰지 않음 (v4.0) |
 | 9 | Wiki 합성 | `wiki_ingest.py` | 미처리 노트 | `_wiki/entities`, `_wiki/concepts` | 신규 노트 없으면 생략 |
-| 10 | 알림 | `scheduler.js` | 1·3·4·5~9 결과 | Telegram 1개 메시지 | 변경 0이면 발송 생략 (시트 실패는 알림) |
+| 10 | 알림 | `scheduler.js` | 1·3·4·5~9 결과 | Telegram 1개 메시지 | 변경 0이면 발송 생략 (시트 실패는 알림 · 백업 실패는 별도 알림) |
 
 ### 두 소스의 격리 원칙
 
@@ -143,17 +146,19 @@ flowchart TD
 ```
 Youtube_Notion_Grap/
 ├── server.js                          # 웹 서버 (127.0.0.1:3000) — UI · 마스터 인제스트 SSE · Wiki 검색
-├── scheduler.js                       # 자동 스케줄러 (6시간 간격) — YouTube → 장부 → 카톡 → 시트 → Obsidian → 알림
+├── scheduler.js                       # 자동 스케줄러 (6시간 간격) — YouTube → 장부 → 카톡 → 시트 → 백업 → Obsidian → 알림
 ├── index.html                         # 웹 앱 UI (단일 파일)
 ├── package.json                       # Node.js CommonJS 설정
 ├── playlists.json                     # 등록된 재생목록 목록 (gitignore)
 ├── .env                               # API 키 (gitignore — 절대 커밋 금지)
 ├── data/library.db                    # (v4.0) 로컬 원본 장부 — SQLite (gitignore, 개인 요약 전체)
+├── data/backups/                      # (v4.1) 장부 백업 library-YYYYMMDD.db.gz — 최신 7 + 주별 4 (gitignore)
 ├── favicon.svg                        # 브라우저 탭 아이콘
 ├── oauth_setup.js                     # YouTube OAuth refresh_token 1회 발급 도구
 ├── kakao_ingest.py                    # 카톡 CSV → 장부 tips (기본 dry-run, --apply / --if-new)
 ├── sheet_mirror.py                    # (v4.0) 장부 → 구글 시트 미러 (변경분만, --dry-run / --full / --check)
 ├── gas/sheet_mirror.gs                # (v4.0) 시트 쪽 Apps Script 웹앱 (받는 쪽, 설치 순서는 파일 머리 주석)
+├── backup_library.py                  # (v4.1) 장부 하루 1회 백업 → data/backups/ + 구글 드라이브 (--dry-run / --status / --force)
 ├── sync_obsidian.py                   # 장부 → Obsidian 증분 동기화 (영상·꿀팁 노트, 고아 격리, --dry-run)
 ├── build_obsidian_wiki.py             # MOC + 채널 목차 + 키워드 링크 빌더 (내용 같으면 안 씀)
 ├── wiki_ingest.py                     # Gemini 기반 엔티티/개념 위키 페이지 합성
@@ -178,7 +183,7 @@ Youtube_Notion_Grap/
 │   ├── notion_to_sqlite.py            # (보관) v4.0 1단계 노션 → 장부 적재 · --verify (장부 ↔ Vault 대조)
 │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
 │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
-│   └── test_*.{js,py}                 # 회귀 테스트 6종 (네트워크 0회)
+│   └── test_*.{js,py}                 # 회귀 테스트 7종 (네트워크 0회)
 ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
 ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
 ├── CLAUDE.md                          # 구조·제약·안전장치 — 코드 질문은 여기부터 (AGENTS.md 는 같은 내용)
@@ -218,6 +223,9 @@ KAKAO_EXPORT_DIR=/Users/<사용자>/Downloads          # KakaoTalk_Chat_안진�
 # (v4.0) 구글 시트 미러 — 둘 다 없으면 미러를 건너뛴다 (설치 순서: gas/sheet_mirror.gs 머리 주석)
 SHEET_MIRROR_URL=https://script.google.com/macros/s/.../exec
 SHEET_MIRROR_TOKEN=<openssl rand -hex 24 로 만든 값 — Apps Script 스크립트 속성 MIRROR_TOKEN 과 같게>
+
+# (v4.1) 장부 백업 — 구글 드라이브 데스크톱 앱이 동기화하는 폴더 안. 없으면 로컬 data/backups/ 에만 만든다
+LIBRARY_BACKUP_DIR=~/Library/CloudStorage/GoogleDrive-<계정>/내 드라이브/YouTube_Ledger_Backup
 
 # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
 WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
@@ -292,7 +300,37 @@ bash install-scheduler.sh
 
 > 시트는 보기 전용 사본이다. 시트를 고쳐도 장부로 돌아가지 않고, 다음 변경 때 덮어써진다. 열을 추가하지 말 것(머리글이 다르면 쓰기를 멈춘다 → `--full`).
 
-### 5. Wiki 검색 (v3.2)
+### 5. 장부 백업 (v4.1)
+
+장부는 이 맥에만 있는 원본이다. 스케줄러가 매 실행 끝에 `backup_library.py` 를 부르고, 오늘(KST) 백업이 없는 곳에만 만든다 — 실제로는 00시 실행이 하루 1개를 만든다.
+
+1. 구글 드라이브 데스크톱 앱에 로그인해 둔다.
+2. `.env` 에 `LIBRARY_BACKUP_DIR` 를 넣는다(위 환경 변수 절). 마지막 폴더는 스크립트가 만들지만, 그 부모(`내 드라이브`)가 없으면 만들지 않고 실패로 알린다.
+3. 확인:
+
+```bash
+/opt/homebrew/bin/python3 backup_library.py --dry-run   # 만들 곳·지울 파일만 (쓰기 0)
+/opt/homebrew/bin/python3 backup_library.py             # 오늘 것 만들기 (이미 있으면 건너뜀)
+/opt/homebrew/bin/python3 backup_library.py --status    # 두 곳의 개수·가장 최근 날짜
+```
+
+- 파일: `library-YYYYMMDD.db.gz`(약 4MB). SQLite 온라인 백업 → `integrity_check` → gzip → 압축을 다시 풀어 sha256 대조. 장부는 읽기 전용으로만 연다.
+- 보관: 최신 7개 + 그보다 옛 주마다 1개씩 4주 = 최대 11개(약 45MB). 이름 형식이 다른 파일은 지우지 않는다.
+
+**복원** (손으로, 스케줄러가 돌지 않는 시간에):
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+cp data/library.db data/library.db.bak.$(date +%Y%m%d_%H%M%S)      # 지금 것을 먼저 보관
+gunzip -c data/backups/library-YYYYMMDD.db.gz > data/library.db.restore
+sqlite3 data/library.db.restore 'PRAGMA integrity_check'           # ok 확인
+mv data/library.db.restore data/library.db
+launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+```
+
+> 복원하면 그 날짜 이후 저장된 영상이 장부에서 빠진다. 다음 실행이 그 영상을 신규로 다시 요약할 수 있고, Obsidian 에 남은 노트는 고아 격리 대상이 될 수 있다 — `sync_obsidian.py --orphans-dry-run` 부터 본다. 시트는 `sheet_mirror.py --full` 로 맞춘다.
+
+### 6. Wiki 검색 (v3.2)
 
 | 입구 | 프로세스 | 바인딩 | 용도 |
 |---|---|---|---|
@@ -340,6 +378,7 @@ bash install-scheduler.sh
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.1** | 2026-10-12 | **장부 자동 백업**: 장부(`data/library.db`)를 하루 1회 SQLite 온라인 백업 → 무결성 검사 → gzip 해 로컬 `data/backups/` 와 구글 드라이브 폴더(`.env LIBRARY_BACKUP_DIR`)에 저장(`backup_library.py`). 최신 7개 + 주별 4개 보관. 장부는 읽기 전용으로만 연다. 스케줄러 훅은 reject 없음, 실패는 텔레그램. 회귀 테스트 7종 |
 | **v4.0** | 2026-10-12 | **노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러**: 원본을 노션에서 맥의 SQLite 장부 `data/library.db` 로 옮김(1단계 적재 · 2단계 쓰기/읽기 전환 · 3단계 정리, 단계마다 실데이터 판정). 파이프라인 노션 호출 0. 장부 → 구글 시트(탭 영상·꿀팁) 단방향 미러 `sheet_mirror.py` + Apps Script 웹앱 `gas/sheet_mirror.gs`(변경분만, 인증 오류 즉시 중단). 앱의 노션 코드 의존 제거, `/api/sync-obsidian` 제거, 재구성 시 내용 같은 파일 안 쓰기(Vault 전체 mtime 갱신 해소). 회귀 테스트 6종 |
 | **v3.2.1** | 2026-10-05 | **스케줄러 네트워크 안전장치 — 빈 캐시 중복 저장 차단**: Notion 캐시 첫 조회가 네트워크 오류로 실패하면 재시도 없이 빈 캐시로 진행해 재생목록 앞 15편을 다시 저장하던 결함 수정(08-12 이후 13회·중복 195건). 캐시는 "전부 읽었거나, 던지거나"로 바꾸고 실패한 실행은 영상 처리를 건너뜀(fail-closed), Notion 401/403 은 즉시 종료. YouTube 조회에 일시 오류 지수 백오프 재시도 추가(오류 한 번에 실행이 통째 실패하던 비율 28%). 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450회)에서 50개 배치 순차(9회)로 교체. 회귀 테스트 `scripts/test_scheduler_guards.js` 신설 |
 | **v3.2** | 2026-10-03 | **집 안 전용 Wiki 검색 서버**: 가족이 같은 네트워크의 다른 컴퓨터에서 `http://<맥이름>.local:3100/wiki`로 검색하도록 읽기 전용 서버 `wiki_lan_server.js` 신설. `server.js`(Notion 쓰기 프록시·인제스트 실행 포함)는 `127.0.0.1` 전용으로 유지하고 검색 경로만 분리 노출. 허용 대역(`WIKI_LAN_ALLOW_CIDR`) 밖 403, 미설정 시 루프백 전용(fail-closed), Host 검사, AI 답변 일일 총량으로 Gemini 무료 한도 보호. `launchd` `com.irichgreen.wiki-lan` 추가 |
@@ -361,6 +400,20 @@ bash install-scheduler.sh
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.1] — 2026-10-12 (🛟 장부 자동 백업)
+
+**배경.** v4.0 으로 원본이 맥의 장부 파일 하나가 됐다. 10-12 점검에서 타임머신 백업 디스크가 마운트되지 않아 백업 기록이 없었고 iCloud Drive 동기화도 꺼져 있었다 — 장부 사본은 같은 디스크의 `.bak` 하나뿐이었다. 구글 시트 미러는 영상·꿀팁 본문은 담지만 `meta`·`videos_dup` 이 없어 복원용이 아니다.
+
+| 항목 | 내용 |
+|---|---|
+| 스크립트 | `backup_library.py` — SQLite 온라인 백업 API 로 사본(장부는 `mode=ro` 로만 연다) → `integrity_check`·`user_version`·`videos ≥ 1` 검사 → gzip → 압축 해제 sha256 대조 → `.tmp` 로 쓰고 이름 바꾸기 |
+| 위치 | 로컬 `data/backups/`(gitignore) + `.env LIBRARY_BACKUP_DIR`(구글 드라이브 데스크톱 앱 폴더). 드라이브 폴더의 부모가 없으면(앱 꺼짐) 만들지 않고 `drive: unavailable` |
+| 하루 1회 | 파일 이름 = KST 날짜. 오늘 이름이 있는 폴더는 건너뜀 → 00시 실행이 만들고 06·12·18시는 skipped. 드라이브만 빠졌으면 다음 실행이 드라이브에만 다시 쓴다. 상태 파일 없음 |
+| 보관 | 최신 7개 + 일별이 대표하지 않는 옛 ISO 주마다 가장 최근 1개씩 4주 = 최대 11개. `library-YYYYMMDD.db.gz` 형식만 세고 지운다 |
+| 스케줄러 | `runLibraryBackup()` — 시트 미러 뒤·Obsidian 동기화 앞. reject 없음. 실패하면 `[장부 백업 실패]` 텔레그램 한 줄(저장 0건 실행에도) |
+| 테스트 | 신규 `scripts/test_backup_library.py` 50/50(임시 폴더), `test_scheduler_guards.js` 22/22(+3) |
+| 지시서 | `docs/tasks/2026-10-12-library-backup.md` |
 
 #### [v4.0] — 2026-10-12 (🗄️ 노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러)
 

@@ -4,9 +4,10 @@
 > 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
 > (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
 
-**현재 버전: v4.0** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
+**현재 버전: v4.1** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+> v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
 
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
@@ -34,6 +35,11 @@ node scheduler.js --legacy     # 레거시 33개 재생목록 모드
 /opt/homebrew/bin/python3 sheet_mirror.py --full       # 두 탭을 비우고 전부 다시 (열이 바뀌었거나 시트가 어긋났을 때)
 /opt/homebrew/bin/python3 sheet_mirror.py --check      # 시트 행 수 ↔ 장부 행 수 대조 (읽기만)
 
+# 장부 백업 (v4.1) — 스케줄러가 매 실행 자동 호출, 오늘(KST) 것이 있으면 건너뛴다 → 실제로는 하루 1회
+/opt/homebrew/bin/python3 backup_library.py --dry-run  # 만들 곳·지울 파일만 (쓰기 0)
+/opt/homebrew/bin/python3 backup_library.py            # 오늘 백업이 없는 곳(로컬·드라이브)에만 만든다
+/opt/homebrew/bin/python3 backup_library.py --status   # 두 곳의 개수·가장 최근 날짜 (읽기만)
+
 # 카카오톡 → 장부 tips (스케줄러가 --apply --if-new 로 자동 호출)
 /opt/homebrew/bin/python3 kakao_ingest.py                    # dry-run (기본). 생성될 행 표만 출력
 /opt/homebrew/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 장부에 → 확인
@@ -47,13 +53,14 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
 
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
-# 회귀 테스트 6종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
-/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 19/19  장부 캐시·재시도·배치 조회·시트 미러 훅
+# 회귀 테스트 7종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 22/22  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅
 /opt/homebrew/bin/python3 scripts/test_notion_to_sqlite.py   # 37/37  (보관 스크립트) 적재·--verify
 /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
 /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
 /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
 /opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 10/10  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정
+/opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
 
 # 대기 큐 정리 (중복 제거 + dead-letter 격리) — 기본 dry-run
 node scripts/clean_pending_queue.js
@@ -128,6 +135,7 @@ YouTube "AI 영상목록" (마스터 모드)
     → lib/youtube_oauth.js:addToPlaylist() [토픽별 YouTube 재생목록 추가]
     → kakao_ingest.py --apply --if-new    [카톡 CSV → 장부 tips]
     → sheet_mirror.py                     [장부 변경분 → 구글 시트 (보기용)]
+    → backup_library.py                   [장부 하루 1회 백업 → data/backups/ + 구글 드라이브]
     → sync_obsidian.py                    [장부 → Obsidian .md 파일 생성/갱신]
     → wiki_ingest.py                      [Gemini 2.5 Flash, 엔티티/개념 Wiki 페이지 합성]
     → build_obsidian_wiki.py              [MOC + 키워드 허브 재구성]
@@ -158,6 +166,8 @@ YouTube "AI 영상목록" (마스터 모드)
 | `lib/env_util.py` | (v4.0 3단계) `.env` 읽기(의존성 0). `kakao_ingest.py`·`sheet_mirror.py` 가 쓴다. |
 | `sheet_mirror.py` | (v4.0 3단계) 장부 → 구글 시트 미러(보기 전용, 단방향). `updated_at` 워터마크로 변경분만, 200행씩 POST. `--dry-run`·`--full`·`--check`. 아래 "구글 시트 미러" 절. |
 | `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
+| `backup_library.py` | (v4.1) 장부 하루 1회 백업 → `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브). 온라인 백업 API·무결성 검사·gzip·sha256 대조, 최신 7 + 주별 4 보관. 장부는 읽기 전용. `--dry-run`·`--status`·`--force`. 아래 "장부 백업" 절. |
+| `scripts/test_backup_library.py` | (v4.1) 장부 백업 회귀 테스트. 임시 장부·임시 폴더(가짜 드라이브 경로 포함), 실제 장부·드라이브 무관. |
 | `wiki.html` | Wiki 검색 화면. 의미 검색 + AI 답변, 토픽 필터·정렬. `server.js`와 `wiki_lan_server.js`가 같은 파일을 서빙한다. |
 | `lib/wiki_search.js` | 검색 코어(의존성 0). `wiki_index.json`+`wiki_index.vec`(768차원) 로드, 임베딩 코사인 + 메타 부스트, 임베딩 실패 시 키워드 폴백, Gemini 401/403 래치. |
 | `wiki_mcp.js` | 같은 코어를 Claude에 노출하는 stdio MCP(`search_wiki`, `read_note`). 웹 서버 없이 동작. |
@@ -232,6 +242,25 @@ scheduler.js (카톡 인제스트 뒤, Obsidian 동기화 앞) → runSheetMirro
 - 스케줄러 훅 `runSheetMirror` 는 **절대 reject 하지 않는다**(카톡 훅과 같은 원칙). 실패하면 텔레그램 메시지에 `📗 구글 시트 미러 ⚠️ 실패` 한 줄이 붙는다(`auth` 면 토큰·배포 확인).
 - 웹앱 코드를 고치면 Apps Script 에서 **배포 관리 → 새 버전**으로 같은 URL 을 유지한다(새 배포를 만들면 URL 이 바뀌어 다음 실행이 전체 다시 쓰기).
 
+### 장부 백업 (v4.1) — 하루 1회, 로컬 + 구글 드라이브
+
+```
+scheduler.js (시트 미러 뒤, Obsidian 동기화 앞) → runLibraryBackup() → backup_library.py
+   [오늘(KST) library-YYYYMMDD.db.gz 가 없는 폴더만 → SQLite 온라인 백업(장부 mode=ro) → integrity_check·user_version·videos≥1
+    → gzip → 압축 해제 sha256 대조 → .tmp 로 쓰고 이름 바꾸기 → 그 폴더에서만 보관 규칙]
+   → <REPO_ROOT>/data/backups/ (gitignore) + .env LIBRARY_BACKUP_DIR (구글 드라이브 데스크톱 앱 폴더)
+```
+
+- **장부에 쓰지 않는다.** 읽기 전용 연결로 백업 API 만 쓴다. `meta` 에도 기록하지 않는다 — 하루 1회 판단은 오늘 날짜 파일이 그 폴더에 있느냐로만 한다(상태 파일 없음).
+- 백업을 `cp` 로 만들지 말 것 — journal_mode=DELETE 라 쓰는 도중의 장부가 찍힐 수 있다. 온라인 백업 API(`Connection.backup`, `sqlite3 .backup`)만 쓴다.
+- 사본 검사(`integrity_check`·`user_version`·`videos ≥ 1`)에 걸리면 아무것도 만들지 않고 **기존 백업도 지우지 않는다.** 이 검사를 빼지 말 것 — 망가진 장부가 좋은 백업을 밀어낸다.
+- 보관: 최신 7개 + 일별이 대표하지 않는 옛 ISO 주마다 가장 최근 1개(보통 일요일)씩 4주 = 최대 11개(약 45MB). 정리는 **그 실행에 새로 쓴 폴더에서만**, 이름이 정확히 `library-YYYYMMDD.db.gz` 인 파일만 대상이다(`NAME_RE`). 정규식을 넓히지 말 것.
+- `LIBRARY_BACKUP_DIR` 의 **부모 폴더가 없으면 만들지 않는다**(`drive: unavailable`, exit 1). 드라이브 앱이 꺼져 `~/Library/CloudStorage/...` 가 사라졌을 때 로컬 디스크에 같은 경로를 만들면 백업된 줄 착각한다. 마지막 폴더 하나만 만든다.
+- 드라이브 쪽에서 지운 파일은 구글 드라이브 휴지통(30일)으로 간다.
+- 스케줄러 훅 `runLibraryBackup` 은 **reject 하지 않고 네트워크를 쓰지 않는다**. 실패하면 main 이 `⚠️ [장부 백업 실패]` 텔레그램을 따로 보낸다(저장 0건 실행에도). 드라이브가 빠진 날은 실행마다(최대 4회) 알린다 — 의도.
+- 복원 절차는 README 「장부 백업」. 복원 후에는 그 날짜 이후 영상이 장부에 없으므로 `sync_obsidian.py --orphans-dry-run` 부터 보고, 시트는 `sheet_mirror.py --full`.
+- 타임머신(외장 디스크)은 이 백업과 별개다 — 디스크가 연결돼 있을 때만 돈다.
+
 ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
 
 장부 `videos` 에 없는 notion_id 를 가진 영상 노트를 **삭제하지 않고** `VAULT/_trash/<타임스탬프>/`로 이동합니다 (v4.0 전에는 "Notion에서 삭제된 페이지").
@@ -266,6 +295,7 @@ scheduler.js (카톡 인제스트 뒤, Obsidian 동기화 앞) → runSheetMirro
 - **Gemini 2.5 Flash**: `GEMINI_API_KEY`·`GEMINI_API_KEYS` (요약 + 분류 + Wiki 합성 + 검색 임베딩)
 - **Google Apps Script 웹앱** (v4.0, 시트 미러 받는 쪽): `SHEET_MIRROR_URL`, `SHEET_MIRROR_TOKEN`
 - **Telegram Bot**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+- **구글 드라이브 데스크톱 앱** (v4.1, 장부 백업 사본): `LIBRARY_BACKUP_DIR` — API 호출 없음, 앱이 동기화하는 로컬 폴더에 파일만 쓴다
 - (보관) **Notion API**: `NOTION_TOKEN`·`NOTION_DB_ID`·`NOTION_TIPS_DB_ID` — 앱은 쓰지 않는다. `scripts/notion_to_sqlite.py` 만 읽는다. 「Notion 데이터 이관」이 끝나 노션을 해지할 때 `lib/tips_notion.py`·`notion_to_sqlite.py` 와 함께 지운다.
 
 모든 API 키는 `.env`에서 로드. `scheduler.js`와 `lib/*.js` 각각 자체 `loadEnv()` 포함.
@@ -273,7 +303,7 @@ scheduler.js (카톡 인제스트 뒤, Obsidian 동기화 앞) → runSheetMirro
 ### v4.0 — 로컬 원본 장부 `data/library.db` (2026-10-11~)
 
 - **장부가 원본이다.** `scheduler.js`·`kakao_ingest.py` 는 `data/library.db` 에 쓰고, `sync_obsidian.py`·`sheet_mirror.py` 는 장부를 읽어 노트·시트를 만든다(`sheet_mirror.py` 는 `meta` 의 `sheet_*` 키만 쓴다). 파이프라인에 노션 호출이 없고 앱 코드는 노션 모듈을 import 하지 않는다. 노션은 낡은 사본(해지 대기).
-- **장부는 이 맥에만 있는 원본이다.** 지우거나 새로 만들지 말 것 — 파일이 없으면 Node·Python 모두 만들지 않고 던진다. 복원은 `data/library.db.bak.*` 또는 맥 백업에서.
+- **장부는 이 맥에만 있는 원본이다.** 지우거나 새로 만들지 말 것 — 파일이 없으면 Node·Python 모두 만들지 않고 던진다. 복원은 `data/backups/library-YYYYMMDD.db.gz`(v4.1, 하루 1회 · 드라이브에도 사본) 또는 `data/library.db.bak.*` 에서 — 절차는 README 「장부 백업」.
 - 새 영상 노트 본문 = 장부 `summary`(Gemini 요약 원문 마크다운). 모양은 노션 시절 노트와 같다(빈 줄 · `**▶ 영상 보기: **URL` · `---` · 요약).
 - **`meta.switched_at` 이 찍힌 장부에 `notion_to_sqlite.py --apply --replace` 를 돌리지 말 것** — 스크립트가 거부한다(앱이 쓴 행이 노션 스냅샷으로 덮여 사라진다).
 - journal_mode 는 기본(DELETE) 그대로 둔다. 접근이 scheduler → kakao_ingest → sync_obsidian 순차라 WAL 이 필요 없다. 겹치면 Node·Python 모두 busy_timeout 5초 대기.
@@ -413,7 +443,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ### 보안 — 절대 커밋 금지
 
-`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`).
+`.gitignore` 대상: `.env`, `.env.*`, `node_modules/`, `__pycache__/`, `*.log`, `playlists.json`, `.DS_Store`, `.claude/settings.local.json`, `wiki_index.json`, `wiki_index.vec`, `.migrate_state.json`, `.quota_state.json`, `.wiki_state.json`, `.wiki_quota.json`, `pending_playlist_adds*`, `data/`(장부), `KakaoTalk_Chat_*`, `Claude outputs/`. 시트 미러는 상태 파일을 만들지 않는다(워터마크는 장부 `meta`). 장부 백업도 상태 파일이 없고(오늘 날짜 파일 유무로 판단) 백업은 `data/backups/` 라 `data/` 패턴에 들어간다.
 
 > ⚠️ **새 상태 파일을 만들면 `.gitignore` 패턴을 반드시 재확인한다.**
 > `pending_playlist_adds.json*` 패턴이 `.dead.json`·`.backup.*.json`을 못 잡아 커밋될 뻔한 사고가 있었다(2026-08-17). 현재는 `pending_playlist_adds*`로 수정됨.
@@ -445,6 +475,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-12 (v4.1 — 장부 자동 백업)** — `backup_library.py` 신설: 장부를 하루 1회(KST 날짜 파일 유무로 판단, 상태 파일 없음) SQLite 온라인 백업 → `integrity_check`·`user_version`·`videos≥1` 검사 → gzip → 압축 해제 sha256 대조 후 `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브 데스크톱 앱 폴더)에 저장, 최신 7개 + 주별 4개 보관(형식 맞는 이름만 정리). 드라이브 부모 폴더가 없으면 만들지 않고 실패. 장부는 읽기 전용. `scheduler.js:runLibraryBackup()`(reject 없음, 실패는 텔레그램 별도). 배경: 타임머신 디스크 미마운트·iCloud 동기화 꺼짐으로 장부 사본이 같은 디스크의 `.bak` 하나뿐이었다. 테스트: 신규 `test_backup_library.py` 50/50, `test_scheduler_guards.js` 22/22(+3). 지시서 `docs/tasks/2026-10-12-library-backup.md`.
 - **2026-10-12 (v4.0 3단계 — v4.0 완료)** — 구글 시트 미러: `sheet_mirror.py`(장부 → 시트, `updated_at` 워터마크로 변경분만, 401/403·토큰·HTML 응답 즉시 중단, 5xx 지수 백오프) + `gas/sheet_mirror.gs`(Apps Script 웹앱, 토큰·탭 화이트리스트·머리글 대조·수식 방지), `scheduler.js:runSheetMirror()`(reject 없음, 실패는 텔레그램). 노션 정리: `kakao_ingest.py` 의 `tips_notion` import → `lib/env_util.py`, `block_to_md` → `scripts/notion_to_sqlite.py`(보관) — 앱은 노션 모듈을 import 하지 않는다. `lib/tips_notion.py`·`notion_to_sqlite.py`·`.env` `NOTION_*` 는 노션 해지 때 삭제. `server.js` `/api/sync-obsidian` 제거. `build_search_index.py` 프론트매터 한정(실 Vault 3,121 노트 옛 코드와 동일). `build_obsidian_wiki.py` 내용 같으면 안 쓰기(실 Vault 사본 재구성 2회차 쓰기 0 — 10-11 의 Vault 전체 mtime 갱신 해소) + 프론트매터 없는 파일에 관련 항목이 쌓이던 잠복 결함 수정. 문서 전면 갱신(README v4.0, 이 파일의 카톡 절·명령·파일 표, AGENTS.md 를 이 파일과 같은 내용으로). 테스트: `test_scheduler_guards.js` 19/19(+3), `test_kakao_ingest.py` 18/18(+1), 신규 `test_sheet_mirror.py` 45/45 · `test_build_wiki_index.py` 10/10, 기존 37/37 · 23/23. 지시서 `docs/tasks/2026-10-12-v4-sheet-mirror-cleanup.md`.
 - **2026-10-11 (v4.0 2단계-b)** — 읽기 전환. `sync_obsidian.py` 가 장부(읽기 전용)를 읽어 노트를 만든다 — 노션 호출 0, 본문은 `summary` 마크다운(노션 시절 노트와 같은 모양). `notion_id`·`video_url` 은 프론트매터 안의 것만 센다. 고아 격리 3중 안전장치 유지, 꿀팁 고아는 보고만. `--dry-run` 신설. `server.js`·`index.html` 노션 프록시·토큰 테스트·브라우저 직접 처리 제거. `migrate_classify.js` 등 5개 → `legacy_scripts/`. 테스트: 신규 `test_sync_obsidian.py` 23/23, `test_notion_to_sqlite.py` 37/37(vault_ignored 1 → 0). 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-b.md`.
 - **2026-10-11 (v4.0 2단계-a)** — 쓰기 전환. `scheduler.js` 의 노션 캐시·저장·주제 추가·통계 갱신을 로컬 장부(`lib/library.js`, `node:sqlite`)로 교체 — 노션 호출 0. `kakao_ingest.py` 는 장부 `tips` 에 한 트랜잭션으로 쓴다. `lib/library_db.py:open_existing()`(없으면 만들지 않음). `notion_to_sqlite.py --mark-switched` + 전환 후 `--apply --replace` 거부. WAL 미전환(순차 접근, busy_timeout 5초). 테스트: `test_scheduler_guards.js` 16/16(노션 캐시 5건 → 장부 9건), `test_notion_to_sqlite.py` 37/37, 신규 `test_kakao_ingest.py` 17/17. 지시서 `docs/tasks/2026-10-11-v4-sqlite-switch-a.md`.

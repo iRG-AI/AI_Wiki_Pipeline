@@ -10,6 +10,7 @@
 //   3) 채널 구독자 수는 50개씩 묶어 순차 조회한다
 //   4) 장부 쓰기(저장·주제 추가·통계 갱신)는 같은 video_id 를 덮어쓰지 않고, 네트워크 요청을 하나도 만들지 않는다
 //   5) (v4.0 3단계) 시트 미러 훅은 실패해도 reject 하지 않는다 — 오류를 결과로 돌려줄 뿐 Obsidian 동기화를 막지 않는다
+//   6) (v4.1) 장부 백업 훅도 같다 — 실패해도 reject 하지 않고, 네트워크 요청을 만들지 않는다(텔레그램은 main 이 보낸다)
 
 const https = require('https');
 const fs = require('fs');
@@ -245,6 +246,21 @@ const cases = [
     const fake = fakeInterpreter('echo \'RESULT_JSON:{"skipped":"not_configured","videos_sent":0,"tips_sent":0,"error":""}\'');
     const r = await sched.runSheetMirror(fake);
     assert(r && r.skipped === 'not_configured' && !r.error, '결과가 다르다: ' + JSON.stringify(r));
+  }],
+  ['runLibraryBackup: 드라이브 실패(exit 1)여도 reject 없이 결과를 돌려준다', async () => {
+    const fake = fakeInterpreter('echo \'RESULT_JSON:{"file":"library-20261012.db.gz","dests":{"local":"ok","drive":"unavailable"},"error":"drive_unavailable"}\'; exit 1');
+    const r = await sched.runLibraryBackup(fake);
+    assert(r && r.error === 'drive_unavailable' && r.dests.local === 'ok', '결과가 다르다: ' + JSON.stringify(r));
+  }],
+  ['runLibraryBackup: 출력 없이 죽어도 reject 없이 exit 코드를 오류로 돌려준다', async () => {
+    const fake = fakeInterpreter('exit 4');
+    const r = await sched.runLibraryBackup(fake);
+    assert(r && r.error === 'exit_4', '결과가 다르다: ' + JSON.stringify(r));
+  }],
+  ['runLibraryBackup: skipped(오늘 것 있음)는 오류가 아니다', async () => {
+    const fake = fakeInterpreter('echo \'RESULT_JSON:{"skipped":"already_done","file":"library-20261012.db.gz","error":""}\'');
+    const r = await sched.runLibraryBackup(fake);
+    assert(r && r.skipped === 'already_done' && !r.error, '결과가 다르다: ' + JSON.stringify(r));
   }],
   ['updateStats: 업로드일을 안 주면 기존 날짜를 지킨다', async () => {
     const db = library.openLibrary(makeLibrary(SEED));
