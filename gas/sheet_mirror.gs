@@ -1,5 +1,5 @@
 /**
- * YouTube_Notion_Grab v4.0 — 장부(data/library.db) → 구글 시트 미러 수신부 (Apps Script 웹앱)
+ * AI_Wiki_Pipeline (v4.0~) — 장부(data/library.db) → 구글 시트 미러 수신부 (Apps Script 웹앱)
  *
  * 보기 전용 단방향 미러다. 원본은 맥의 장부이고, 이 시트를 고쳐도 장부로 돌아가지 않는다.
  * 보내는 쪽: 레포 루트 sheet_mirror.py (스케줄러가 매 실행 끝에 변경분만 보낸다).

@@ -9,6 +9,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.0 에서 노션을 뺐습니다. 원본 = 장부(`data/library.db`), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없습니다.
 > v4.1: 장부를 하루 1회 로컬(`data/backups/`)과 구글 드라이브에 자동 백업합니다(최신 7개 + 주별 4개).
 > v4.2: 실행이 통째로 실패하거나, 알림을 못 보냈거나, 정시 실행이 빠지면 텔레그램으로 알립니다(못 보낸 알림은 다음 실행이 보냄).
+> 2026-10-13: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
 ---
@@ -160,7 +161,7 @@ flowchart TD
 ## 📂 프로젝트 구조
 
 ```
-Youtube_Notion_Grap/
+AI_Wiki_Pipeline/
 ├── server.js                          # 웹 서버 (127.0.0.1:3000) — UI · 마스터 인제스트 SSE · Wiki 검색
 ├── scheduler.js                       # 자동 스케줄러 (6시간 간격) — YouTube → 장부 → 카톡 → 시트 → 백업 → Obsidian → 알림
 ├── index.html                         # 웹 앱 UI (단일 파일)
@@ -449,6 +450,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 | 테스트 | `test_scheduler_guards.js` 29/29(+7). 사본 폴더에서 가짜 https·하위 스크립트로 `main()` 모의 실행 10종(전면 다운 → 복구, 연속 실패 누적, 빠진 실행, 도중 종료, 겹친 실행, 장부 없음, 치명적 오류) |
 | 지시서 | `docs/tasks/2026-10-12-run-failure-alert.md` |
 | 문서 현행화 (같은 날, 버전 유지) | README 전수 대조: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·실행 상태 추가), 사이클 표 순서(대기 큐가 인제스트보다 먼저), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 표, 프로젝트 구조 누락 파일, 장부 `meta`·`tips` 열. 레포 `com.irichgreen.wiki-ingest.plist` 를 실제 설치본(17:30 · Homebrew python3 · 증분)과 같게 맞춤 — 그전 원본(03:00 · `/usr/bin/python3` · `--full`)으로 재설치하면 라이브러리가 갈리고 Gemini 무료 한도를 소진했다. 설치·배포 스크립트의 낡은 문구(노션·03:00·00:30) 정리. 지시서 `docs/tasks/2026-10-12-docs-sync.md` |
+| 이름 변경 (2026-10-13, 버전 유지) | 노션을 뺀 뒤에도 이름에 남아 있던 Notion 을 정리: 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab`(철자도 서로 달랐다) → 둘 다 `AI_Wiki_Pipeline`. 레포 plist 원본 4개 · 설치 스크립트 sed 패턴 · `package.json` 이름 · 문서 경로. 코드 동작 무변경(코드에 레포 절대경로 없음). 레포 밖 맥 설정(설치된 plist · 로그 회전 스크립트 · Claude Code MCP 등록)은 지시서 절차로 함께 옮김. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md` |
 
 #### [v4.1] — 2026-10-12 (🛟 장부 자동 백업)
 

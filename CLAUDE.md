@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**현재 버전: v4.2** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/Youtube_Notion_Grap`
+**현재 버전: v4.2** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
 > 구 백업: `~/Claude/Youtube_Notion_Grap_BACKUP_20260717`.
+> 2026-10-13에 이름을 `Youtube_Notion_Grap`(GitHub `YouTube_Notion_Grab`) → `AI_Wiki_Pipeline`(폴더·GitHub 동일)으로 바꿨습니다. 옛 이름·경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다(`docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둡니다).
 
 ## Commands
 
@@ -362,7 +363,7 @@ v4.0 2단계부터 `scheduler.js:loadLibraryCache()`(장부 `videos` 전량)가 
 
 **대기 큐 안전장치 (v2.5) — 건드리지 말 것**
 
-`scheduler.js:flushPendingQueue()`와 `processMasterIngest()` 내부 `appendPending`에 들어간 장치입니다. 큐 로직을 바꾸면 **`migrate_classify.js`도 같은 큐 파일에 쓰므로 양쪽을 함께 고쳐야 합니다.**
+`scheduler.js:flushPendingQueue()`와 `processMasterIngest()` 내부 `appendPending`에 들어간 장치입니다. 큐에 쓰는 코드는 `scheduler.js` 한 곳이다(같은 큐 파일에 쓰던 `migrate_classify.js` 는 v4.0 에서 `legacy_scripts/` 로 은퇴).
 
 - `appendPending`은 `(videoId, playlistId)` 중복을 적재하지 않는다(`scheduler.js:1124`). 없으면 큐가 며칠 만에 2배로 부푼다. 실제 46.7%까지 중복된 이력이 있다.
 - `flushPendingQueue`는 **연속 실패 10회에서 큐 처리를 중단**한다(`scheduler.js:894`). 403을 수백 번 난사하면 구글이 어뷰징으로 판단해 계정을 정지시킨다. 보안 원칙 1의 구현체다.
@@ -451,7 +452,8 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 | `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | `KeepAlive`, `RunAtLoad`, `ThrottleInterval 60` — 상주 | `/opt/homebrew/bin/node` |
 
 - **실제 동작하는 plist는 `~/Library/LaunchAgents/`에 있다.** 레포 루트의 plist 4개는 그 원본이며 모두 실경로(`<REPO_ROOT>` 의 절대경로)가 들어 있다. **원본은 설치본과 같게 유지한다** — 2026-10-12 대조에서 `wiki-ingest` 원본만 옛 값(03:00 · `/usr/bin/python3` · `--full`)이라 설치본(17:30 · Homebrew python3 · 증분)으로 맞췄다. 확인: `diff <(plutil -convert xml1 -o - ~/Library/LaunchAgents/<라벨>.plist) <(plutil -convert xml1 -o - <라벨>.plist)`. 예전에 `server`·`ytsummarizer` 두 개에 있던 `/Users/사용자명/youtube-notion-app` 플레이스홀더는 제거했다.
-- 각 plist는 `ProgramArguments`·`WorkingDirectory` **2곳에 절대경로**가 박혀 있다. 경로 변경 시 6군데 동기화 + `plutil -lint` + unload/load.
+- 각 plist는 `ProgramArguments`·`WorkingDirectory` **2곳에 절대경로**가 박혀 있다. 경로 변경 시 8군데(4개 × 2) 동기화 + `plutil -lint` + unload/load.
+- **레포 경로 자체를 바꿀 때 함께 고칠 맥 설정(레포 밖):** 설치된 plist 4개, `~/Library/Scripts/rotate_extra_logs.sh` 의 `YTDIR`, Claude Code MCP `wiki-search` 등록(`~/.claude.json` 사용자 범위 — `claude mcp remove`/`add -s user`), 스킬 `kakao-tips-update` 의 경로. 절차·검증은 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
 - `install-server.sh`·`install-scheduler.sh`는 plist를 `~/Library/LaunchAgents/`로 복사하며 **sed로 이 실경로를 `$APP_DIR`로 치환**한다. 레포 경로를 바꾸면 두 스크립트의 sed 패턴도 같이 고쳐야 치환이 동작한다. `install-wiki-ingest.sh` 는 치환 없이 그대로 복사한다(원본 = 설치본). `deploy.sh` 는 옛 일괄 업로드 스크립트라 쓰지 않는다.
 - `com.irichgreen.server`는 상주 프로세스라 **코드를 고쳐도 재기동 전까지 반영되지 않는다.**
 - `com.irichgreen.wiki-lan`의 로그(`wiki-lan.log`)는 **`rotate_extra_logs.sh`에 넣지 않는다.** 상주형이라 rename 회전이 안전하지 않다. 대신 서버가 기동·차단·오류만 찍는다.
@@ -470,7 +472,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ### 로그 파일
 
-- `scheduler.log` / `scheduler-stdout.log`: 스케줄러 실행 로그. **현재 약 20MB. 로테이션 미도입.** 통째로 읽지 말고 `tail`/`grep`으로 볼 것.
+- `scheduler.log` / `scheduler-stdout.log`: 스케줄러 실행 로그. 10MB 를 넘으면 `~/Library/Scripts/rotate_extra_logs.sh`(`com.irichgreen.log_rotate` 가 호출)가 회전한다(`.1.gz`~`.6.gz`). 통째로 읽지 말고 `tail`/`grep`으로 볼 것.
 - `server.log`: 서버 요청 로그
 - Obsidian vault의 `log.md`: wiki 변경 이력
 
@@ -492,6 +494,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-13 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
 - **2026-10-12 (문서 현행화, 버전 유지)** — README 전수 대조 후 수정: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·`.run_state.json` 추가), 사이클 표 순서(대기 큐 소진이 인제스트보다 먼저 — `scheduler.js` 실제 순서), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 4개 표, 프로젝트 구조 누락 파일 5개, 장부 `meta`·`tips` 열, v4.0 이력의 낡은 표기. 레포 `com.irichgreen.wiki-ingest.plist` 를 설치본과 같게(17:30 · Homebrew python3 · 증분), `install-wiki-ingest.sh`·`install-scheduler.sh`·`deploy.sh` 의 낡은 문구(03:00·노션·00:30) 정리. 코드 동작 무변경, 데몬 재기동 불필요. 지시서 `docs/tasks/2026-10-12-docs-sync.md`.
 - **2026-10-12 (v4.2 — 실행 실패 알림)** — 10-04 ~ 10-12 실행 35회 재집계: 프로세스가 죽은 실행 0, "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2(10-04 06:00·10-05 00:00 ENOTFOUND), 아예 돌지 않은 정시 실행 1(10-09 12:00) — 셋 다 텔레그램 없이 지나갔다(`hasNewOrUpdated` 에 안 걸리고, `main().catch` 는 로그만). `scheduler.js`: 통째 실패면 `[실행 실패]` 텔레그램, `main().catch` 도 기록 후 알림, 실행 상태 파일 `.run_state.json` 으로 못 보낸 실패·끝나지 못한 실행·9시간 넘는 간격을 다음 실행이 `[직전 실행 점검]` 으로 알림(못 보내면 pending 으로 넘김, 최대 10줄). `sendTelegram` 이 성공 여부(true/false)를 돌려주고 JSON 아닌 응답에 죽던 잠복 결함·무응답 대기를 막음(20초). `.gitignore` 에 `.run_state.json*`. 테스트: `test_scheduler_guards.js` 29/29(+7), 사본 폴더 `main()` 모의 실행 10종(가짜 https·하위 스크립트). 지시서 `docs/tasks/2026-10-12-run-failure-alert.md`.
 - **2026-10-12 (v4.1 — 장부 자동 백업)** — `backup_library.py` 신설: 장부를 하루 1회(KST 날짜 파일 유무로 판단, 상태 파일 없음) SQLite 온라인 백업 → `integrity_check`·`user_version`·`videos≥1` 검사 → gzip → 압축 해제 sha256 대조 후 `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브 데스크톱 앱 폴더)에 저장, 최신 7개 + 주별 4개 보관(형식 맞는 이름만 정리). 드라이브 부모 폴더가 없으면 만들지 않고 실패. 장부는 읽기 전용. `scheduler.js:runLibraryBackup()`(reject 없음, 실패는 텔레그램 별도). 배경: 타임머신 디스크 미마운트·iCloud 동기화 꺼짐으로 장부 사본이 같은 디스크의 `.bak` 하나뿐이었다. 테스트: 신규 `test_backup_library.py` 50/50, `test_scheduler_guards.js` 22/22(+3). 지시서 `docs/tasks/2026-10-12-library-backup.md`.

@@ -7,7 +7,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/opt/homebrew/bin/node</string>
-		<string>/Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap/scheduler.js</string>
+		<string>/Users/tycoonan/Documents/Claude/Projects/AI_Wiki_Pipeline/scheduler.js</string>
 	</array>
 	<key>RunAtLoad</key>
 	<false/>
@@ -43,6 +43,6 @@
 		</dict>
 	</array>
 	<key>WorkingDirectory</key>
-	<string>/Users/tycoonan/Documents/Claude/Projects/Youtube_Notion_Grap</string>
+	<string>/Users/tycoonan/Documents/Claude/Projects/AI_Wiki_Pipeline</string>
 </dict>
 </plist>
