@@ -4,12 +4,13 @@
 > 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
 > (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
 
-**현재 버전: v4.3** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.4** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
 > v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
 > v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠다. 장부 ↔ Vault 대조는 `scripts/verify_library.py`.
+> v4.4: 꿀팁 제목 보완 `scripts/retitle_tips.py` — 장부 `title`·`updated_at` + 노트 제자리 수정·파일명 변경 + Vault 링크 치환을 한 번에(dry-run 기본, 쓰기 전 백업).
 
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
@@ -56,9 +57,10 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
 
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
-# 회귀 테스트 7종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+# 회귀 테스트 8종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
 /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
 /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
+/opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
 /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
 /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
 /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
@@ -71,6 +73,10 @@ node scripts/clean_pending_queue.js --apply
 
 # 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음) — 통과 0 · 실패 1, 마지막 RESULT_JSON 의 vault_missing·tips_missing 0
 /opt/homebrew/bin/python3 scripts/verify_library.py
+
+# 꿀팁 제목 보완 (v4.4) — CSV record_id,old_title,new_title. 기본 dry-run, --apply 는 정시 실행 창(매시 50분~다음 시 20분) 밖에서
+/opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV>
+/opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV> --apply
 
 # launchd 제어 (6시간 자동 실행)
 launchctl start com.irichgreen.ytsummarizer
@@ -176,6 +182,7 @@ YouTube "AI 영상목록" (마스터 모드)
 | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
 | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
 | `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
+| `scripts/retitle_tips.py` · `scripts/test_retitle_tips.py` | (v4.4) 꿀팁 제목 보완. CSV(`record_id,old_title,new_title`) → 장부 `title`·`updated_at`(+ 카톡 자동 메모 비움) · 「AI 꿀팁」 노트 제자리 수정·파일명 변경 · Vault `[[링크]]` 치환 → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 검증 전부 통과 뒤에만 쓰고 쓰기 전 `data/retitle_backup/<시각>/` 에 장부·파일 백업. 장부 조건은 `record_id` + 옛 제목(같은 CSV 재실행은 멈춤). 종료 0 · 1 · 2(무변경). |
 | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
 | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
 | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
@@ -224,6 +231,7 @@ YouTube "AI 영상목록" (마스터 모드)
 - `scheduler.js`의 카톡 훅(`runKakaoIngest`)은 **절대 reject하지 않는다.** 카톡 단계가 Obsidian 동기화를 막으면 안 된다. (지시서 `docs/tasks/2026-09-06-scheduler-kakao-hook.md`)
 - 꿀팁이 신규 추가되면 `sync_obsidian.py`가 **제한 없이** `wiki_ingest.py`를 띄운다(기존 동작). 처음 대량 적재할 때는 `wiki_ingest.py --limit=20`으로 나눠 돌릴 것. 2026-09-06 첫 적재 시 99건이 한꺼번에 들어가 수동 중단했다.
 - 수동 즉시 반영은 Cowork 스킬 `kakao-tips-update`(장부판).
+- **제목은 추정이다.** `kakao_ingest` 는 링크를 열지 않고 URL 로 제목을 만든다(「유튜브 영상 (제목 미확인)」·「노션 자료 (…)」·URL 마지막 조각, 메모 「원문 확인 필요」). 고칠 때는 장부를 직접 UPDATE 하지 말고 `scripts/retitle_tips.py` 를 쓴다 — `sync_tips` 는 기존 노트를 다시 쓰지 않으므로 장부만 고치면 노트·파일명·링크가 옛 제목으로 남는다. 새 제목에 `|`·`[[`·`]]` 금지(Obsidian 링크 별칭을 깨뜨림, 스크립트가 거부).
 
 ### 구글 시트 미러 (v4.0 3단계) — 보기 전용, 장부 → 시트 단방향
 
@@ -494,6 +502,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-12 (v4.4 — 꿀팁 제목 보완 도구)** — `scripts/retitle_tips.py`(+ `scripts/test_retitle_tips.py` 49/49) 신규: 장부 tips 제목·`updated_at` + 「AI 꿀팁」 노트 제자리 수정·파일명 변경 + Vault 링크 치환, dry-run 기본·쓰기 전 백업(`data/retitle_backup/`, gitignore 의 `data/` 아래). 앱 코드·데몬 무변경. 첫 적용 5건(`docs/tasks/2026-10-12-retitle-tips.csv`). 회귀 테스트 8종. 지시서 `docs/tasks/2026-10-12-retitle-tips.md`.
 - **2026-10-12 (v4.3 — 노션 잔재 정리)** — 노션 해지(10-12)에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`·`scripts/test_notion_to_sqlite.py` 삭제, `.env` 의 `NOTION_*` 3키 삭제. 그중 계속 쓰던 장부 ↔ Vault 대조(`--verify`)는 `scripts/verify_library.py`(+ `scripts/test_verify_library.py` 16/16)로 떼어 냈다 — 검사 항목·`RESULT_JSON` 키 동일, 실데이터 결과 동일(영상 2,999 · 꿀팁 148 · 없음 0). 앱 코드 변경 없음(주석 3곳). 회귀 테스트 7종 유지. 이름 변경 날짜 표기를 실제 실행일(10-12)로 정정.
 - **2026-10-12 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
 - **2026-10-12 (문서 현행화, 버전 유지)** — README 전수 대조 후 수정: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·`.run_state.json` 추가), 사이클 표 순서(대기 큐 소진이 인제스트보다 먼저 — `scheduler.js` 실제 순서), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 4개 표, 프로젝트 구조 누락 파일 5개, 장부 `meta`·`tips` 열, v4.0 이력의 낡은 표기. 레포 `com.irichgreen.wiki-ingest.plist` 를 설치본과 같게(17:30 · Homebrew python3 · 증분), `install-wiki-ingest.sh`·`install-scheduler.sh`·`deploy.sh` 의 낡은 문구(03:00·노션·00:30) 정리. 코드 동작 무변경, 데몬 재기동 불필요. 지시서 `docs/tasks/2026-10-12-docs-sync.md`.

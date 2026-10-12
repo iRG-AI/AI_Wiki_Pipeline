@@ -1,0 +1,868 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index e544748..693d47a 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -4,12 +4,13 @@
+ > 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
+ > (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
+ 
+-**현재 버전: v4.3** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
++**현재 버전: v4.4** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+ > v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
+ > v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠다. 장부 ↔ Vault 대조는 `scripts/verify_library.py`.
++> v4.4: 꿀팁 제목 보완 `scripts/retitle_tips.py` — 장부 `title`·`updated_at` + 노트 제자리 수정·파일명 변경 + Vault 링크 치환을 한 번에(dry-run 기본, 쓰기 전 백업).
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -56,9 +57,10 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
+ 
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+-# 회귀 테스트 7종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
++# 회귀 테스트 8종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+ /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
+ /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
++/opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+@@ -72,6 +74,10 @@ node scripts/clean_pending_queue.js --apply
+ # 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음) — 통과 0 · 실패 1, 마지막 RESULT_JSON 의 vault_missing·tips_missing 0
+ /opt/homebrew/bin/python3 scripts/verify_library.py
+ 
++# 꿀팁 제목 보완 (v4.4) — CSV record_id,old_title,new_title. 기본 dry-run, --apply 는 정시 실행 창(매시 50분~다음 시 20분) 밖에서
++/opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV>
++/opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV> --apply
++
+ # launchd 제어 (6시간 자동 실행)
+ launchctl start com.irichgreen.ytsummarizer
+ launchctl stop com.irichgreen.ytsummarizer
+@@ -176,6 +182,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
+ | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
+ | `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
++| `scripts/retitle_tips.py` · `scripts/test_retitle_tips.py` | (v4.4) 꿀팁 제목 보완. CSV(`record_id,old_title,new_title`) → 장부 `title`·`updated_at`(+ 카톡 자동 메모 비움) · 「AI 꿀팁」 노트 제자리 수정·파일명 변경 · Vault `[[링크]]` 치환 → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 검증 전부 통과 뒤에만 쓰고 쓰기 전 `data/retitle_backup/<시각>/` 에 장부·파일 백업. 장부 조건은 `record_id` + 옛 제목(같은 CSV 재실행은 멈춤). 종료 0 · 1 · 2(무변경). |
+ | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
+ | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
+@@ -224,6 +231,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ - `scheduler.js`의 카톡 훅(`runKakaoIngest`)은 **절대 reject하지 않는다.** 카톡 단계가 Obsidian 동기화를 막으면 안 된다. (지시서 `docs/tasks/2026-09-06-scheduler-kakao-hook.md`)
+ - 꿀팁이 신규 추가되면 `sync_obsidian.py`가 **제한 없이** `wiki_ingest.py`를 띄운다(기존 동작). 처음 대량 적재할 때는 `wiki_ingest.py --limit=20`으로 나눠 돌릴 것. 2026-09-06 첫 적재 시 99건이 한꺼번에 들어가 수동 중단했다.
+ - 수동 즉시 반영은 Cowork 스킬 `kakao-tips-update`(장부판).
++- **제목은 추정이다.** `kakao_ingest` 는 링크를 열지 않고 URL 로 제목을 만든다(「유튜브 영상 (제목 미확인)」·「노션 자료 (…)」·URL 마지막 조각, 메모 「원문 확인 필요」). 고칠 때는 장부를 직접 UPDATE 하지 말고 `scripts/retitle_tips.py` 를 쓴다 — `sync_tips` 는 기존 노트를 다시 쓰지 않으므로 장부만 고치면 노트·파일명·링크가 옛 제목으로 남는다. 새 제목에 `|`·`[[`·`]]` 금지(Obsidian 링크 별칭을 깨뜨림, 스크립트가 거부).
+ 
+ ### 구글 시트 미러 (v4.0 3단계) — 보기 전용, 장부 → 시트 단방향
+ 
+@@ -494,6 +502,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-12 (v4.4 — 꿀팁 제목 보완 도구)** — `scripts/retitle_tips.py`(+ `scripts/test_retitle_tips.py` 49/49) 신규: 장부 tips 제목·`updated_at` + 「AI 꿀팁」 노트 제자리 수정·파일명 변경 + Vault 링크 치환, dry-run 기본·쓰기 전 백업(`data/retitle_backup/`, gitignore 의 `data/` 아래). 앱 코드·데몬 무변경. 첫 적용 5건(`docs/tasks/2026-10-12-retitle-tips.csv`). 회귀 테스트 8종. 지시서 `docs/tasks/2026-10-12-retitle-tips.md`.
+ - **2026-10-12 (v4.3 — 노션 잔재 정리)** — 노션 해지(10-12)에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`·`scripts/test_notion_to_sqlite.py` 삭제, `.env` 의 `NOTION_*` 3키 삭제. 그중 계속 쓰던 장부 ↔ Vault 대조(`--verify`)는 `scripts/verify_library.py`(+ `scripts/test_verify_library.py` 16/16)로 떼어 냈다 — 검사 항목·`RESULT_JSON` 키 동일, 실데이터 결과 동일(영상 2,999 · 꿀팁 148 · 없음 0). 앱 코드 변경 없음(주석 3곳). 회귀 테스트 7종 유지. 이름 변경 날짜 표기를 실제 실행일(10-12)로 정정.
+ - **2026-10-12 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
+ - **2026-10-12 (문서 현행화, 버전 유지)** — README 전수 대조 후 수정: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·`.run_state.json` 추가), 사이클 표 순서(대기 큐 소진이 인제스트보다 먼저 — `scheduler.js` 실제 순서), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 4개 표, 프로젝트 구조 누락 파일 5개, 장부 `meta`·`tips` 열, v4.0 이력의 낡은 표기. 레포 `com.irichgreen.wiki-ingest.plist` 를 설치본과 같게(17:30 · Homebrew python3 · 증분), `install-wiki-ingest.sh`·`install-scheduler.sh`·`deploy.sh` 의 낡은 문구(03:00·노션·00:30) 정리. 코드 동작 무변경, 데몬 재기동 불필요. 지시서 `docs/tasks/2026-10-12-docs-sync.md`.
+diff --git a/CLAUDE.md b/CLAUDE.md
+index fba05d5..d7e671e 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -2,12 +2,13 @@
+ 
+ This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+ 
+-**현재 버전: v4.3** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
++**현재 버전: v4.4** (2026-10-12) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+ > v4.2: 실행 실패 알림 — 통째 실패(저장 0 · Skip 0 · 오류 ≥1)·치명적 오류는 그 자리에서, 못 보낸 알림·끝나지 못한 실행·빠진 정시 실행은 다음 실행이 알린다(`.run_state.json`).
+ > v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠다. 장부 ↔ Vault 대조는 `scripts/verify_library.py`.
++> v4.4: 꿀팁 제목 보완 `scripts/retitle_tips.py` — 장부 `title`·`updated_at` + 노트 제자리 수정·파일명 변경 + Vault 링크 치환을 한 번에(dry-run 기본, 쓰기 전 백업).
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -54,9 +55,10 @@ python3 wiki_ingest.py --limit=20   # 테스트: 20개만 처리
+ 
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+-# 회귀 테스트 7종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
++# 회귀 테스트 8종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+ /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 29/29  장부 캐시·재시도·배치 조회·시트 미러·장부 백업 훅·실행 실패 알림
+ /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
++/opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 23/23  장부 → Vault (임시 Vault)
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+@@ -70,6 +72,10 @@ node scripts/clean_pending_queue.js --apply
+ # 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음) — 통과 0 · 실패 1, 마지막 RESULT_JSON 의 vault_missing·tips_missing 0
+ /opt/homebrew/bin/python3 scripts/verify_library.py
+ 
++# 꿀팁 제목 보완 (v4.4) — CSV record_id,old_title,new_title. 기본 dry-run, --apply 는 정시 실행 창(매시 50분~다음 시 20분) 밖에서
++/opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV>
++/opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV> --apply
++
+ # launchd 제어 (6시간 자동 실행)
+ launchctl start com.irichgreen.ytsummarizer
+ launchctl stop com.irichgreen.ytsummarizer
+@@ -174,6 +180,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
+ | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
+ | `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
++| `scripts/retitle_tips.py` · `scripts/test_retitle_tips.py` | (v4.4) 꿀팁 제목 보완. CSV(`record_id,old_title,new_title`) → 장부 `title`·`updated_at`(+ 카톡 자동 메모 비움) · 「AI 꿀팁」 노트 제자리 수정·파일명 변경 · Vault `[[링크]]` 치환 → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 검증 전부 통과 뒤에만 쓰고 쓰기 전 `data/retitle_backup/<시각>/` 에 장부·파일 백업. 장부 조건은 `record_id` + 옛 제목(같은 CSV 재실행은 멈춤). 종료 0 · 1 · 2(무변경). |
+ | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐)·`addTopic`·`updateStats`. |
+ | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
+@@ -222,6 +229,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ - `scheduler.js`의 카톡 훅(`runKakaoIngest`)은 **절대 reject하지 않는다.** 카톡 단계가 Obsidian 동기화를 막으면 안 된다. (지시서 `docs/tasks/2026-09-06-scheduler-kakao-hook.md`)
+ - 꿀팁이 신규 추가되면 `sync_obsidian.py`가 **제한 없이** `wiki_ingest.py`를 띄운다(기존 동작). 처음 대량 적재할 때는 `wiki_ingest.py --limit=20`으로 나눠 돌릴 것. 2026-09-06 첫 적재 시 99건이 한꺼번에 들어가 수동 중단했다.
+ - 수동 즉시 반영은 Cowork 스킬 `kakao-tips-update`(장부판).
++- **제목은 추정이다.** `kakao_ingest` 는 링크를 열지 않고 URL 로 제목을 만든다(「유튜브 영상 (제목 미확인)」·「노션 자료 (…)」·URL 마지막 조각, 메모 「원문 확인 필요」). 고칠 때는 장부를 직접 UPDATE 하지 말고 `scripts/retitle_tips.py` 를 쓴다 — `sync_tips` 는 기존 노트를 다시 쓰지 않으므로 장부만 고치면 노트·파일명·링크가 옛 제목으로 남는다. 새 제목에 `|`·`[[`·`]]` 금지(Obsidian 링크 별칭을 깨뜨림, 스크립트가 거부).
+ 
+ ### 구글 시트 미러 (v4.0 3단계) — 보기 전용, 장부 → 시트 단방향
+ 
+@@ -492,6 +500,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-12 (v4.4 — 꿀팁 제목 보완 도구)** — `scripts/retitle_tips.py`(+ `scripts/test_retitle_tips.py` 49/49) 신규: 장부 tips 제목·`updated_at` + 「AI 꿀팁」 노트 제자리 수정·파일명 변경 + Vault 링크 치환, dry-run 기본·쓰기 전 백업(`data/retitle_backup/`, gitignore 의 `data/` 아래). 앱 코드·데몬 무변경. 첫 적용 5건(`docs/tasks/2026-10-12-retitle-tips.csv`). 회귀 테스트 8종. 지시서 `docs/tasks/2026-10-12-retitle-tips.md`.
+ - **2026-10-12 (v4.3 — 노션 잔재 정리)** — 노션 해지(10-12)에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`·`scripts/test_notion_to_sqlite.py` 삭제, `.env` 의 `NOTION_*` 3키 삭제. 그중 계속 쓰던 장부 ↔ Vault 대조(`--verify`)는 `scripts/verify_library.py`(+ `scripts/test_verify_library.py` 16/16)로 떼어 냈다 — 검사 항목·`RESULT_JSON` 키 동일, 실데이터 결과 동일(영상 2,999 · 꿀팁 148 · 없음 0). 앱 코드 변경 없음(주석 3곳). 회귀 테스트 7종 유지. 이름 변경 날짜 표기를 실제 실행일(10-12)로 정정.
+ - **2026-10-12 (이름 변경, 버전 유지)** — 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab` → 둘 다 `AI_Wiki_Pipeline`. 레포 안: plist 원본 4개 · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `package.json` 이름 · `wiki_mcp.js`·`gas/sheet_mirror.gs` 주석 · README 구조도 · `docs/cowork-project-instructions.md`(v2.5 시절 사본 → 안내문). 레포 밖: 설치된 plist 4개 · `rotate_extra_logs.sh` `YTDIR` · Claude Code MCP `wiki-search` 재등록 · crontab 의 죽은 줄(08-17 이전 경로의 `migrate_classify.js`, 두 달째 매일 실패) 삭제. 함께 고친 낡은 줄: 대기 큐 절의 `migrate_classify.js` 공유(v4.0 은퇴), plist 경로 "6군데" → 8군데, `scheduler.log` "약 20MB · 로테이션 미도입" → 10MB 회전. `docs/tasks/` 의 옛 지시서·패치는 기록이라 그대로 둔다. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
+ - **2026-10-12 (문서 현행화, 버전 유지)** — README 전수 대조 후 수정: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·`.run_state.json` 추가), 사이클 표 순서(대기 큐 소진이 인제스트보다 먼저 — `scheduler.js` 실제 순서), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 4개 표, 프로젝트 구조 누락 파일 5개, 장부 `meta`·`tips` 열, v4.0 이력의 낡은 표기. 레포 `com.irichgreen.wiki-ingest.plist` 를 설치본과 같게(17:30 · Homebrew python3 · 증분), `install-wiki-ingest.sh`·`install-scheduler.sh`·`deploy.sh` 의 낡은 문구(03:00·노션·00:30) 정리. 코드 동작 무변경, 데몬 재기동 불필요. 지시서 `docs/tasks/2026-10-12-docs-sync.md`.
+diff --git a/README.md b/README.md
+index e19827c..89488ba 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
+ 
+-**현재 버전: v4.3** (2026-10-12)
++**현재 버전: v4.4** (2026-10-12)
+ 
+ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
+ 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
+@@ -10,6 +10,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카
+ > v4.1: 장부를 하루 1회 로컬(`data/backups/`)과 구글 드라이브에 자동 백업합니다(최신 7개 + 주별 4개).
+ > v4.2: 실행이 통째로 실패하거나, 알림을 못 보냈거나, 정시 실행이 빠지면 텔레그램으로 알립니다(못 보낸 알림은 다음 실행이 보냄).
+ > v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠습니다. 장부 ↔ Vault 대조는 `scripts/verify_library.py` 입니다.
++> v4.4: 카톡 꿀팁의 추정 제목(「제목 미확인」·URL 조각)을 원문 제목으로 고치는 `scripts/retitle_tips.py` 를 넣었습니다 — 장부·Obsidian 노트(파일명 포함)·링크를 함께 바꿉니다.
+ > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
+ > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
+ 
+@@ -203,9 +204,10 @@ AI_Wiki_Pipeline/
+ │   └── kakao_parse.py                 # URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
+ ├── scripts/
+ │   ├── verify_library.py              # (v4.3) 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음)
++│   ├── retitle_tips.py                # (v4.4) 꿀팁 제목 보완 — 장부·노트 파일명·링크 일괄 (dry-run 기본)
+ │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
+ │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
+-│   └── test_*.{js,py}                 # 회귀 테스트 7종 (네트워크 0회)
++│   └── test_*.{js,py}                 # 회귀 테스트 8종 (네트워크 0회)
+ ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
+ ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
+ ├── docs/cowork-project-instructions.md # (옛) Cowork 프로젝트 인수인계 사본 (2026-08-17) — 현재 원본은 Cowork 프로젝트 설정
+@@ -313,6 +315,10 @@ launchd 데몬 4개 (설치본 = `~/Library/LaunchAgents/`, 원본 = 레포 루
+ /opt/homebrew/bin/python3 kakao_ingest.py                    # dry-run — 생성될 행을 표로만 출력
+ /opt/homebrew/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 → 장부 확인
+ /opt/homebrew/bin/python3 kakao_ingest.py --apply            # 전량
++
++# (v4.4) 추정 제목(「제목 미확인」·URL 조각)을 원문 제목으로 — CSV: record_id,old_title,new_title
++/opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV>          # dry-run — 바뀔 제목·파일명·링크 수
++/opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV> --apply  # 장부·노트·링크 + Wiki 재구성·검색 인덱스
+ ```
+ 
+ ### 4. 구글 시트 미러 (v4.0)
+@@ -409,6 +415,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ | 버전 | 날짜 | 주요 내용 요약 |
+ | :-- | :--- | :--- |
++| **v4.4** | 2026-10-12 | **꿀팁 제목 보완 도구**: 카톡 인제스트가 URL 로만 추정한 꿀팁 제목(「유튜브 영상 (제목 미확인)」·`courses` 등, 46건 누적)을 원문 제목으로 고치는 `scripts/retitle_tips.py`(CSV 입력, dry-run 기본). 장부 `title`·`updated_at`(시트 미러 반영) + 자동 메모 비움, 「AI 꿀팁」 노트 제자리 수정·파일명 변경, Vault `[[링크]]` 치환을 함께 하고 쓰기 전에 장부·파일을 백업. 첫 적용 5건. 회귀 테스트 8종 |
+ | **v4.3** | 2026-10-12 | **노션 잔재 정리**: 노션 해지에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`(+ 테스트)와 `.env` 의 `NOTION_*` 3키를 지움. 계속 쓰던 장부 ↔ Vault 대조만 `scripts/verify_library.py` 로 떼어 냄(검사 항목·`RESULT_JSON` 동일, 테스트 16/16). 앱 코드 동작 무변경. |
+ | **v4.2** | 2026-10-12 | **실행 실패 알림**: "저장 0 · Skip 0 · 오류 ≥1"(영상을 하나도 확인하지 못한 실행)과 치명적 오류가 텔레그램 없이 지나가던 구멍을 막음. 실행 상태 파일 `.run_state.json` 으로 네트워크가 죽어 못 보낸 실패·끝을 기록하지 못한 실행·9시간 넘게 빈 간격(빠진 정시 실행)을 다음 실행이 `[직전 실행 점검]` 으로 알림. `sendTelegram` 이 성공 여부를 돌려주고 JSON 아닌 응답에 죽지 않음 |
+ | **v4.1** | 2026-10-12 | **장부 자동 백업**: 장부(`data/library.db`)를 하루 1회 SQLite 온라인 백업 → 무결성 검사 → gzip 해 로컬 `data/backups/` 와 구글 드라이브 폴더(`.env LIBRARY_BACKUP_DIR`)에 저장(`backup_library.py`). 최신 7개 + 주별 4개 보관. 장부는 읽기 전용으로만 연다. 스케줄러 훅은 reject 없음, 실패는 텔레그램. 회귀 테스트 7종 |
+@@ -434,6 +441,22 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ ### 📝 상세 변경 내역 (Detailed Change Log)
+ 
++#### [v4.4] — 2026-10-12 (🏷 꿀팁 제목 보완 도구)
++
++**배경.** `kakao_ingest.py` 는 링크를 열지 않고 URL 로만 제목을 추정한다(`lib/kakao_parse.py:guess_meta`). 유튜브 shorts·노션 공개 페이지는 「유튜브 영상 (제목 미확인)」·「노션 자료 (제목 미확인)」, 그 밖은 URL 마지막 조각(`courses`, `linkedin skills claude code setup`)이 제목이 되고, 3월부터 「원문 확인 필요」 메모가 붙은 꿀팁이 46건 쌓였다. 장부만 고치면 시트는 바뀌지만 `sync_obsidian.py` 는 꿀팁 노트를 **새로 만들기만** 하므로 Obsidian 노트·파일명·링크는 옛 제목으로 남는다.
++
++| 항목 | 내용 |
++|---|---|
++| 신규 | `scripts/retitle_tips.py <CSV> [--apply] [--no-rebuild] [--db] [--vault]` — CSV `record_id,old_title,new_title`. 기본 dry-run(무변경). 종료 0 성공 · 1 반영 중 실패 · 2 입력·검증 실패(무변경) |
++| 장부 | 한 트랜잭션, `WHERE record_id = ? AND title = <옛 제목>` — `title`·`updated_at`(시트 미러 워터마크) 갱신, 카톡 자동 메모(「원문 확인 필요」류)만 비움. 사람이 쓴 메모·다른 열은 그대로 |
++| 노트 | 다시 생성하지 않고 제자리 수정(`title`·`memo` 줄, 첫 H1, 메모 줄) — `build_obsidian_wiki` 가 붙인 관련 링크 보존. 파일명 `<저장일>_<새 제목>.md`(`sync_tips` 와 같은 규칙, 충돌 시 id 끝 6자리). `notion_id` 그대로라 wiki_ingest·검색 인덱스 상태 유지 |
++| 링크 | Vault 의 `[[옛 파일명]]`·`[[옛 파일명\|별칭]]`·`[[AI 꿀팁/옛 파일명#앵커]]` → 새 파일명(별칭이 옛 제목이면 새 제목). NFC·NFD 둘 다. `_trash/`·숨김 폴더 제외 |
++| 안전장치 | 검증 전부 통과 뒤에만 쓴다(행 존재·옛 제목 일치·노트 1개·편집 지점 1곳씩·파일명 충돌·새 제목에 `\|`·`[[`·`]]` 금지). 쓰기 전 `data/retitle_backup/<시각>/` 에 장부 사본(온라인 백업 API)·바뀔 파일 원본·`manifest.json`. 같은 CSV 를 다시 돌리면 옛 제목 불일치로 멈춘다 |
++| 뒤처리 | `--apply` 뒤 `build_obsidian_wiki.py` → `build_search_index.py`(sync_obsidian 이 변경 뒤 부르는 것과 같음). 시트는 다음 정시 실행이 보낸다 |
++| 첫 적용 | `docs/tasks/2026-10-12-retitle-tips.csv` 5건 — 10-11 유튜브 shorts · 10-12 노션 공개 페이지 · `courses` · lazyowen guides 2건(제목은 oEmbed·노션 공개 API·페이지 제목으로 확인). 링크 24곳(10개 파일) |
++| 테스트 | 신규 `scripts/test_retitle_tips.py` 49/49(임시 장부·Vault·백업 폴더, 네트워크 0). 회귀 테스트 8종 |
++| 지시서 | `docs/tasks/2026-10-12-retitle-tips.md` |
++
+ #### [v4.3] — 2026-10-12 (🧹 노션 잔재 정리)
+ 
+ **배경.** v4.0 부터 파이프라인은 노션을 부르지 않았고, 노션 모듈은 「Notion 데이터 이관」이 끝날 때까지 보관만 했다. 10-12 이관이 끝나 노션을 해지했다. 보관 파일 중 실제로 쓰던 기능은 `notion_to_sqlite.py --verify`(장부 ↔ Vault 대조, 노션 호출 없음) 하나였다.
+diff --git a/docs/tasks/2026-10-12-retitle-tips.csv b/docs/tasks/2026-10-12-retitle-tips.csv
+new file mode 100644
+index 0000000..e4fcac9
+--- /dev/null
++++ b/docs/tasks/2026-10-12-retitle-tips.csv
+@@ -0,0 +1,6 @@
++record_id,old_title,new_title
++2d591722-e31a-4ec0-abde-78491f4eecc7,유튜브 영상 (제목 미확인),클로드 코드 모드 안전한 TOP 5 — 나온 지 일주일 순위
++1f8e69b6-618b-49ba-a5b3-c83f544c049c,노션 자료 (제목 미확인),[시크아] 디자인 리소스 리스트
++75de39d8-9e68-4950-a509-9ba3d014b822,courses,메이크패밀리 라운지 — 강의 목록
++bd3dac6b-cf95-47cc-a2af-741853de7b76,linkedin skills claude code setup,링크드인 스킬 12개로 클로드를 그로스 팀으로 만드는 법
++3d3327d3-56b5-4f52-a474-a9094869c89e,munder difflin ai office setup,AI 오피스를 통째로 고용하는 법: 먼더 디플린
+diff --git a/scripts/retitle_tips.py b/scripts/retitle_tips.py
+new file mode 100644
+index 0000000..8aa4e21
+--- /dev/null
++++ b/scripts/retitle_tips.py
+@@ -0,0 +1,381 @@
++#!/usr/bin/env python3
++"""
++꿀팁 제목 보완 — 장부 tips 의 제목을 고치고 Obsidian 노트·링크까지 맞춘다 (v4.4)
++
++  /opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV>              # dry-run (기본) — 아무것도 쓰지 않는다
++  /opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV> --apply      # 실제 반영
++      [--no-rebuild]   반영 뒤 build_obsidian_wiki.py · build_search_index.py 를 부르지 않는다 (테스트·사본 검증용)
++      [--db PATH] [--vault PATH]   장부·Vault 경로 바꾸기 (사본 검증용, 기본 = data/library.db · sync_obsidian.VAULT)
++  종료 코드: 0 성공 · 1 반영 중 실패 · 2 입력·검증 실패(아무것도 쓰지 않음)
++
++CSV (UTF-8, 머리글 필수): record_id,old_title,new_title
++  - old_title 은 지금 장부의 제목과 글자 그대로 같아야 한다(다르면 그 행이 이미 바뀐 것 — 전체 중단).
++
++하는 일 (한 행마다):
++  1. 장부 tips: title = new_title, updated_at = 지금 (시트 미러가 이 워터마크로 변경분을 보낸다).
++     memo 가 카톡 인제스트의 자동 메모(lib/kakao_parse.py 의 '원문 확인 필요' 류)면 비운다. 사람이 쓴 메모는 그대로 둔다.
++  2. 「AI 꿀팁」 노트(프론트매터 notion_id = record_id)를 제자리에서 고친다 — title·memo 줄, 첫 H1, '- 📝 메모:' 줄.
++     다시 생성하지 않는다(build_obsidian_wiki 가 붙인 관련 링크 등 나머지 내용 보존).
++     파일명을 '<저장일>_<새 제목>.md' 로 바꾼다(sync_obsidian.sync_tips 와 같은 규칙, 이미 있으면 record_id 끝 6자리).
++  3. Vault 의 [[옛 파일명]] 링크를 새 파일명으로 바꾼다. 별칭이 옛 제목이면 별칭도 새 제목으로.
++     _trash/ 와 숨김 폴더는 건드리지 않는다.
++  4. (--no-rebuild 가 아니면) build_obsidian_wiki.py → build_search_index.py — sync_obsidian 이 변경 뒤 부르는 것과 같다.
++
++안전장치:
++  - 검증(행 존재·옛 제목 일치·노트 1개·편집 지점 1곳씩·새 파일명 충돌)을 전부 통과해야 쓰기 시작한다.
++  - 쓰기 전에 data/retitle_backup/<YYYYmmdd-HHMMSS>/ 에 장부 사본(온라인 백업 API)과 바뀔 Vault 파일 원본, manifest.json 을 남긴다.
++    되돌리기: 장부는 사본으로 교체, Vault 는 manifest 의 renamed 를 거꾸로 + 원본 복사 → sheet_mirror.py --full.
++  - 장부 UPDATE 는 한 트랜잭션, 조건은 record_id 와 옛 제목 둘 다. 행 수가 1이 아니면 전체 롤백.
++  - 네트워크 호출 없음(4단계의 검색 인덱스만 Gemini 임베딩을 부른다 — 바뀐 노트 수만큼).
++"""
++import csv, json, os, re, shutil, sqlite3, subprocess, sys, time, unicodedata
++from datetime import datetime, timezone
++
++REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.insert(0, REPO_ROOT)
++sys.path.insert(0, os.path.join(REPO_ROOT, 'lib'))
++
++import sync_obsidian as so                     # noqa: E402  VAULT·TIPS_FOLDER·safe_filename·_q·fm 규칙 재사용
++import library_db as ldb                       # noqa: E402
++
++# lib/kakao_parse.py:guess_meta 가 붙이는 자동 메모 — 제목을 확인했으니 지운다
++AUTO_MEMOS = {'원문 확인 필요', '슬러그에 한글 제목 없음 — 원문 확인 필요'}
++BACKUP_ROOT = os.path.join(ldb.DATA_DIR, 'retitle_backup')
++
++
++def log(msg=''):
++    print(msg, flush=True)
++
++
++def nfc(s):
++    return unicodedata.normalize('NFC', s or '')
++
++
++def nfd(s):
++    return unicodedata.normalize('NFD', s or '')
++
++
++def now_iso():
++    dt = datetime.now(timezone.utc)
++    return dt.strftime('%Y-%m-%dT%H:%M:%S.') + f'{dt.microsecond // 1000:03d}Z'   # kakao_ingest·scheduler 와 같은 형식
++
++
++def emit(code, **kw):
++    print('RESULT_JSON:' + json.dumps(kw, ensure_ascii=False), flush=True)
++    return code
++
++
++class Invalid(Exception):
++    pass
++
++
++# ── 입력 ──
++def read_csv(path):
++    with open(path, encoding='utf-8-sig', newline='') as f:
++        rows = list(csv.DictReader(f))
++    need = {'record_id', 'old_title', 'new_title'}
++    if not rows or not need.issubset(rows[0].keys()):
++        raise Invalid(f'CSV 머리글은 {sorted(need)} 이어야 하고 행이 1개 이상이어야 한다')
++    out, seen = [], set()
++    for i, r in enumerate(rows, 2):
++        rid, old, new = (r['record_id'] or '').strip(), nfc(r['old_title'] or ''), nfc((r['new_title'] or '').strip())
++        if not rid or not new:
++            raise Invalid(f'CSV {i}행: record_id·new_title 이 비었다')
++        if rid in seen:
++            raise Invalid(f'CSV {i}행: record_id 중복 {rid}')
++        if new == old:
++            raise Invalid(f'CSV {i}행: 새 제목이 옛 제목과 같다')
++        if len(new) > 200:
++            raise Invalid(f'CSV {i}행: 새 제목 200자 초과')   # kakao_ingest 와 같은 상한
++        if '|' in new or '[[' in new or ']]' in new:
++            raise Invalid(f'CSV {i}행: 새 제목에 | · [[ · ]] 금지 — Obsidian 링크 [[파일|별칭]] 을 깨뜨린다')
++        seen.add(rid)
++        out.append({'record_id': rid, 'old_title': old, 'new_title': new})
++    return out
++
++
++# ── 노트 편집 계획 ──
++def tip_notes(tips_dir):
++    """notion_id -> [파일명(NFC)]"""
++    found = {}
++    if os.path.isdir(tips_dir):
++        for f in os.listdir(tips_dir):
++            if f.endswith('.md'):
++                nid = so.fm_notion_id(os.path.join(tips_dir, f))
++                if nid:
++                    found.setdefault(nid, []).append(nfc(f))
++    return found
++
++
++def _sub_once(pattern, repl, text, what, flags=0):
++    new, n = re.subn(pattern, lambda m: repl, text, count=0, flags=flags)
++    if n != 1:
++        raise Invalid(f'{what} 편집 지점이 1곳이 아니다({n}곳) — 손으로 고친 노트일 수 있다')
++    return new
++
++
++def edit_note(text, old_title, new_title, old_memo, new_memo):
++    """노트 본문 문자열 → 고친 문자열. 편집 지점이 정확히 1곳씩이 아니면 Invalid."""
++    text = nfc(text)
++    m = so.FM_RE.match(text)
++    if not m:
++        raise Invalid('프론트매터 없음')
++    fm, body = text[:m.end()], text[m.end():]
++    fm = _sub_once(r'^title: .*$', f'title: "{so._q(new_title)}"', fm, 'title', re.M)
++    if old_memo != new_memo:
++        fm = _sub_once(r'^memo: .*$', f'memo: "{so._q(new_memo)}"', fm, 'memo', re.M)
++    body = _sub_once(r'^# ' + re.escape(old_title) + r'[ \t]*$', f'# {new_title}', body, 'H1', re.M)
++    if old_memo != new_memo and old_memo:
++        pat = r'^- 📝 메모: ' + re.escape(old_memo) + r'[ \t]*\n'
++        body = _sub_once(pat, f'- 📝 메모: {new_memo}\n' if new_memo else '', body, '메모 줄', re.M)
++    return fm + body
++
++
++# ── 링크 치환 ──
++def link_pattern(old_stem):
++    alts = sorted({re.escape(old_stem), re.escape(nfd(old_stem))}, key=len, reverse=True)
++    folder = '|'.join(sorted({re.escape(so.TIPS_FOLDER + '/'), re.escape(nfd(so.TIPS_FOLDER) + '/')}))
++    # 별칭에는 홑 ']' 가 올 수 있다(예: '[시크아] 디자인 …') — ']]' 앞까지
++    return re.compile(r'\[\[(' + folder + r')?(?:' + '|'.join(alts) + r')(#[^\]|]*)?(?:\|((?:[^\]]|\](?!\]))*))?\]\]')
++
++
++def rewrite_links(text, pat, new_stem, old_title, new_title):
++    def repl(m):
++        prefix, anchor, alias = m.group(1) or '', m.group(2) or '', m.group(3)
++        out = '[[' + nfc(prefix) + new_stem + anchor
++        if alias is not None:
++            out += '|' + (new_title if nfc(alias) == old_title else alias)
++        return out + ']]'
++    return pat.subn(repl, text)
++
++
++def vault_md_files(vault):
++    for root, dirs, files in os.walk(vault):
++        dirs[:] = [d for d in dirs if not d.startswith('.') and d != '_trash']
++        for f in files:
++            if f.endswith('.md'):
++                yield os.path.join(root, f)
++
++
++# ── 계획 ──
++def build_plan(rows, conn, vault):
++    tips_dir = os.path.join(vault, so.TIPS_FOLDER)
++    notes = tip_notes(tips_dir)
++    plan, taken = [], set()
++    for r in rows:
++        rec = conn.execute('SELECT record_id, title, memo, saved_date FROM tips WHERE record_id = ?', (r['record_id'],)).fetchone()
++        if not rec:
++            raise Invalid(f'장부에 없는 record_id {r["record_id"]}')
++        cur = nfc(rec['title'])
++        if cur != r['old_title']:
++            raise Invalid(f'{r["record_id"]}: 장부 제목이 옛 제목과 다르다 (장부 "{cur}" / CSV "{r["old_title"]}")')
++        old_memo = nfc(rec['memo'])
++        new_memo = '' if old_memo in AUTO_MEMOS else old_memo
++        files = notes.get(r['record_id'], [])
++        if len(files) > 1:
++            raise Invalid(f'{r["record_id"]}: 같은 notion_id 꿀팁 노트가 {len(files)}개 {files}')
++        item = {**r, 'old_memo': old_memo, 'new_memo': new_memo, 'old_file': None, 'new_file': None, 'note_text': None, 'links': {}}
++        if files:
++            old_file = files[0]
++            text = open(os.path.join(tips_dir, old_file), encoding='utf-8').read()
++            item['note_text'] = edit_note(text, r['old_title'], r['new_title'], old_memo, new_memo)
++            saved = rec['saved_date'] or ''
++            date_part = saved[:10].replace('-', '') if saved else '00000000'
++            new_file = nfc(so.safe_filename(f"{date_part}_{r['new_title']}") + '.md')
++            if new_file != old_file and (os.path.exists(os.path.join(tips_dir, new_file)) or new_file in taken):
++                new_file = nfc(so.safe_filename(f"{date_part}_{r['new_title']}_{r['record_id'][-6:]}") + '.md')
++                if os.path.exists(os.path.join(tips_dir, new_file)) or new_file in taken:
++                    raise Invalid(f'{r["record_id"]}: 새 파일명 충돌 {new_file}')
++            taken.add(new_file)
++            item['old_file'], item['new_file'] = old_file, new_file
++        plan.append(item)
++
++    # 링크: 파일명이 바뀌는 행만. 여러 행이 같은 파일을 건드릴 수 있어 파일 단위로 누적한다.
++    renames = [p for p in plan if p['old_file'] and p['old_file'] != p['new_file']]
++    link_edits = {}   # 절대경로 -> (새 본문, 치환 수)
++    if renames:
++        pats = [(link_pattern(p['old_file'][:-3]), p) for p in renames]
++        tip_paths = {os.path.join(tips_dir, p['old_file']) for p in plan if p['old_file']}
++        for path in vault_md_files(vault):
++            if path in tip_paths:
++                continue   # 대상 노트 자체는 노트 편집에서 처리
++            try:
++                text = open(path, encoding='utf-8').read()
++            except (OSError, UnicodeDecodeError):
++                continue
++            total, new = 0, text
++            for pat, p in pats:
++                new, n = rewrite_links(new, pat, p['new_file'][:-3], p['old_title'], p['new_title'])
++                if n:
++                    p['links'][os.path.relpath(path, vault)] = n
++                total += n
++            if total:
++                link_edits[path] = (new, total)
++        # 대상 노트끼리 서로 링크하는 경우
++        for p in plan:
++            if p['note_text'] is None:
++                continue
++            for pat, q in pats:
++                if q is not p:
++                    p['note_text'], _ = rewrite_links(p['note_text'], pat, q['new_file'][:-3], q['old_title'], q['new_title'])
++    return plan, link_edits
++
++
++# ── 반영 ──
++def backup(db_path, vault, plan, link_edits):
++    base = os.path.join(BACKUP_ROOT, datetime.now().strftime('%Y%m%d-%H%M%S'))
++    d, k = base, 1
++    while os.path.exists(d):   # 같은 초에 두 번 돌린 경우
++        k += 1
++        d = f'{base}-{k}'
++    os.makedirs(d)
++    src = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
++    dst = sqlite3.connect(os.path.join(d, 'library.db'))
++    with dst:
++        src.backup(dst)
++    src.close(); dst.close()
++    tips_dir = os.path.join(vault, so.TIPS_FOLDER)
++    files = [os.path.join(tips_dir, p['old_file']) for p in plan if p['old_file']] + list(link_edits)
++    for f in files:
++        rel = os.path.relpath(f, vault)
++        os.makedirs(os.path.join(d, 'vault', os.path.dirname(rel)), exist_ok=True)
++        shutil.copy2(f, os.path.join(d, 'vault', rel))
++    manifest = {
++        'created_at': now_iso(), 'db': os.path.abspath(db_path), 'vault': os.path.abspath(vault),
++        'rows': [{k: p[k] for k in ('record_id', 'old_title', 'new_title', 'old_memo', 'new_memo')} for p in plan],
++        'renamed': [{'from': os.path.join(so.TIPS_FOLDER, p['old_file']), 'to': os.path.join(so.TIPS_FOLDER, p['new_file'])}
++                    for p in plan if p['old_file'] and p['old_file'] != p['new_file']],
++        'edited': [os.path.relpath(f, vault) for f in files],
++    }
++    open(os.path.join(d, 'manifest.json'), 'w', encoding='utf-8').write(json.dumps(manifest, ensure_ascii=False, indent=2))
++    return d
++
++
++def apply_db(conn, plan):
++    ts = now_iso()
++    with conn:   # 한 트랜잭션 — 예외면 전부 롤백
++        for p in plan:
++            cur = conn.execute('UPDATE tips SET title = ?, memo = ?, updated_at = ? WHERE record_id = ? AND title = ?',
++                               (p['new_title'], p['new_memo'], ts, p['record_id'], p['old_title']))
++            if cur.rowcount != 1:
++                raise RuntimeError(f'{p["record_id"]}: UPDATE 행 수 {cur.rowcount} ≠ 1 — 롤백')
++    return ts
++
++
++def apply_vault(vault, plan, link_edits):
++    tips_dir = os.path.join(vault, so.TIPS_FOLDER)
++    for p in plan:
++        if not p['old_file']:
++            continue
++        old_path, new_path = os.path.join(tips_dir, p['old_file']), os.path.join(tips_dir, p['new_file'])
++        open(old_path, 'w', encoding='utf-8').write(p['note_text'])
++        if new_path != old_path:
++            os.rename(old_path, new_path)
++    for path, (text, _) in link_edits.items():
++        open(path, 'w', encoding='utf-8').write(text)
++
++
++def rebuild():
++    out = {}
++    for name in ('build_obsidian_wiki.py', 'build_search_index.py'):
++        r = subprocess.run([sys.executable, os.path.join(REPO_ROOT, name)], capture_output=True, text=True)
++        out[name] = r.returncode
++        log(f'  {"✅" if r.returncode == 0 else "❌"} {name} (종료 {r.returncode})')
++        if r.returncode != 0:
++            log((r.stderr or '')[-400:])
++    return out
++
++
++def main(argv=None):
++    argv = list(sys.argv[1:] if argv is None else argv)
++    apply_ = '--apply' in argv
++    no_rebuild = '--no-rebuild' in argv
++    db_path, vault, csv_path = ldb.DB_PATH, so.VAULT, None
++    i = 0
++    while i < len(argv):
++        a = argv[i]
++        if a in ('--db', '--vault'):
++            if i + 1 >= len(argv):
++                return emit(2, ok=False, error=f'{a} 값 없음')
++            if a == '--db':
++                db_path = argv[i + 1]
++            else:
++                vault = argv[i + 1]
++            i += 2
++            continue
++        if a.startswith('--'):
++            if a not in ('--apply', '--no-rebuild'):
++                return emit(2, ok=False, error=f'모르는 옵션 {a}')
++        elif csv_path is None:
++            csv_path = a
++        else:
++            return emit(2, ok=False, error='CSV 는 하나만')
++        i += 1
++    if not csv_path:
++        log(__doc__)
++        return emit(2, ok=False, error='CSV 경로 필요')
++    if not os.path.isdir(os.path.join(vault, so.TIPS_FOLDER)):
++        return emit(2, ok=False, error=f'Vault 꿀팁 폴더 없음: {vault}')
++
++    try:
++        rows = read_csv(csv_path)
++        conn = ldb.open_existing(db_path, readonly=not apply_)
++    except (Invalid, OSError, RuntimeError) as e:
++        log(f'❌ {e}')
++        return emit(2, ok=False, error=str(e)[:300])
++    try:
++        try:
++            plan, link_edits = build_plan(rows, conn, vault)
++        except (Invalid, OSError) as e:
++            log(f'❌ 검증 실패 — 아무것도 쓰지 않았습니다: {e}')
++            return emit(2, ok=False, error=str(e)[:300])
++
++        log(f'📝 꿀팁 제목 보완 {len(plan)}건 {"(apply)" if apply_ else "(dry-run)"}\n')
++        for p in plan:
++            log(f'  {p["record_id"][:8]} | "{p["old_title"]}" → "{p["new_title"]}"')
++            if p['old_memo'] != p['new_memo']:
++                log(f'           메모 "{p["old_memo"]}" → "{p["new_memo"]}"')
++            if p['old_file']:
++                log(f'           노트 {p["old_file"]}' + (f' → {p["new_file"]}' if p['old_file'] != p['new_file'] else ' (파일명 그대로)'))
++            else:
++                log('           노트 없음 — 다음 sync_obsidian 이 새 제목으로 만든다')
++            for rel, n in sorted(p['links'].items()):
++                log(f'           링크 {n}곳 · {rel}')
++        summary = dict(rows=len(plan), notes=sum(1 for p in plan if p['old_file']),
++                       renamed=sum(1 for p in plan if p['old_file'] and p['old_file'] != p['new_file']),
++                       memo_cleared=sum(1 for p in plan if p['old_memo'] != p['new_memo']),
++                       link_files=len(link_edits), links=sum(n for _, n in link_edits.values()))
++        if not apply_:
++            log('\n👀 dry-run — 장부·Vault 무변경. 반영은 --apply')
++            return emit(0, ok=True, dry_run=True, **summary)
++
++        try:
++            bdir = backup(db_path, vault, plan, link_edits)
++        except Exception as e:
++            log(f'❌ 백업 실패 — 장부·Vault 무변경: {e}')
++            return emit(1, ok=False, error=f'백업 실패: {e}'[:300], **summary)
++        log(f'\n💾 백업: {bdir}')
++        try:
++            ts = apply_db(conn, plan)
++        except Exception as e:
++            log(f'❌ 장부 반영 실패(롤백, Vault 무변경): {e}')
++            return emit(1, ok=False, error=str(e)[:300], backup=bdir, **summary)
++        log(f'🗄  장부 tips {len(plan)}행 갱신 (updated_at {ts})')
++        try:
++            apply_vault(vault, plan, link_edits)
++        except Exception as e:
++            log(f'❌ Vault 반영 중 실패 — 장부는 이미 바뀜. 백업 manifest 로 되돌릴 것: {e}')
++            return emit(1, ok=False, error=str(e)[:300], backup=bdir, updated_at=ts, **summary)
++        log(f'📂 노트 {summary["notes"]}개 수정 · 이름 변경 {summary["renamed"]}개 · 링크 {summary["links"]}곳({summary["link_files"]}개 파일)')
++        rb = {}
++        if not no_rebuild:
++            log('\n🔧 Wiki 재구성 · 검색 인덱스')
++            rb = rebuild()
++        ok = all(v == 0 for v in rb.values())
++        return emit(0 if ok else 1, ok=ok, dry_run=False, backup=bdir, updated_at=ts, rebuild=rb, **summary)
++    finally:
++        conn.close()
++
++
++if __name__ == '__main__':
++    sys.exit(main())
+diff --git a/scripts/test_retitle_tips.py b/scripts/test_retitle_tips.py
+new file mode 100644
+index 0000000..50596f1
+--- /dev/null
++++ b/scripts/test_retitle_tips.py
+@@ -0,0 +1,257 @@
++#!/usr/bin/env python3
++"""
++scripts/retitle_tips.py 회귀 테스트 — 네트워크 0회, 실제 Vault·data/ 무변경 (v4.4)
++
++  /opt/homebrew/bin/python3 scripts/test_retitle_tips.py
++
++임시 Vault·임시 장부·임시 백업 폴더로 돌린다. 끝에 'N/N PASS' 를 찍고 실패가 있으면 종료 코드 1.
++"""
++import contextlib, hashlib, io, json, os, shutil, sqlite3, sys, tempfile, unicodedata
++import urllib.request
++
++REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++sys.path.insert(0, os.path.join(REPO_ROOT, 'scripts'))
++sys.path.insert(0, os.path.join(REPO_ROOT, 'lib'))
++sys.path.insert(0, REPO_ROOT)
++
++NET_CALLS = []
++def _no_net(*a, **k):
++    NET_CALLS.append(a)
++    raise RuntimeError('네트워크 호출 금지')
++urllib.request.urlopen = _no_net
++
++import retitle_tips as m        # noqa: E402
++import sync_obsidian as so      # noqa: E402
++import library_db as ldb        # noqa: E402
++
++TS = '2026-10-12T00:00:00.000Z'
++TIPS = [
++    # record_id, title, memo, saved_date
++    ('tip-aaaaaa111111', '유튜브 영상 (제목 미확인)', '원문 확인 필요', '2026-10-11'),
++    ('tip-bbbbbb222222', 'courses', '', '2026-10-10'),
++    ('tip-cccccc333333', '노션 자료 (제목 미확인)', '슬러그에 한글 제목 없음 — 원문 확인 필요', '2026-10-12'),
++    ('tip-dddddd444444', 'keep me', '사람이 쓴 메모', '2026-10-09'),
++    ('tip-eeeeee555555', '다른 꿀팁', '', '2026-10-09'),
++]
++
++results = []
++def check(name, cond, detail=''):
++    results.append((name, bool(cond)))
++    print(f'{"PASS" if cond else "FAIL"}  {name}' + (f'  — {detail}' if detail and not cond else ''))
++
++
++def make_env():
++    root = tempfile.mkdtemp(prefix='retitle_test_')
++    vault, db, bk = os.path.join(root, 'vault'), os.path.join(root, 'library.db'), os.path.join(root, 'bk')
++    tips_dir = os.path.join(vault, so.TIPS_FOLDER)
++    os.makedirs(tips_dir)
++    conn = ldb.open_db(db)
++    ldb.apply_schema(conn)
++    with conn:
++        conn.execute('INSERT INTO videos (record_id, video_id, title, created_at, updated_at) VALUES (?,?,?,?,?)',
++                     ('vid-1', 'VVVVVVVVVVV', '영상', TS, TS))
++        for rid, title, memo, saved in TIPS:
++            conn.execute('INSERT INTO tips (record_id, title, url, url_key, source, saved_date, memo, created_at, updated_at) '
++                         'VALUES (?,?,?,?,?,?,?,?,?)', (rid, title, f'https://x/{rid}', rid, 'x', saved, memo, TS, TS))
++    rows = {r['record_id']: dict(r) for r in conn.execute('SELECT * FROM tips')}
++    conn.close()
++    for rid, r in rows.items():
++        r['tags'] = []
++        fname = so.safe_filename(f"{r['saved_date'].replace('-', '')}_{r['title']}") + '.md'
++        body = so.tip_note_md(r)
++        if rid == 'tip-aaaaaa111111':
++            body += '\n## 관련\n\n- [[Claude Code]]\n'     # build_obsidian_wiki 가 붙인 내용 — 보존돼야 한다
++        open(os.path.join(tips_dir, fname), 'w', encoding='utf-8').write(body)
++    os.makedirs(os.path.join(vault, '_wiki', 'concepts'))
++    open(os.path.join(vault, '_wiki', 'concepts', 'AI 생산성.md'), 'w', encoding='utf-8').write(
++        '# AI 생산성\n\n'
++        '- [[20261011_유튜브 영상 (제목 미확인)|유튜브 영상 (제목 미확인)]] `youtube.com` 2026-10-11\n'
++        '  > 유튜브 영상 (제목 미확인) 은 본문 글자라 그대로\n'
++        '- [[20261010_courses|courses]] `x` 2026-10-10\n'
++        '- [[20261010_coursesX]] 비슷한 이름은 그대로\n'
++        '- [[AI 꿀팁/20261010_courses#요약|내 별칭]] 폴더·앵커·사용자 별칭\n'
++        '- [[20261009_다른 꿀팁]] 무관\n')
++    os.makedirs(os.path.join(vault, '_MOC'))
++    # 디스크에 NFD 로 남은 링크 글자도 잡아야 한다
++    open(os.path.join(vault, '_MOC', 'AI 꿀팁 MOC.md'), 'w', encoding='utf-8').write(
++        unicodedata.normalize('NFD', '- [[20261012_노션 자료 (제목 미확인)]]\n- [[20261011_유튜브 영상 (제목 미확인)]]\n'))
++    os.makedirs(os.path.join(vault, '_trash', 'x'))
++    open(os.path.join(vault, '_trash', 'x', 'old.md'), 'w', encoding='utf-8').write('[[20261010_courses]]\n')
++    os.makedirs(os.path.join(vault, '.obsidian'))
++    open(os.path.join(vault, '.obsidian', 'w.md'), 'w', encoding='utf-8').write('[[20261010_courses]]\n')
++    return root, vault, db, bk
++
++
++def write_csv(root, rows, name='in.csv'):
++    p = os.path.join(root, name)
++    with open(p, 'w', encoding='utf-8') as f:
++        f.write('record_id,old_title,new_title\n')
++        for r in rows:
++            f.write(','.join('"' + c.replace('"', '""') + '"' for c in r) + '\n')
++    return p
++
++
++def run(args):
++    buf = io.StringIO()
++    with contextlib.redirect_stdout(buf):
++        code = m.main(args)
++    out = buf.getvalue()
++    res = {}
++    for line in out.splitlines():
++        if line.startswith('RESULT_JSON:'):
++            res = json.loads(line[len('RESULT_JSON:'):])
++    return code, res, out
++
++
++def snapshot(root):
++    h = {}
++    for d, _, fs in os.walk(root):
++        for f in fs:
++            p = os.path.join(d, f)
++            h[os.path.relpath(p, root)] = hashlib.sha1(open(p, 'rb').read()).hexdigest()
++    return h
++
++
++def tip(db, rid):
++    c = sqlite3.connect(db); c.row_factory = sqlite3.Row
++    r = dict(c.execute('SELECT * FROM tips WHERE record_id = ?', (rid,)).fetchone()); c.close()
++    return r
++
++
++GOOD = [
++    ('tip-aaaaaa111111', '유튜브 영상 (제목 미확인)', '클로드 코드 TOP 5 — 일주일 순위'),
++    ('tip-bbbbbb222222', 'courses', '강의: 메이크패밀리 라운지'),
++    ('tip-cccccc333333', '노션 자료 (제목 미확인)', '[시크아] 디자인 리소스 리스트'),
++    ('tip-dddddd444444', 'keep me', 'Keep "me"'),
++]
++
++# 1. dry-run — 무변경
++root, vault, db, bk = make_env(); m.BACKUP_ROOT = bk
++csvp = write_csv(root, GOOD)
++before = snapshot(root)
++code, res, out = run([csvp, '--db', db, '--vault', vault])
++check('dry-run 종료 0 · ok', code == 0 and res.get('ok') and res.get('dry_run'), res)
++check('dry-run 무변경(장부·Vault·백업 폴더)', snapshot(root) == before)
++check('dry-run 집계 rows 4 · renamed 4 · memo_cleared 2', (res.get('rows'), res.get('renamed'), res.get('memo_cleared')) == (4, 4, 2), res)
++check('dry-run 링크 파일 2 (_trash·.obsidian 제외)', res.get('link_files') == 2, res)
++
++# 2. apply
++code, res, out = run([csvp, '--apply', '--no-rebuild', '--db', db, '--vault', vault])
++check('apply 종료 0 · ok', code == 0 and res.get('ok'), out[-500:])
++a = tip(db, 'tip-aaaaaa111111')
++check('장부 제목 변경', a['title'] == '클로드 코드 TOP 5 — 일주일 순위')
++check('자동 메모 비움', a['memo'] == '')
++check('updated_at 새로 찍힘(형식 유지)', a['updated_at'] != TS and a['updated_at'].endswith('Z') and len(a['updated_at']) == 24, a['updated_at'])
++check('사람 메모 보존', tip(db, 'tip-dddddd444444')['memo'] == '사람이 쓴 메모')
++e = tip(db, 'tip-eeeeee555555')
++check('대상 밖 행 무변경(updated_at 포함)', e['title'] == '다른 꿀팁' and e['updated_at'] == TS)
++check('created_at 무변경', a['created_at'] == TS)
++
++td = os.path.join(vault, so.TIPS_FOLDER)
++names = set(os.listdir(td))
++check('노트 파일명 변경', '20261011_클로드 코드 TOP 5 — 일주일 순위.md' in names and '20261011_유튜브 영상 (제목 미확인).md' not in names, names)
++check('파일명 안전 변환(: → _)', '20261010_강의_ 메이크패밀리 라운지.md' in names, names)
++note = open(os.path.join(td, '20261011_클로드 코드 TOP 5 — 일주일 순위.md'), encoding='utf-8').read()
++check('노트 title·H1 변경', 'title: "클로드 코드 TOP 5 — 일주일 순위"' in note and '\n# 클로드 코드 TOP 5 — 일주일 순위\n' in note)
++check('노트 memo 비움 · 메모 줄 삭제', 'memo: ""' in note and '📝 메모' not in note)
++check('노트 나머지 내용 보존(관련 링크·notion_id·link_url)', '- [[Claude Code]]' in note and 'notion_id: tip-aaaaaa111111' in note
++      and 'link_url: https://x/tip-aaaaaa111111' in note)
++nd = open(os.path.join(td, '20261009_Keep _me_.md'), encoding='utf-8').read()
++check('제목 따옴표는 _q 규칙(프론트매터)·원문(H1)', "title: \"Keep 'me'\"" in nd and '\n# Keep "me"\n' in nd)
++check('사람 메모 줄 보존', '- 📝 메모: 사람이 쓴 메모' in nd)
++check('노트 notion_id 로 장부와 대응 유지', so.fm_notion_id(os.path.join(td, '20261010_강의_ 메이크패밀리 라운지.md')) == 'tip-bbbbbb222222')
++
++con = open(os.path.join(vault, '_wiki', 'concepts', 'AI 생산성.md'), encoding='utf-8').read()
++check('링크+별칭(옛 제목) 치환', '[[20261011_클로드 코드 TOP 5 — 일주일 순위|클로드 코드 TOP 5 — 일주일 순위]]' in con, con)
++check('본문 글자는 그대로', '> 유튜브 영상 (제목 미확인) 은 본문 글자라 그대로' in con)
++check('폴더·앵커·사용자 별칭 유지', '[[AI 꿀팁/20261010_강의_ 메이크패밀리 라운지#요약|내 별칭]]' in con, con)
++check('비슷한 이름·무관 링크 그대로', '[[20261010_coursesX]]' in con and '[[20261009_다른 꿀팁]]' in con)
++moc = open(os.path.join(vault, '_MOC', 'AI 꿀팁 MOC.md'), encoding='utf-8').read()
++check('NFD 링크 글자도 치환', '[[20261012_[시크아] 디자인 리소스 리스트]]' in moc and '[[20261011_클로드 코드 TOP 5 — 일주일 순위]]' in moc, moc)
++check('_trash·숨김 폴더 무변경', open(os.path.join(vault, '_trash', 'x', 'old.md'), encoding='utf-8').read() == '[[20261010_courses]]\n'
++      and open(os.path.join(vault, '.obsidian', 'w.md'), encoding='utf-8').read() == '[[20261010_courses]]\n')
++
++bdirs = os.listdir(bk)
++check('백업 폴더 1개', len(bdirs) == 1, bdirs)
++bd = os.path.join(bk, bdirs[0])
++man = json.load(open(os.path.join(bd, 'manifest.json'), encoding='utf-8'))
++check('manifest renamed 4 · edited 6', len(man['renamed']) == 4 and len(man['edited']) == 6, man)
++bc = sqlite3.connect(os.path.join(bd, 'library.db'))
++check('백업 장부 = 반영 전 제목', bc.execute("SELECT title FROM tips WHERE record_id='tip-aaaaaa111111'").fetchone()[0] == '유튜브 영상 (제목 미확인)')
++bc.close()
++check('백업 Vault 원본 보존', os.path.exists(os.path.join(bd, 'vault', so.TIPS_FOLDER, '20261011_유튜브 영상 (제목 미확인).md')))
++
++# 3. 같은 CSV 다시 — 옛 제목 불일치로 중단, 무변경
++before = snapshot(root)
++code, res, out = run([csvp, '--apply', '--no-rebuild', '--db', db, '--vault', vault])
++check('재실행 = 옛 제목 불일치 → 종료 2', code == 2 and not res.get('ok'), res)
++check('재실행 무변경(백업도 안 만듦)', snapshot(root) == before)
++
++# 4. 검증 실패는 아무것도 쓰지 않는다 — 한 행이라도 틀리면 전체 중단
++root, vault, db, bk = make_env(); m.BACKUP_ROOT = bk
++before = snapshot(root)
++for label, rows in (
++    ('없는 record_id', [GOOD[1], ('tip-zzzz', 'x', 'y')]),
++    ('record_id 중복', [GOOD[1], GOOD[1]]),
++    ('새 제목 빈칸', [('tip-bbbbbb222222', 'courses', '  ')]),
++    ('새 제목 = 옛 제목', [('tip-bbbbbb222222', 'courses', 'courses')]),
++    ('옛 제목 불일치', [GOOD[1], ('tip-aaaaaa111111', '다른 제목', 'y')]),
++    ('새 제목에 |', [('tip-bbbbbb222222', 'courses', '강의 | 라운지')]),
++    ('새 제목에 ]]', [('tip-bbbbbb222222', 'courses', 'a]] b')]),
++):
++    code, res, _ = run([write_csv(root, rows, 'bad.csv'), '--apply', '--no-rebuild', '--db', db, '--vault', vault])
++    os.remove(os.path.join(root, 'bad.csv'))
++    check(f'검증 실패({label}) → 종료 2', code == 2 and not res.get('ok'), res)
++check('검증 실패들 뒤 무변경', snapshot(root) == before)
++
++# 5. 손으로 고친 노트(H1 없음) → 중단
++td = os.path.join(vault, so.TIPS_FOLDER)
++p = os.path.join(td, '20261010_courses.md')
++txt = open(p, encoding='utf-8').read()
++open(p, 'w', encoding='utf-8').write(txt.replace('\n# courses\n', '\n# 손으로 바꾼 제목\n'))
++before = snapshot(root)
++code, res, _ = run([write_csv(root, [GOOD[1]], 'h1.csv'), '--apply', '--no-rebuild', '--db', db, '--vault', vault])
++check('H1 불일치 노트 → 종료 2', code == 2 and 'H1' in res.get('error', ''), res)
++os.remove(os.path.join(root, 'h1.csv'))
++check('H1 불일치 뒤 무변경', snapshot(root) == before)
++
++# 6. 새 파일명 충돌 → record_id 끝 6자리
++root, vault, db, bk = make_env(); m.BACKUP_ROOT = bk
++td = os.path.join(vault, so.TIPS_FOLDER)
++open(os.path.join(td, '20261010_다른 꿀팁.md'), 'w', encoding='utf-8').write('---\nnotion_id: other\n---\n')
++code, res, out = run([write_csv(root, [('tip-bbbbbb222222', 'courses', '다른 꿀팁')]), '--apply', '--no-rebuild', '--db', db, '--vault', vault])
++check('충돌 시 접미사 파일명', code == 0 and os.path.exists(os.path.join(td, '20261010_다른 꿀팁_222222.md'))
++      and open(os.path.join(td, '20261010_다른 꿀팁.md'), encoding='utf-8').read() == '---\nnotion_id: other\n---\n', out[-400:])
++
++# 7. 노트가 없는 행 — 장부만 고친다
++root, vault, db, bk = make_env(); m.BACKUP_ROOT = bk
++os.remove(os.path.join(vault, so.TIPS_FOLDER, '20261009_다른 꿀팁.md'))
++code, res, out = run([write_csv(root, [('tip-eeeeee555555', '다른 꿀팁', '새 제목')]), '--apply', '--no-rebuild', '--db', db, '--vault', vault])
++check('노트 없음 → 장부만 갱신 · notes 0', code == 0 and res.get('notes') == 0 and tip(db, 'tip-eeeeee555555')['title'] == '새 제목', res)
++
++# 8. 별칭에 홑 ']' 가 든 링크도 치환 (예: 첫 보완으로 '[시크아] …' 가 된 노트를 다시 고칠 때)
++root, vault, db, bk = make_env(); m.BACKUP_ROOT = bk
++code, res, _ = run([write_csv(root, [GOOD[2]], 'c1.csv'), '--apply', '--no-rebuild', '--db', db, '--vault', vault])
++cp = os.path.join(vault, '_wiki', 'concepts', 'AI 생산성.md')
++open(cp, 'a', encoding='utf-8').write('- [[20261012_[시크아] 디자인 리소스 리스트|[시크아] 디자인 리소스 리스트]] 별칭에 괄호\n')
++code, res, _ = run([write_csv(root, [('tip-cccccc333333', '[시크아] 디자인 리소스 리스트', '시크아 디자인 리소스')], 'c2.csv'),
++                    '--apply', '--no-rebuild', '--db', db, '--vault', vault])
++txt = open(cp, encoding='utf-8').read()
++check('별칭에 ] 가 든 링크 치환', code == 0 and '[[20261012_시크아 디자인 리소스|시크아 디자인 리소스]] 별칭에 괄호' in txt
++      and '[시크아] 디자인 리소스 리스트]]' not in txt, txt[-300:])
++man = json.load(open(os.path.join(bk, sorted(os.listdir(bk))[-1], 'manifest.json'), encoding='utf-8'))
++check('manifest 경로는 절대경로', os.path.isabs(man['db']) and os.path.isabs(man['vault']), man['db'])
++
++# 9. 인자 오류
++code, res, _ = run(['--apply'])
++check('CSV 없음 → 종료 2', code == 2)
++code, res, _ = run([csvp, '--bogus'])
++check('모르는 옵션 → 종료 2', code == 2)
++code, res, _ = run([csvp, '--db', db, '--vault', os.path.join(root, 'nope')])
++check('Vault 없음 → 종료 2', code == 2)
++
++check('네트워크 호출 0회', not NET_CALLS, NET_CALLS)
++
++passed = sum(1 for _, ok in results if ok)
++print(f'\n{passed}/{len(results)} PASS')
++sys.exit(0 if passed == len(results) else 1)

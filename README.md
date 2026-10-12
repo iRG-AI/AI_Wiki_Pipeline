@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.3** (2026-10-12)
+**현재 버전: v4.4** (2026-10-12)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -10,6 +10,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.1: 장부를 하루 1회 로컬(`data/backups/`)과 구글 드라이브에 자동 백업합니다(최신 7개 + 주별 4개).
 > v4.2: 실행이 통째로 실패하거나, 알림을 못 보냈거나, 정시 실행이 빠지면 텔레그램으로 알립니다(못 보낸 알림은 다음 실행이 보냄).
 > v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠습니다. 장부 ↔ Vault 대조는 `scripts/verify_library.py` 입니다.
+> v4.4: 카톡 꿀팁의 추정 제목(「제목 미확인」·URL 조각)을 원문 제목으로 고치는 `scripts/retitle_tips.py` 를 넣었습니다 — 장부·Obsidian 노트(파일명 포함)·링크를 함께 바꿉니다.
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
@@ -203,9 +204,10 @@ AI_Wiki_Pipeline/
 │   └── kakao_parse.py                 # URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
 ├── scripts/
 │   ├── verify_library.py              # (v4.3) 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음)
+│   ├── retitle_tips.py                # (v4.4) 꿀팁 제목 보완 — 장부·노트 파일명·링크 일괄 (dry-run 기본)
 │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
 │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
-│   └── test_*.{js,py}                 # 회귀 테스트 7종 (네트워크 0회)
+│   └── test_*.{js,py}                 # 회귀 테스트 8종 (네트워크 0회)
 ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
 ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
 ├── docs/cowork-project-instructions.md # (옛) Cowork 프로젝트 인수인계 사본 (2026-08-17) — 현재 원본은 Cowork 프로젝트 설정
@@ -313,6 +315,10 @@ launchd 데몬 4개 (설치본 = `~/Library/LaunchAgents/`, 원본 = 레포 루�
 /opt/homebrew/bin/python3 kakao_ingest.py                    # dry-run — 생성될 행을 표로만 출력
 /opt/homebrew/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 → 장부 확인
 /opt/homebrew/bin/python3 kakao_ingest.py --apply            # 전량
+
+# (v4.4) 추정 제목(「제목 미확인」·URL 조각)을 원문 제목으로 — CSV: record_id,old_title,new_title
+/opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV>          # dry-run — 바뀔 제목·파일명·링크 수
+/opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV> --apply  # 장부·노트·링크 + Wiki 재구성·검색 인덱스
 ```
 
 ### 4. 구글 시트 미러 (v4.0)
@@ -409,6 +415,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.4** | 2026-10-12 | **꿀팁 제목 보완 도구**: 카톡 인제스트가 URL 로만 추정한 꿀팁 제목(「유튜브 영상 (제목 미확인)」·`courses` 등, 46건 누적)을 원문 제목으로 고치는 `scripts/retitle_tips.py`(CSV 입력, dry-run 기본). 장부 `title`·`updated_at`(시트 미러 반영) + 자동 메모 비움, 「AI 꿀팁」 노트 제자리 수정·파일명 변경, Vault `[[링크]]` 치환을 함께 하고 쓰기 전에 장부·파일을 백업. 첫 적용 5건. 회귀 테스트 8종 |
 | **v4.3** | 2026-10-12 | **노션 잔재 정리**: 노션 해지에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`(+ 테스트)와 `.env` 의 `NOTION_*` 3키를 지움. 계속 쓰던 장부 ↔ Vault 대조만 `scripts/verify_library.py` 로 떼어 냄(검사 항목·`RESULT_JSON` 동일, 테스트 16/16). 앱 코드 동작 무변경. |
 | **v4.2** | 2026-10-12 | **실행 실패 알림**: "저장 0 · Skip 0 · 오류 ≥1"(영상을 하나도 확인하지 못한 실행)과 치명적 오류가 텔레그램 없이 지나가던 구멍을 막음. 실행 상태 파일 `.run_state.json` 으로 네트워크가 죽어 못 보낸 실패·끝을 기록하지 못한 실행·9시간 넘게 빈 간격(빠진 정시 실행)을 다음 실행이 `[직전 실행 점검]` 으로 알림. `sendTelegram` 이 성공 여부를 돌려주고 JSON 아닌 응답에 죽지 않음 |
 | **v4.1** | 2026-10-12 | **장부 자동 백업**: 장부(`data/library.db`)를 하루 1회 SQLite 온라인 백업 → 무결성 검사 → gzip 해 로컬 `data/backups/` 와 구글 드라이브 폴더(`.env LIBRARY_BACKUP_DIR`)에 저장(`backup_library.py`). 최신 7개 + 주별 4개 보관. 장부는 읽기 전용으로만 연다. 스케줄러 훅은 reject 없음, 실패는 텔레그램. 회귀 테스트 7종 |
@@ -433,6 +440,22 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.4] — 2026-10-12 (🏷 꿀팁 제목 보완 도구)
+
+**배경.** `kakao_ingest.py` 는 링크를 열지 않고 URL 로만 제목을 추정한다(`lib/kakao_parse.py:guess_meta`). 유튜브 shorts·노션 공개 페이지는 「유튜브 영상 (제목 미확인)」·「노션 자료 (제목 미확인)」, 그 밖은 URL 마지막 조각(`courses`, `linkedin skills claude code setup`)이 제목이 되고, 3월부터 「원문 확인 필요」 메모가 붙은 꿀팁이 46건 쌓였다. 장부만 고치면 시트는 바뀌지만 `sync_obsidian.py` 는 꿀팁 노트를 **새로 만들기만** 하므로 Obsidian 노트·파일명·링크는 옛 제목으로 남는다.
+
+| 항목 | 내용 |
+|---|---|
+| 신규 | `scripts/retitle_tips.py <CSV> [--apply] [--no-rebuild] [--db] [--vault]` — CSV `record_id,old_title,new_title`. 기본 dry-run(무변경). 종료 0 성공 · 1 반영 중 실패 · 2 입력·검증 실패(무변경) |
+| 장부 | 한 트랜잭션, `WHERE record_id = ? AND title = <옛 제목>` — `title`·`updated_at`(시트 미러 워터마크) 갱신, 카톡 자동 메모(「원문 확인 필요」류)만 비움. 사람이 쓴 메모·다른 열은 그대로 |
+| 노트 | 다시 생성하지 않고 제자리 수정(`title`·`memo` 줄, 첫 H1, 메모 줄) — `build_obsidian_wiki` 가 붙인 관련 링크 보존. 파일명 `<저장일>_<새 제목>.md`(`sync_tips` 와 같은 규칙, 충돌 시 id 끝 6자리). `notion_id` 그대로라 wiki_ingest·검색 인덱스 상태 유지 |
+| 링크 | Vault 의 `[[옛 파일명]]`·`[[옛 파일명\|별칭]]`·`[[AI 꿀팁/옛 파일명#앵커]]` → 새 파일명(별칭이 옛 제목이면 새 제목). NFC·NFD 둘 다. `_trash/`·숨김 폴더 제외 |
+| 안전장치 | 검증 전부 통과 뒤에만 쓴다(행 존재·옛 제목 일치·노트 1개·편집 지점 1곳씩·파일명 충돌·새 제목에 `\|`·`[[`·`]]` 금지). 쓰기 전 `data/retitle_backup/<시각>/` 에 장부 사본(온라인 백업 API)·바뀔 파일 원본·`manifest.json`. 같은 CSV 를 다시 돌리면 옛 제목 불일치로 멈춘다 |
+| 뒤처리 | `--apply` 뒤 `build_obsidian_wiki.py` → `build_search_index.py`(sync_obsidian 이 변경 뒤 부르는 것과 같음). 시트는 다음 정시 실행이 보낸다 |
+| 첫 적용 | `docs/tasks/2026-10-12-retitle-tips.csv` 5건 — 10-11 유튜브 shorts · 10-12 노션 공개 페이지 · `courses` · lazyowen guides 2건(제목은 oEmbed·노션 공개 API·페이지 제목으로 확인). 링크 24곳(10개 파일) |
+| 테스트 | 신규 `scripts/test_retitle_tips.py` 49/49(임시 장부·Vault·백업 폴더, 네트워크 0). 회귀 테스트 8종 |
+| 지시서 | `docs/tasks/2026-10-12-retitle-tips.md` |
 
 #### [v4.3] — 2026-10-12 (🧹 노션 잔재 정리)
 
