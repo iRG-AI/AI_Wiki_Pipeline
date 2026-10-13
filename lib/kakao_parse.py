@@ -12,7 +12,8 @@ CSV 형식 (카카오톡 PC 내보내기, UTF-8 BOM):
     clean_url(url)                  -> 트래킹 파라미터 제거한 저장용 URL
     url_key(url)                    -> 중복 판정용 정규화 키
     parse_links(path, since=None)   -> [{'date','url','key','message'}]  (CSV 내부 중복 제거)
-    guess_meta(url, message)        -> {'title','category','tags','memo','source'}
+    guess_meta(url, message, fetched_title=None) -> {'title','category','tags','memo','source','title_src'}
+        title_src (v4.8): 'message'(사용자가 붙인 글) · 'github'(레포 이름) · 'guess'(URL 추정 — kakao_ingest 가 원문 제목을 조회) · 'fetched'(조회한 제목)
 
 지침서: docs/tasks/2026-09-06-kakao-tips-ingest.md §3
 """
@@ -25,6 +26,9 @@ STRIP_PARAMS = {
     'pvs', 'si', 'mcp_token', '_phid', '_phsrc', 'source', 'shareKey', 'navType',
     'pli', 'usp', 'gclid', 'igshid',
 }
+
+# 추정 제목에 붙는 메모 표지 (scripts/retitle_tips.py AUTO_MEMOS 와 같은 문구 — 바꾸지 말 것)
+NEED_TITLE_MARK = '원문 확인 필요'
 
 # 카테고리 값 목록 (v3.x 노션 select 옵션 그대로 — 장부 tips.category·Obsidian 노트·시트에 같은 값을 쓴다)
 CATEGORIES = ['프롬프트', '개발툴', '기타', '모델/LLM', '뉴스/트렌드', '지식관리', '사업/마케팅']
@@ -115,19 +119,23 @@ def _slug_title(url):
     return last.replace('-', ' ').replace('_', ' ').strip()
 
 
-def guess_meta(url, message=''):
+def guess_meta(url, message='', fetched_title=None):
+    """fetched_title(v4.8): kakao_ingest 가 원문에서 조회한 제목(lib/title_fetch.clean_title 을 거친 값).
+    주면 그 제목을 쓰고 메모를 비우며, 태그·카테고리도 제목 글자까지 보고 정한다. 메시지에 사용자가 붙인 글이 있으면 그것이 여전히 우선."""
     host = host_of(url)
-    text = f'{url} {message}'.lower()
+    text = f'{url} {message} {fetched_title or ""}'.lower()
     tags = []
     for pat, tag in _KEYWORD_TAGS:
         if re.search(pat, text) and tag not in tags:
             tags.append(tag)
 
     memo = ''
+    title_src = 'guess'
     if 'github.com' in host:
         parts = [p for p in urlsplit(url).path.split('/') if p]
         repo = parts[1] if len(parts) >= 2 else (parts[0] if parts else host)
         title = f'{repo} (GitHub 레포)'
+        title_src = 'github'
         category = '개발툴'
     elif host.endswith('notion.site') or host in ('notion.so', 'app.notion.com'):
         slug = _slug_title(url)
@@ -135,18 +143,23 @@ def guess_meta(url, message=''):
             title = slug
         else:
             title = f'노션 자료 ({slug[:40]})' if slug else '노션 자료 (제목 미확인)'
-            memo = '슬러그에 한글 제목 없음 — 원문 확인 필요'
+            memo = f'슬러그에 한글 제목 없음 — {NEED_TITLE_MARK}'
         category = '기타'
     elif 'youtube.com' in host or 'youtu.be' in host:
         title = '유튜브 영상 (제목 미확인)'
         category = '기타'
-        memo = '원문 확인 필요'
+        memo = NEED_TITLE_MARK
     else:
         slug = _slug_title(url)
         title = slug[:80] if slug else host
         category = '기타'
         if not slug:
-            memo = '원문 확인 필요'
+            memo = NEED_TITLE_MARK
+
+    if fetched_title:
+        title = fetched_title
+        title_src = 'fetched'
+        memo = ''
 
     # 카테고리 세부 보정
     if any(t in tags for t in ('프롬프트',)):
@@ -163,10 +176,11 @@ def guess_meta(url, message=''):
     extra = re.sub(r'\s+', ' ', extra)
     if 4 <= len(extra) <= 80:
         title = extra
+        title_src = 'message'
         memo = ''
 
     assert category in CATEGORIES
-    return {'title': nfc(title), 'category': category, 'tags': tags, 'memo': memo, 'source': host}
+    return {'title': nfc(title), 'category': category, 'tags': tags, 'memo': memo, 'source': host, 'title_src': title_src}
 
 
 if __name__ == '__main__':

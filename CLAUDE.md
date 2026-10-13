@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**현재 버전: v4.7** (2026-10-13) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.8** (2026-10-13) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -51,6 +51,8 @@ node scheduler.js --legacy     # 레거시 33개 재생목록 모드
 /opt/homebrew/bin/python3 kakao_ingest.py --apply --limit=3  # 3건만 장부에 → 확인
 /opt/homebrew/bin/python3 kakao_ingest.py --apply            # 전량
 /opt/homebrew/bin/python3 kakao_ingest.py --apply --if-new   # 스케줄러 모드: 같은 CSV(mtime)면 장부 조회 없이 즉시 종료 (--force 로 무시)
+/opt/homebrew/bin/python3 kakao_ingest.py --no-lookup        # (v4.8) 원문 제목 조회 없이 (URL 추정 제목 그대로)
+/opt/homebrew/bin/python3 lib/title_fetch.py <URL> ...       # (v4.8) 링크 하나씩 제목 조회만 해 보기 (장부 무관)
 
 # Karpathy LLM Wiki
 python3 wiki_ingest.py              # 증분(미처리 소스) → backfill(하루 WIKI_BACKFILL_DAILY_MAX 회) → 페이지 재렌더 (launchd 17:30)
@@ -65,14 +67,15 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
-# 회귀 테스트 12종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+# 회귀 테스트 13종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
 /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
 /opt/homebrew/bin/node scripts/test_video_summary.js         # 23/23  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 (가짜 요청)
 /opt/homebrew/bin/node scripts/test_resummarize.js           # 9/9    (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 (임시 장부, 가짜 요약기)
 /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
 /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
 /opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 64/64  Wiki 추출 누적·재렌더·backfill(v4.6-b 영상 요약 소스만·stale)·씨앗·품질 제외·항목 0 안내 페이지 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
-/opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+/opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 37/37  카톡 → 장부 tips · (v4.8) 원문 제목 조회 대상·교체·실패 무해·끄기·상한 (가짜 조회)
+/opt/homebrew/bin/python3 scripts/test_title_fetch.py        # 43/43  (v4.8) 링크 제목 조회 — 노션 id·API·oEmbed·og:title·실패 사유·제목 정리 (가짜 응답)
 /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 32/32  장부 → Vault (임시 Vault) · (v4.6-b) 재요약 노트 요약 절 제자리 교체
 /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
 /opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 15/15  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외 · (v4.7) 화면 필터용 메타
@@ -183,8 +186,9 @@ YouTube "AI 영상목록" (마스터 모드)
 | `playlists.json` | 33개 토픽 재생목록 목록. 분류기의 허용 토픽 소스이기도 함. gitignore 대상. |
 | `scripts/clean_pending_queue.js` | (v2.5) 큐 중복 제거 + dead-letter 격리. 기본 dry-run, `--apply` 필요. |
 | `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. (v4.2) 실행 실패 알림(판정·점검 문구·상태 파일·`sendTelegram` 반환값) 포함. |
-| `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. |
-| `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. |
+| `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. (v4.8) 제목이 URL 추정인 신규 행만 원문 제목 조회(`lib/title_fetch.py`) — 장부 쓰기 전, 실패하면 추정 제목 그대로, `--no-lookup`. |
+| `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. (v4.8) `guess_meta(…, fetched_title)` · `title_src`(`message`·`github`·`guess`·`fetched`). |
+| `lib/title_fetch.py` · `scripts/test_title_fetch.py` | (v4.8) 링크 원문 제목 조회 — 노션 공개 API(`syncRecordValuesMain`) · 유튜브 oEmbed · og:title/`<title>`. 요청당 8초·재시도 없음, 예외를 던지지 않고 `(None, 사유)`. 제목 정리(앞뒤 이모지·`|` → ` — `·`[[`·`]]` 제거·120자·로그인/일반 문구 거부). 테스트는 가짜 응답(네트워크 0). |
 | `lib/env_util.py` | (v4.0 3단계) `.env` 읽기(의존성 0). `kakao_ingest.py`·`sheet_mirror.py` 가 쓴다. |
 | `sheet_mirror.py` | (v4.0 3단계) 장부 → 구글 시트 미러(보기 전용, 단방향). `updated_at` 워터마크로 변경분만, 200행씩 POST. `--dry-run`·`--full`·`--check`. 아래 "구글 시트 미러" 절. |
 | `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
@@ -205,7 +209,7 @@ YouTube "AI 영상목록" (마스터 모드)
 | `scripts/test_video_summary.js` | (v4.6) `lib/video_summary.js` 회귀 테스트. 요청 함수는 가짜(네트워크 0), 상태 파일은 임시 폴더. |
 | `lib/resummarize.js` | (v4.6-b) 기존분 재요약 — 후보 선정(`library.resummaryCandidates`)·`videos.list` 1회·요약기(`makeVideoSummarizer` 모델·`fallback:false`·`reserveSeconds`)·결과 분류(건너뜀·실패·중단)·장부 갱신. 아래 「기존분 재요약」. |
 | `scripts/test_resummarize.js` | (v4.6-b) `lib/resummarize.js` + 장부 재요약 헬퍼 회귀 테스트. 임시 장부, 영상 조회·요약기는 가짜(네트워크 0). |
-| `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
+| `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회(v4.8 제목 조회는 가짜 함수, 실제 함수 구간은 막힌 urlopen). |
 | `scripts/test_sync_obsidian.py` | (v4.0 2단계) `sync_obsidian.py` 회귀 테스트. 임시 Vault·임시 장부, 하위 단계(재구성·인제스트·인덱스)는 가짜로 바꿔 실제 Vault 를 건드리지 않는다. |
 | `scripts/test_sheet_mirror.py` · `scripts/fake_gas_server.js` | (v4.0 3단계) 시트 미러 회귀 테스트. 가짜 서버가 `gas/sheet_mirror.gs` 원본을 node `vm` 에 올리고 시트·302 리다이렉트를 흉내 낸다(127.0.0.1). 실제 구글 요청 0. |
 | `scripts/test_build_wiki_index.py` | (v4.0 3단계) 재구성 2회차 쓰기 0 · 프론트매터 없는 파일 누적 방지 · 검색 인덱스 프론트매터 한정. 임시 Vault. |
@@ -235,14 +239,14 @@ YouTube "AI 영상목록" (마스터 모드)
 ```
 카톡 '나와의 채팅' 내보내기 (수동, 월 1회) → ~/Downloads/KakaoTalk_Chat_*.csv
   → scheduler.js (YouTube 인제스트 완료 후) → kakao_ingest.py --apply --if-new
-       [최신 CSV mtime 비교(.kakao_state.json) → URL 정규화 → 장부 tips 전량 url_key 대조 → 신규만 한 트랜잭션 INSERT → RESULT_JSON]
+       [최신 CSV mtime 비교(.kakao_state.json) → URL 정규화 → 장부 tips 전량 url_key 대조 → (v4.8) URL 추정 제목만 원문 제목 조회 → 신규만 한 트랜잭션 INSERT → RESULT_JSON]
   → 장부 data/library.db 의 tips 테이블
   → sheet_mirror.py → 구글 시트 '꿀팁' 탭 (보기용)
   → sync_obsidian.py:sync_tips()  [VAULT/AI 꿀팁/*.md, 신규만]
   → wiki_ingest.py / build_obsidian_wiki.py  (기존 그대로 공유 — 합성 로직 두 벌 만들지 않는다)
 ```
 
-- `.env`: `KAKAO_EXPORT_DIR`(읽기는 `lib/env_util.py`). 노션을 부르지 않는다.
+- `.env`: `KAKAO_EXPORT_DIR`(읽기는 `lib/env_util.py`). 노션을 부르지 않는다(v4.8 제목 조회의 노션 공개 페이지 API 는 계정·토큰 없는 읽기다). (선택, v4.8) `KAKAO_TITLE_LOOKUP`(없으면 켜짐, `false` 면 끔) · `KAKAO_TITLE_MAX`(실행당 조회 상한, 기본 60) · `KAKAO_TITLE_BUDGET`(조회 전체 시간 상한초, 기본 180).
 - 꿀팁 기본값(노션 시절과 같음): 제목이 비면 URL, 카테고리 `기타`, 상태 `미확인`, 중요도 `중`. 카테고리 값 목록은 `lib/kakao_parse.py` 상단. `tags` 는 JSON 배열, `source` 는 **호스트만**(`github.com`).
 - `kakao_ingest.py`의 `--since` 기본값은 `2026-03-01`. 그 이전 카톡 링크 103건은 쇼핑·개인 링크라 AI 자료가 아니다.
 - **꿀팁 노트는 YouTube 로직과 격리된다.** `get_existing_vault_info()`가 `AI 꿀팁/` 폴더를 걷지 않으므로 고아 격리 분모·tags 동기화에 섞이지 않는다. 노트 프론트매터는 `link_url`이며 **`video_url`을 절대 쓰지 않는다** — 쓰는 순간 고아 격리 대상이 된다. `tags` 키도 쓰지 않는다(`keywords`) — `build_obsidian_wiki`가 tags 없는 파일을 폴더명 MOC(`_MOC/AI 꿀팁 MOC.md`)로 묶는다.
@@ -254,7 +258,7 @@ YouTube "AI 영상목록" (마스터 모드)
 - `scheduler.js`의 카톡 훅(`runKakaoIngest`)은 **절대 reject하지 않는다.** 카톡 단계가 Obsidian 동기화를 막으면 안 된다. (지시서 `docs/tasks/2026-09-06-scheduler-kakao-hook.md`)
 - 꿀팁이 신규 추가되면 `sync_obsidian.py`가 **제한 없이** `wiki_ingest.py`를 띄운다(기존 동작). 처음 대량 적재할 때는 `wiki_ingest.py --limit=20`으로 나눠 돌릴 것. 2026-09-06 첫 적재 시 99건이 한꺼번에 들어가 수동 중단했다.
 - 수동 즉시 반영은 Cowork 스킬 `kakao-tips-update`(장부판).
-- **제목은 추정이다.** `kakao_ingest` 는 링크를 열지 않고 URL 로 제목을 만든다(「유튜브 영상 (제목 미확인)」·「노션 자료 (…)」·URL 마지막 조각, 메모 「원문 확인 필요」). 고칠 때는 장부를 직접 UPDATE 하지 말고 `scripts/retitle_tips.py` 를 쓴다 — `sync_tips` 는 기존 노트를 다시 쓰지 않으므로 장부만 고치면 노트·파일명·링크가 옛 제목으로 남는다. 새 제목에 `|`·`[[`·`]]` 금지(Obsidian 링크 별칭을 깨뜨림, 스크립트가 거부).
+- **(v4.8) 제목은 원문에서 조회하고, 실패하면 추정이다.** 사용자가 메시지에 글을 붙이지 않았고 GitHub 레포가 아닌 링크(`title_src == 'guess'`)만 `lib/title_fetch.py` 로 원문 제목을 조회한다 — 노션 공개 페이지는 `syncRecordValuesMain`, 유튜브는 oEmbed(YouTube Data API 할당량 무관), 그 밖은 og:title/`<title>`. 성공하면 제목을 바꾸고 메모를 비우며 태그·카테고리도 제목 글자까지 보고 정한다. 실패(비공개 노션 `private`·HTTP 오류·로그인/일반 문구 `bad_title` 등)면 예전처럼 URL 추정 제목(「유튜브 영상 (제목 미확인)」·「노션 자료 (…)」·URL 마지막 조각, 메모 「원문 확인 필요」)이 들어간다. 조회는 장부 쓰기 **전**에 끝나고 예외를 던지지 않는다 — 조회 실패가 인제스트를 막으면 안 된다. 사전 검증(10-13): 실제 꿀팁 148건 143 성공(비공개 노션 3·id 없는 노션 1·JS 화면 1 실패), 요청당 최대 3.4초. 이미 들어간 꿀팁 제목을 고칠 때는 장부를 직접 UPDATE 하지 말고 `scripts/retitle_tips.py` 를 쓴다 — `sync_tips` 는 기존 노트를 다시 쓰지 않으므로 장부만 고치면 노트·파일명·링크가 옛 제목으로 남는다. 새 제목에 `|`·`[[`·`]]` 금지(Obsidian 링크 별칭을 깨뜨림, 스크립트가 거부).
 
 ### 구글 시트 미러 (v4.0 3단계) — 보기 전용, 장부 → 시트 단방향
 
@@ -587,6 +591,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-13 (v4.8 — 카톡 꿀팁 원문 제목 자동 조회)** — 배경: `kakao_ingest` 가 링크를 열지 않아 노션·유튜브·URL 조각 제목이 쌓이고(「원문 확인 필요」 46건), 10-12·10-13 두 차례 `retitle_tips.py` 로 손으로 고쳤다(2차 43건 — 노션 공개 API 44건 중 43 확인). 수정: `lib/title_fetch.py` 신규(노션 `syncRecordValuesMain` · 유튜브 oEmbed · og:title/`<title>`, 요청당 8초·재시도 없음·예외 없음, 제목 정리·일반 문구 거부), `kakao_ingest.py` `resolve_titles()`(URL 추정 제목만 · 장부 쓰기 전 · 실행당 60건/180초 · `--no-lookup`·`.env KAKAO_TITLE_*` · `RESULT_JSON.title_lookup`), `lib/kakao_parse.py` `guess_meta(fetched_title)`·`title_src`, `scheduler.js` 카톡 로그에 「제목 조회 성공/대상」. 장부·스키마 무변경. 사전 검증: 실제 꿀팁 148건 143 성공(최대 3.4초) · 장부 사본에서 9-15 이후 44건을 지우고 같은 URL 로 인제스트 → 조회 42/42(GitHub 2 제외), 24초. 테스트: 신규 `test_title_fetch.py` 43/43, `test_kakao_ingest.py` 37/37(+19). 회귀 테스트 13종. 지시서 `docs/tasks/2026-10-13-v48-kakao-title-lookup.md`.
 - **2026-10-13 (v4.7 — Wiki 검색 화면 개편)** — 대표님 요청 6건(처음 열면 전체 목록 · 건수 선택 제거 · 토픽 다중 선택 · 정렬 목록 유지 · 필터 추가 · 머리줄 정렬) + 결정(관련 결과 = 의미 점수 상위 200건 · 비슷한 영상 · 새로 들어온 것 · 엑셀 내려받기 · 노트 전체 보기 · 밝은 테마만). `wiki.html` 전면 교체(iRichGreen Design System 웹 계층 DS 1.1.23 토큰·FilterChip·SegmentedControl·표 30px 줄, 표/카드, 줄 펼침, URL 해시 상태, `/`·Esc, 휴대폰 서랍 필터). `lib/wiki_search.js` `listPayload`·`scoreAll`·`similar`·`noteById`, `server.js`·`wiki_lan_server.js` `/api/wiki-search` 에 `all=1`·`scores=1`·`similar=` 옵션 + 새 읽기 전용 경로 `/api/wiki-note`(id 로만). `build_search_index.py` 화면 필터용 메타 7개(임베딩 hash 무관 — 실 Vault 사본 실행 임베딩 0건). 장부·스키마·스케줄러 무변경. 테스트: 신규 `test_wiki_search.js` 34/34, `test_build_wiki_index.py` 15/15(+4). 회귀 테스트 12종. 지시서 `docs/tasks/2026-10-13-v47-wiki-ui.md`.
 - **2026-10-13 (v4.6-b — 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)** — 배경: 장부의 옛 요약 약 3,000편이 설명란 추론이라 일부가 지어낸 내용이고, 그래서 Wiki backfill 을 정지해 뒀다. 10-13 비교 5건에서 `gemini-3.5-flash-lite` 가 2.5 Flash 와 등급·신호 5/5 일치(말 내용 포함, 요약은 약 65% 길이), 3.x 는 `thinkingBudget: 0` 을 400 으로 거절. 수정: `lib/resummarize.js` 신규(scheduler 매 실행 신규 처리 뒤, 실행당 5 · 하루 20 · 신규 몫 3시간 예약, 실패 시 기존 요약 유지·건너뜀/실패/중단 분류), `lib/video_summary.js` 모델 인자·`thinkingConfigFor`·`fallback:false`·`reserveSeconds`·`summaryProblem`(bad_summary 사유 로그)·promo_main 프롬프트 좁힘(무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보는 판매 아님), `lib/library.js` 재요약 헬퍼(`updateResummary` — `updated_at` + `wiki_extract` stale), `sync_obsidian.py:refresh_changed_notes`(요약 절 제자리 교체·관련 항목 보존·장부 grade 만 고쳐도 노트가 따라옴), `wiki_ingest.py` backfill 대상 = `summary_src: video` 만 · 항목 0 페이지 안내 문구. 스키마 무변경(user_version 3). `.env WIKI_BACKFILL_DAILY_MAX=0` 정지 줄 제거. 테스트: 신규 `test_resummarize.js` 9/9, `test_video_summary.js` 23/23(+6), `test_scheduler_guards.js` 33/33(+2), `test_sync_obsidian.py` 32/32(+8), `test_wiki_ingest.py` 64/64(+7). 회귀 테스트 11종. 지시서 `docs/tasks/2026-10-13-v46b-resummarize.md`.
 - **2026-10-13 (v4.6-a — 실제 영상 요약 + 품질 필터, 신규 영상부터)** — 배경(10-12 시험): 요약이 제목·설명란만 보고 "추론해서라도 작성"이라 설명란이 빈약하면 지어낸 내용이 됐다(`mW5k5CbO4sA` 「AI 데이터 활용」 = 실제는 Python 문자열 강의). 수정: `lib/video_summary.js` 신규 — 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로(LOW, 30분 넘으면 앞 30분), JSON 으로 요약 + 사실 신호, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → exclude). 영상 토큰 0(삭제 영상)·비공개·403(연속 2회면 그 실행 끔)·429 소진·하루 8시간 분량(`.video_quota.json`)은 설명란 요약으로 대체. `getBatchDetails` 가 `contentDetails,status` 도 받음(1유닛 그대로). 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`, `migrate_library.py` 가 v1·v2 → v3 한 번에). 노트 프론트매터 `grade`·`summary_src`, `grade: exclude` 는 `wiki_ingest`·`build_search_index` 에서만 제외. `.env` 스위치 `VIDEO_SUMMARY`·`VIDEO_MAX_SECONDS`·`VIDEO_DAILY_SECONDS`. 테스트: 신규 `test_video_summary.js` 17/17, `test_scheduler_guards.js` 31/31(+2), `test_wiki_ingest.py` 57/57(+6), `test_sync_obsidian.py` 24/24(+1), `test_build_wiki_index.py` 11/11(+1). 회귀 테스트 10종. 지시서 `docs/tasks/2026-10-13-v46a-video-summary.md`.

@@ -9,6 +9,7 @@
           --since=YYYY-MM-DD  (기본: 2026-03-01 — DB 시작 시점. 그 이전 카톡 링크는 AI 자료가 아님)
           --if-new   스케줄러용. 최신 CSV 의 mtime 이 .kakao_state.json 에 기록된 값과 같으면 장부 조회 없이 즉시 종료
           --force    --if-new 무시
+          --no-lookup  원문 제목 조회를 하지 않는다 (v4.8. .env KAKAO_TITLE_LOOKUP=false 와 같다)
 
 스케줄러 연동 (v3.0): scheduler.js 가 Obsidian 동기화 직전에 `--apply --if-new` 로 호출한다.
 마지막 줄에 `RESULT_JSON:{...}` 를 찍어 scheduler.js 가 파싱한다 (sync_obsidian.py 와 같은 규약).
@@ -17,7 +18,11 @@
 멱등성: 중복 판정은 로컬 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(url_key)**로 한다.
 같은 CSV를 몇 번 돌려도 신규 0건이어야 정상. (2026-09-06 중복 15건 사고 재발 방지 조건)
 
-v4.0: 네트워크 요청 없음. 장부가 없으면 만들지 않고 실패한다(exit 1). 신규 행은 한 트랜잭션으로 넣는다(전부 들어가거나 하나도 안 들어가거나).
+v4.0: 장부가 없으면 만들지 않고 실패한다(exit 1). 신규 행은 한 트랜잭션으로 넣는다(전부 들어가거나 하나도 안 들어가거나).
+v4.8: 제목이 URL 추정인 신규 행(사용자가 붙인 글이 없고 GitHub 레포가 아닌 것)만 원문 제목을 조회한다
+      (lib/title_fetch.py — 노션 공개 API · 유튜브 oEmbed · og:title). 성공하면 제목을 바꾸고 「원문 확인 필요」 메모를 비운다.
+      dry-run 도 조회한다(읽기만). 장부 쓰기 전에 끝나고, 실패하면 기존 추정 제목·메모 그대로 — 조회 실패가 인제스트를 막지 않는다.
+      실행당 상한 KAKAO_TITLE_MAX(기본 60건) · 시간 상한 KAKAO_TITLE_BUDGET(기본 180초), 넘으면 나머지는 추정 제목.
 지침서 docs/tasks/2026-09-06-kakao-tips-ingest.md, docs/tasks/2026-10-11-v4-sqlite-switch-a.md
 """
 import glob, json, os, sys, time, uuid
@@ -26,12 +31,15 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(SCRIPT_DIR, 'lib'))
 
 from kakao_parse import parse_links, guess_meta, url_key, nfc
+from title_fetch import lookup_title   # (v4.8) 원문 제목 조회 — 예외를 던지지 않는다
 from env_util import load_env     # .env 읽기 (v4.0 3단계: 노션 래퍼 tips_notion 의존 제거)
 import library_db as ldb
 
 DEFAULT_SINCE = '2026-03-01'
 CSV_PREFIX = 'KakaoTalk_Chat_안진훈'          # '나와의 채팅' 내보내기 파일만. 다른 대화방 CSV 는 무시
 STATE_FILE = os.path.join(SCRIPT_DIR, '.kakao_state.json')   # gitignore 대상
+TITLE_MAX_DEFAULT = 60        # (v4.8) 실행당 제목 조회 상한 — .env KAKAO_TITLE_MAX
+TITLE_BUDGET_DEFAULT = 180    # (v4.8) 제목 조회 전체 시간 상한(초) — .env KAKAO_TITLE_BUDGET. scheduler 의 카톡 훅 timeout 은 10분
 
 
 def load_state():
@@ -66,6 +74,55 @@ def latest_csv():
              if nfc(os.path.basename(f)).startswith(CSV_PREFIX)]
     files.sort(key=os.path.getmtime)
     return files[-1] if files else None
+
+
+def _int_env(env, key, default):
+    try:
+        v = int(str(env.get(key, '')).strip() or default)
+        return v if v >= 0 else default
+    except ValueError:
+        return default
+
+
+def lookup_settings():
+    """(켜짐 여부, 건수 상한, 시간 상한초). --no-lookup 또는 .env KAKAO_TITLE_LOOKUP=false 면 끈다."""
+    env = load_env()
+    on = '--no-lookup' not in sys.argv and str(env.get('KAKAO_TITLE_LOOKUP', 'true')).strip().lower() not in ('false', '0', 'no', 'off')
+    return on, _int_env(env, 'KAKAO_TITLE_MAX', TITLE_MAX_DEFAULT), _int_env(env, 'KAKAO_TITLE_BUDGET', TITLE_BUDGET_DEFAULT)
+
+
+def resolve_titles(new):
+    """신규 후보 중 제목이 URL 추정(title_src 'guess')인 것만 원문 제목을 조회한다.
+    돌려주는 값: ({url: 조회 제목}, 통계 dict). 장부를 건드리지 않는다."""
+    on, cap, budget = lookup_settings()
+    need = [l for l in new if guess_meta(l['url'], l['message'])['title_src'] == 'guess']
+    stat = {'need': len(need), 'tried': 0, 'ok': 0, 'fail': 0, 'skipped': 0, 'reasons': {}}
+    found = {}
+    if not need:
+        return found, stat
+    if not on:
+        stat['skipped'] = len(need)
+        log(f'🔎 제목 조회 꺼짐 — 추정 제목 {len(need)}건 그대로')
+        return found, stat
+    t0 = time.monotonic()
+    for l in need:
+        if stat['tried'] >= cap or time.monotonic() - t0 > budget:
+            stat['skipped'] += 1
+            continue
+        stat['tried'] += 1
+        title, why = lookup_title(l['url'])
+        if title:
+            stat['ok'] += 1
+            found[l['url']] = title
+        else:
+            stat['fail'] += 1
+            stat['reasons'][why] = stat['reasons'].get(why, 0) + 1
+        log(f"  🔎 {'✅ ' + title[:40] if title else '— ' + why:46} | {l['url'][:70]}")
+    reasons = ', '.join(f'{k} {v}' for k, v in sorted(stat['reasons'].items()))
+    log(f"🔎 제목 조회: 대상 {stat['need']} · 성공 {stat['ok']} · 실패 {stat['fail']}"
+        + (f' ({reasons})' if reasons else '') + (f" · 상한으로 건너뜀 {stat['skipped']}" if stat['skipped'] else '')
+        + f' · {time.monotonic() - t0:.1f}초\n')
+    return found, stat
 
 
 def main():
@@ -119,11 +176,14 @@ def main():
         emit_result(csv=csv_name, created=0, candidates=0, db_total=len(rows))
         return
 
+    found, tstat = resolve_titles(new)
+    tl = {k: tstat[k] for k in ('need', 'ok', 'fail', 'skipped')}
+
     log(f"{'날짜':10} | {'카테고리':6} | {'제목':42} | URL")
     log('-' * 110)
     plan = []
     for l in new:
-        g = guess_meta(l['url'], l['message'])
+        g = guess_meta(l['url'], l['message'], found.get(l['url']))
         row = {
             'title': g['title'], 'url': l['url'], 'source': g['source'], 'tags': g['tags'],
             'category': g['category'], 'status': '미확인', 'importance': '중',
@@ -135,7 +195,7 @@ def main():
     if not apply:
         conn.close()
         log(f'\n👀 dry-run 종료 — 위 {len(plan)}건은 생성되지 않았습니다. 실제 생성은 --apply')
-        emit_result(dry_run=True, csv=csv_name, created=0, candidates=len(plan), db_total=len(rows))
+        emit_result(dry_run=True, csv=csv_name, created=0, candidates=len(plan), db_total=len(rows), title_lookup=tl)
         return
 
     # 노션 시절(v3.x)과 같은 기본값: 제목이 비면 URL, 카테고리 '기타', 상태 '미확인', 중요도 '중'
@@ -154,7 +214,7 @@ def main():
         db_total = conn.execute('SELECT COUNT(*) FROM tips').fetchone()[0]
     except Exception as e:
         log(f'❌ 장부 쓰기 실패 — 아무 행도 넣지 않았습니다: {e}')
-        emit_result(error=str(e)[:200], csv=csv_name, created=0, candidates=len(plan), db_total=len(rows))
+        emit_result(error=str(e)[:200], csv=csv_name, created=0, candidates=len(plan), db_total=len(rows), title_lookup=tl)
         sys.exit(1)
     finally:
         conn.close()
@@ -164,7 +224,7 @@ def main():
         log(f'  [{i}/{created}] ✅ {t[:40]}')
     log(f'\n🎉 생성 {created}건 · 장부 tips 총 {db_total}건')
     mark_done(created)
-    emit_result(csv=csv_name, created=created, failed=0, candidates=len(plan), db_total=db_total, titles=titles[:10])
+    emit_result(csv=csv_name, created=created, failed=0, candidates=len(plan), db_total=db_total, titles=titles[:10], title_lookup=tl)
 
 
 if __name__ == '__main__':

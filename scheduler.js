@@ -130,7 +130,9 @@ function runKakaoIngest(python3) {
         } else if (r && r.skipped) {
           log(`ℹ️  카톡 인제스트 건너뜀: ${r.skipped}${r.csv ? ` (${r.csv})` : ''}`);
         } else if (r) {
-          log(`📎 카톡 인제스트: 신규 ${r.created}건 / 후보 ${r.candidates}건 · DB 총 ${r.db_total}건`);
+          const tl = r.title_lookup;   // (v4.8) 원문 제목 조회 — 대상이 있을 때만 붙인다
+          log(`📎 카톡 인제스트: 신규 ${r.created}건 / 후보 ${r.candidates}건 · DB 총 ${r.db_total}건`
+            + (tl && tl.need ? ` · 제목 조회 ${tl.ok}/${tl.need}${tl.skipped ? ` (건너뜀 ${tl.skipped})` : ''}` : ''));
         }
         resolve(r);
       });
