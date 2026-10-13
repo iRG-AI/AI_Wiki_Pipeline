@@ -12,6 +12,7 @@ CSV 형식 (카카오톡 PC 내보내기, UTF-8 BOM):
     clean_url(url)                  -> 트래킹 파라미터 제거한 저장용 URL
     url_key(url)                    -> 중복 판정용 정규화 키
     parse_links(path, since=None)   -> [{'date','url','key','message'}]  (CSV 내부 중복 제거)
+    classify(url, *texts)           -> (category, tags)  (v4.9 — guess_meta·scripts/recategorize_tips.py 공용 규칙)
     guess_meta(url, message, fetched_title=None) -> {'title','category','tags','memo','source','title_src'}
         title_src (v4.8): 'message'(사용자가 붙인 글) · 'github'(레포 이름) · 'guess'(URL 추정 — kakao_ingest 가 원문 제목을 조회) · 'fetched'(조회한 제목)
 
@@ -98,13 +99,53 @@ def parse_links(path, since=None):
 
 
 # ── 제목/카테고리/태그 추정 (규칙 기반, 1차) ──
+# (v4.9) 한글 표기도 같은 태그로 — v4.8 부터 원문 제목(대개 한글)이 들어오므로 「클로드」·「노션」 등을 잡아야 한다.
+#   태그 이름·순서는 바꾸지 않는다(장부 tips.tags·노트 keywords·검색 필터가 이 값을 쓴다). 「커서」는 일반 명사라 넣지 않는다.
 _KEYWORD_TAGS = [
-    (r'claude[-_ ]?code', 'ClaudeCode'), (r'claude', 'Claude'), (r'antigravity', 'Antigravity'),
-    (r'gemini', 'Gemini'), (r'gpt|openai|chatgpt', 'GPT'), (r'ollama', 'Ollama'),
-    (r'notion', 'Notion'), (r'obsidian', 'Obsidian'), (r'prompt|프롬프트', '프롬프트'),
+    (r'(?:claude|클로드)[-_ ]?(?:code|코드)', 'ClaudeCode'), (r'claude|클로드', 'Claude'),
+    (r'antigravity|안티그래비티', 'Antigravity'),
+    (r'gemini|제미나이|제미니', 'Gemini'), (r'gpt|openai|chatgpt|오픈\s?ai|지피티', 'GPT'), (r'ollama|올라마', 'Ollama'),
+    (r'notion|노션', 'Notion'), (r'obsidian|옵시디언', 'Obsidian'), (r'prompt|프롬프트', '프롬프트'),
     (r'mcp', 'MCP'), (r'agent|에이전트', 'Agent'), (r'cursor', 'Cursor'), (r'github\.com', 'GitHub'),
-    (r'youtube\.com|youtu\.be', 'YouTube'), (r'huggingface', 'HuggingFace'),
+    (r'youtube\.com|youtu\.be', 'YouTube'), (r'huggingface|허깅\s?페이스', 'HuggingFace'),
 ]
+
+
+def is_notion_host(host):
+    """노션에 올린 페이지 주소(notion.site·notion.so·app.notion.com). notion.com(노션 회사 사이트)은 아니다."""
+    return host.endswith('notion.site') or host in ('notion.so', 'app.notion.com')
+
+
+def _tag_text(url, *texts):
+    """태그 판정 글자(소문자). (v4.9) 노션 페이지 주소는 호스트를 뺀다 — 노션에 올린 자료일 뿐 노션 이야기가 아니다
+    (v4.8 까지 노션 주소 꿀팁이 전부 Notion 태그 → 「지식관리」로 잡혔다)."""
+    u = url or ''
+    if is_notion_host(host_of(u)):
+        s = urlsplit(u)
+        u = urlunsplit(('', '', s.path, s.query, ''))
+    return ' '.join([u] + [t or '' for t in texts]).lower()
+
+
+def classify(url, *texts):
+    """(category, tags). texts = 사용자가 붙인 글·원문 제목 등 URL 밖의 글자.
+    guess_meta 와 scripts/recategorize_tips.py(기존 꿀팁 재분류)가 같이 쓴다 — 규칙은 여기 한 곳."""
+    text = _tag_text(url, *texts)
+    tags = []
+    for pat, tag in _KEYWORD_TAGS:
+        if re.search(pat, text) and tag not in tags:
+            tags.append(tag)
+    category = '개발툴' if 'github.com' in host_of(url or '') else '기타'
+    # 카테고리 세부 보정
+    if any(t in tags for t in ('프롬프트',)):
+        category = '프롬프트'
+    elif any(t in tags for t in ('ClaudeCode', 'Antigravity', 'Cursor', 'MCP', 'Ollama')) and category == '기타':
+        category = '개발툴'
+    elif any(t in tags for t in ('Notion', 'Obsidian')) and category == '기타':
+        category = '지식관리'
+    elif any(t in tags for t in ('GPT', 'Gemini', 'Claude')) and category == '기타':
+        category = '모델/LLM'
+    assert category in CATEGORIES
+    return category, tags
 
 
 def _slug_title(url):
@@ -123,12 +164,6 @@ def guess_meta(url, message='', fetched_title=None):
     """fetched_title(v4.8): kakao_ingest 가 원문에서 조회한 제목(lib/title_fetch.clean_title 을 거친 값).
     주면 그 제목을 쓰고 메모를 비우며, 태그·카테고리도 제목 글자까지 보고 정한다. 메시지에 사용자가 붙인 글이 있으면 그것이 여전히 우선."""
     host = host_of(url)
-    text = f'{url} {message} {fetched_title or ""}'.lower()
-    tags = []
-    for pat, tag in _KEYWORD_TAGS:
-        if re.search(pat, text) and tag not in tags:
-            tags.append(tag)
-
     memo = ''
     title_src = 'guess'
     if 'github.com' in host:
@@ -136,23 +171,19 @@ def guess_meta(url, message='', fetched_title=None):
         repo = parts[1] if len(parts) >= 2 else (parts[0] if parts else host)
         title = f'{repo} (GitHub 레포)'
         title_src = 'github'
-        category = '개발툴'
-    elif host.endswith('notion.site') or host in ('notion.so', 'app.notion.com'):
+    elif is_notion_host(host):
         slug = _slug_title(url)
         if slug and re.search(r'[가-힣]', slug):
             title = slug
         else:
             title = f'노션 자료 ({slug[:40]})' if slug else '노션 자료 (제목 미확인)'
             memo = f'슬러그에 한글 제목 없음 — {NEED_TITLE_MARK}'
-        category = '기타'
     elif 'youtube.com' in host or 'youtu.be' in host:
         title = '유튜브 영상 (제목 미확인)'
-        category = '기타'
         memo = NEED_TITLE_MARK
     else:
         slug = _slug_title(url)
         title = slug[:80] if slug else host
-        category = '기타'
         if not slug:
             memo = NEED_TITLE_MARK
 
@@ -161,15 +192,7 @@ def guess_meta(url, message='', fetched_title=None):
         title_src = 'fetched'
         memo = ''
 
-    # 카테고리 세부 보정
-    if any(t in tags for t in ('프롬프트',)):
-        category = '프롬프트'
-    elif any(t in tags for t in ('ClaudeCode', 'Antigravity', 'Cursor', 'MCP', 'Ollama')) and category == '기타':
-        category = '개발툴'
-    elif any(t in tags for t in ('Notion', 'Obsidian')) and category == '기타':
-        category = '지식관리'
-    elif any(t in tags for t in ('GPT', 'Gemini', 'Claude')) and category == '기타':
-        category = '모델/LLM'
+    category, tags = classify(url, message, fetched_title)
 
     # 메시지에 URL 외 텍스트가 있으면 제목 후보로 우선 (사용자가 직접 붙인 메모)
     extra = re.sub(r'https?://\S+', '', message or '').strip()
@@ -179,7 +202,6 @@ def guess_meta(url, message='', fetched_title=None):
         title_src = 'message'
         memo = ''
 
-    assert category in CATEGORIES
     return {'title': nfc(title), 'category': category, 'tags': tags, 'memo': memo, 'source': host, 'title_src': title_src}
 
 
