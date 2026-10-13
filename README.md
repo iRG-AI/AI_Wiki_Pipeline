@@ -13,6 +13,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.4: 카톡 꿀팁의 추정 제목(「제목 미확인」·URL 조각)을 원문 제목으로 고치는 `scripts/retitle_tips.py` 를 넣었습니다 — 장부·Obsidian 노트(파일명 포함)·링크를 함께 바꿉니다.
 > v4.5: Wiki 합성 결과(엔티티·개념)를 장부 `wiki_extract` 에 쌓고 `_wiki` 페이지를 매번 전체로 다시 그립니다.
 > v4.6-a: 신규 영상은 **실제 영상**(YouTube URL)을 Gemini 에 넣어 요약하고, 판매가 주목적·일반론·AI 무관 영상은 등급 `exclude` 로 표시해 Wiki 합성·검색에서만 뺍니다(노트는 그대로). 영상 입력이 안 되면 예전처럼 설명란으로 요약합니다.
+> v4.6-b: 예전에 설명란만 보고 만든 요약 약 3,000편을 **실제 영상으로 천천히 다시 요약**합니다(정시 실행마다 최대 5편, 하루 20편, Gemini 3.5 Flash-Lite — 신규 영상 몫 3시간은 남겨 둠). 노트는 요약 절만 제자리에서 바뀌고, Wiki 합성은 실제 영상 요약 노트만 다시 추출합니다.
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
@@ -199,7 +200,8 @@ AI_Wiki_Pipeline/
 │   ├── library.js                     # (v4.0) 장부 Node 헬퍼 (openLibrary·insertVideo·addTopic·updateStats)
 │   ├── library_db.py                  # (v4.0) 장부 Python 헬퍼 (open_existing — 없으면 만들지 않음)
 │   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 3 = v4.6 videos.grade·quality·summarized_at)
-│   ├── video_summary.js               # (v4.6) 실제 영상 요약 + 품질 신호 · 등급 규칙 · 하루 영상 분량 누계
+│   ├── video_summary.js               # (v4.6) 실제 영상 요약 + 품질 신호 · 등급 규칙 · 하루 영상 분량 누계 (v4.6-b 모델 인자·대체 없음·신규 몫 예약)
+│   ├── resummarize.js                 # (v4.6-b) 기존분 재요약 — 후보 선정·상한·건너뜀/실패/중단 처리 (scheduler.js 가 매 실행 호출)
 │   ├── env_util.py                    # (v4.0) .env 읽기 (의존성 없음)
 │   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
 │   ├── classifier.js                  # Gemini 기반 토픽 분류기
@@ -211,7 +213,7 @@ AI_Wiki_Pipeline/
 │   ├── migrate_library.py             # (v4.5·v4.6) 장부 스키마 이전 1·2 → 3 (dry-run 기본, 백업 먼저)
 │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
 │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
-│   └── test_*.{js,py}                 # 회귀 테스트 10종 (네트워크 0회)
+│   └── test_*.{js,py}                 # 회귀 테스트 11종 (네트워크 0회)
 ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
 ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
 ├── docs/cowork-project-instructions.md # (옛) Cowork 프로젝트 인수인계 사본 (2026-08-17) — 현재 원본은 Cowork 프로젝트 설정
@@ -257,13 +259,20 @@ SHEET_MIRROR_TOKEN=<openssl rand -hex 24 로 만든 값 — Apps Script 스크�
 LIBRARY_BACKUP_DIR=~/Library/CloudStorage/GoogleDrive-<계정>/내 드라이브/YouTube_Ledger_Backup
 
 # (v4.5) Wiki 합성 backfill — 옛 소스를 묶어서 다시 추출. 영상 요약과 같은 Gemini 무료 키를 쓰므로 올리지 말 것
-WIKI_BACKFILL_DAILY_MAX=30                          # 하루(태평양시) 호출 상한, 0 = 끔 (없으면 30)
+WIKI_BACKFILL_DAILY_MAX=30                          # 하루(태평양시) 호출 상한, 0 = 끔 (없으면 30). (v4.6-b) 대상은 실제 영상 요약 노트만
 WIKI_BACKFILL_BATCH=20                              # 한 호출에 묶는 소스 수 1~40 (없으면 20)
 
 # (v4.6) 실제 영상 요약 — 없으면 아래 기본값. false 면 예전처럼 설명란으로만 요약
 VIDEO_SUMMARY=true
 VIDEO_MAX_SECONDS=1800                              # 이보다 긴 영상은 앞부분만 (Gemini videoMetadata.endOffset)
 VIDEO_DAILY_SECONDS=28800                           # 하루(태평양시) 영상 입력 분량 상한 — 무료 등급 8시간
+
+# (v4.6-b) 기존분 재요약 — 없으면 아래 기본값. false 면 재요약만 끈다 (VIDEO_SUMMARY=false 도 재요약을 끈다)
+RESUMMARY=true
+RESUMMARY_MODEL=gemini-3.5-flash-lite               # 신규 요약(2.5 Flash)과 무료 한도가 모델별로 따로
+RESUMMARY_PER_RUN=5                                 # 정시 실행 1회당 편수
+RESUMMARY_DAILY_MAX=20                              # 하루(태평양시) 편수 — 장부 quality.resummary_day 로 센다
+RESUMMARY_RESERVE_SECONDS=10800                     # 하루 영상 분량 상한에서 신규 영상 몫으로 남길 초(3시간)
 
 # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
 WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
@@ -431,6 +440,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.6-b** | 2026-10-13 | **기존분 재요약 + 노트 요약 절 제자리 교체 + backfill 재개**: 설명란 요약 약 3,000편(`summary_src != 'video'`)을 정시 실행마다 최대 5편 · 하루 20편씩 실제 영상으로 다시 요약(`lib/resummarize.js`, Gemini 3.5 Flash-Lite — 10-13 비교 5건 등급·신호 일치, 신규 영상 분량 3시간 예약, 실패하면 기존 요약 유지). `sync_obsidian.py` 가 재요약·등급 변경 노트의 요약 절만 교체(관련 항목 절 보존). Wiki backfill 은 실제 영상 요약 노트만(재요약 시 `wiki_extract` stale), 항목 0 `_wiki` 페이지는 안내 문구로. promo_main 에서 무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보 제외, bad_summary 사유 로그. 회귀 테스트 11종 |
 | **v4.6-a** | 2026-10-13 | **실제 영상 요약 + 품질 필터(신규 영상부터)**: 설명란만 보고 "추론해서라도" 쓰던 요약이 빈약한 설명란에서 지어낸 내용이 되던 문제 수정. 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로 넣어(LOW, 30분 넘으면 앞 30분) 요약 + 사실 신호를 받고, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → `exclude`). 삭제·비공개·403·한도는 설명란 요약으로 대체. 장부 user_version 3(`grade`·`quality`·`summarized_at`), 노트 프론트매터 `grade`·`summary_src`, `exclude` 는 Wiki 합성·검색에서만 제외. 회귀 테스트 10종 |
 | **v4.5** | 2026-10-12 | **Wiki 합성 결과 누적**: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서 페이지마다 1~10건만 남던 결함(05-12 도입 때부터) 수정. 추출 결과를 장부 새 표 `wiki_extract`(user_version 2, `scripts/migrate_library.py`)에 소스별로 쌓고 매 실행 전체로 다시 그림(내용 같으면 안 씀). 깨진 응답은 실패로 재시도(3회), 옛 페이지 항목 씨앗, 옛 소스 3천여 건은 20개 묶음 backfill(하루 30회, 약 6일). 회귀 테스트 9종 |
 | **v4.4** | 2026-10-12 | **꿀팁 제목 보완 도구**: 카톡 인제스트가 URL 로만 추정한 꿀팁 제목(「유튜브 영상 (제목 미확인)」·`courses` 등, 46건 누적)을 원문 제목으로 고치는 `scripts/retitle_tips.py`(CSV 입력, dry-run 기본). 장부 `title`·`updated_at`(시트 미러 반영) + 자동 메모 비움, 「AI 꿀팁」 노트 제자리 수정·파일명 변경, Vault `[[링크]]` 치환을 함께 하고 쓰기 전에 장부·파일을 백업. 첫 적용 5건. 회귀 테스트 8종 |
@@ -458,6 +468,23 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.6-b] — 2026-10-13 (🔁 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)
+
+**배경.** v4.6-a 는 신규 영상부터 실제 영상으로 요약했다. 장부의 옛 요약 약 3,000편은 여전히 설명란만 보고 만든 것이라 일부는 지어낸 내용이고, 그래서 Wiki backfill(옛 소스 재추출)을 정지해 두었다(`.env WIKI_BACKFILL_DAILY_MAX=0`). 10-13 비교에서 Gemini 3.5 Flash-Lite 는 2.5 Flash 와 등급·신호가 5/5 같았고(Python 강의 = not_ai, 컨설팅 모집 = promo_main 포함) 말 내용도 정확히 옮겼다 — 요약은 약 65% 길이. 같은 날 12:00 실행에서 무료 레퍼런스 키트를 나눠 주는 시연 영상이 promo_main 으로 제외됐다(오판).
+
+| 항목 | 내용 |
+|---|---|
+| 재요약 | `lib/resummarize.js` — 후보 `summary_src != 'video'` · 건너뜀 표시 없음 · 최신 업로드부터. `scheduler.js` 가 신규 처리 뒤 매 실행 호출(던지지 않음, 저장·Skip·오류 집계 밖). 상한: 실행당 `RESUMMARY_PER_RUN` 5 · 하루(PT) `RESUMMARY_DAILY_MAX` 20(장부 `quality.resummary_day` 로 셈) · 하루 영상 분량 8시간 중 `RESUMMARY_RESERVE_SECONDS` 3시간은 신규 몫. 모델 `RESUMMARY_MODEL` 기본 `gemini-3.5-flash-lite`(`thinkingLevel: minimal` — 3.x 는 `thinkingBudget` 을 400 으로 거절) |
+| 실패 | 대체 요약 없이 기존 요약 유지. 삭제·공개 아님·영상 토큰 0 → `quality.resummary_skip`(다시 안 함), 형식 실패 2회 → 건너뜀, 429·5xx·하루 분량·403 연속 → 그 실행 중단. 건너뜀·실패 표시는 `updated_at` 안 건드림 |
+| 장부 | 성공 시 `summary`·`summary_src 'video'`·`grade`·`quality`·`summarized_at`·`updated_at`(시트 미러) + 그 소스 `wiki_extract` → `stale`(attempts 0). 스키마 무변경(user_version 3) |
+| 노트 | `sync_obsidian.py:refresh_changed_notes` — 장부 `summary_src` 가 `video` 인데 노트 프론트매터와 다르면 요약 절(`▶ 영상 보기` 다음 `---` 부터 `🔗 관련 항목` 앞까지)만 교체 + `grade`·`summary_src` 맞춤. 경계를 못 찾으면 그대로 두고 `refresh_skipped` 로 보고. 장부 `grade` 만 고쳐도 노트가 따라옴 |
+| Wiki | backfill 대상 = 실제 영상 요약 노트(`summary_src: video`)만. `stale` 행은 다시 추출될 때까지 페이지에 그대로. 항목 0 이 된 이름(목록 안)의 기존 페이지는 안내 문구 페이지로(지우지 않음), index 에서 빠짐 |
+| 품질 신호 | `promo_main` 프롬프트에 "무료 자료·템플릿·키트 배포, 구독·댓글 유도는 판매 아님 — 돈을 받는 판매·모집만" 추가(좁힘 — 영상 끝·중간에 자기 강의를 잠깐 알리는 정도도 false). bad_summary 는 어느 검사에 걸렸는지 로그 1줄(`missing:…`·`short_tail:N`) |
+| 처리량 | 하루 약 19편 → 공개 약 2,950편에 약 5개월 |
+| 끄기 | `.env RESUMMARY=false`(재요약만) · `VIDEO_SUMMARY=false`(영상 입력 전부) |
+| 테스트 | 신규 `scripts/test_resummarize.js` 9/9, `test_video_summary.js` 23/23(+6), `test_scheduler_guards.js` 33/33(+2), `test_sync_obsidian.py` 32/32(+8), `test_wiki_ingest.py` 64/64(+7). 회귀 테스트 11종 |
+| 지시서 | `docs/tasks/2026-10-13-v46b-resummarize.md` |
 
 #### [v4.6-a] — 2026-10-13 (🎬 실제 영상 요약 + 품질 필터, 신규 영상부터)
 

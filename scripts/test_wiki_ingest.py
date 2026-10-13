@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-wiki_ingest.py (v4.5 wiki_extract 누적·재렌더·backfill·씨앗 · v4.6 품질 필터 제외) + scripts/migrate_library.py(v1·v2 → v3) 회귀 테스트
+wiki_ingest.py (v4.5 wiki_extract 누적·재렌더·backfill·씨앗 · v4.6 품질 필터 제외 · v4.6-b backfill 영상 요약 소스만·항목 0 안내 페이지) + scripts/migrate_library.py(v1·v2 → v3) 회귀 테스트
 — 네트워크 0회(Gemini 는 가짜), 실제 Vault·data/·상태 파일 무변경
 
   /opt/homebrew/bin/python3 scripts/test_wiki_ingest.py
@@ -76,10 +76,10 @@ def ok_json(ents=(), cons=(), rels=()):
                        'relations': [{'from': a, 'to': b, 'type': t} for a, b, t in rels]}, ensure_ascii=False)
 
 
-def note(vault, folder, fname, title, rid, date='2026-10-01', grade=None):
+def note(vault, folder, fname, title, rid, date='2026-10-01', grade=None, src=None):
     p = os.path.join(vault, folder, fname)
     os.makedirs(os.path.dirname(p), exist_ok=True)
-    g = f'grade: {grade}\n' if grade else ''
+    g = (f'grade: {grade}\n' if grade else '') + (f'summary_src: {src}\n' if src else '')
     open(p, 'w', encoding='utf-8').write(
         f'---\ntitle: "{title}"\nchannel: "채널"\nupload_date: {date}\n{g}notion_id: {rid}\n---\n\n## 영상 개요\n{title} 본문\n')
     return p
@@ -168,6 +168,13 @@ p = page(vault, 'concepts', '바이브코딩')
 check('제목·파일명 변경이 페이지에 반영', '[[a2|영상A 새 제목]]' in p and '[[a1|' not in p, p)
 check('Vault 에서 빠진 소스는 페이지에서 빠짐 · 장부 행은 보존', '[[b1|' not in p and 'source_count: 2' in p and 'rid-b' in rows())
 check('항목 0개가 된 MCP 기존 페이지는 지우지 않음', os.path.exists(os.path.join(vault, '_wiki', 'concepts', 'MCP.md')))
+mcp = page(vault, 'concepts', 'MCP')
+check('(v4.6-b) 항목 0 → 안내 페이지(source_count 0 · 옛 항목 없음) · index 에서 빠짐 · empty_pages 1',
+      'source_count: 0' in mcp and '지금 이 항목을 다룬 영상이 없습니다' in mcp and '[[b1|' not in mcp and r4['empty_pages'] == 1
+      and '[[MCP]]' not in open(os.path.join(vault, '_wiki', 'index.md'), encoding='utf-8').read(), (r4, mcp[:300]))
+h = tree_hash(os.path.join(vault, '_wiki'))
+code, out, r5 = run('--render-only')
+check('(v4.6-b) 안내 페이지도 결정적 — 다음 렌더 쓰기 0', tree_hash(os.path.join(vault, '_wiki')) == h and r5['empty_pages'] == 0, str(r5))
 check('네트워크 0회', NET_CALLS == [])
 
 # ═══ 2. 응답 해석 실패 — ingested 에 넣지 않고 3회에서 포기 ═══
@@ -210,8 +217,8 @@ check('소진: 1건만 기록 · 나머지 미처리 · 렌더 됨 · backfill �
 
 # ═══ 4. 씨앗 — 옛 페이지 항목을 wiki_extract 로 ═══
 root, vault = setup('seed')
-note(vault, 'AI Claude', 's1.md', 'S원1', 'rid-s1'); note(vault, 'AI Claude', 's2.md', 'S원2', 'rid-s2')
-note(vault, 'AI Claude', '채널 [Tech]_[한영자막] 제목_20260914.md', '[한영자막] 제목', 'rid-s3')
+note(vault, 'AI Claude', 's1.md', 'S원1', 'rid-s1', src='video'); note(vault, 'AI Claude', 's2.md', 'S원2', 'rid-s2', src='video')
+note(vault, 'AI Claude', '채널 [Tech]_[한영자막] 제목_20260914.md', '[한영자막] 제목', 'rid-s3', src='video')
 open(os.path.join(vault, '_wiki', 'entities', 'Claude.md'), 'w', encoding='utf-8').write(
     '---\ntype: entity\nname: "Claude"\nsource_count: 2\nlast_updated: 2026-10-01 00:00\n---\n\n# Claude\n\n> 총 **2개** 영상에서 언급됨\n\n'
     '## 🎯 주제로 다룬 영상 (1개)\n\n- [[s1|S원1]] `채널` 2026-10-01\n  > 옛 인사이트1\n\n'
@@ -244,7 +251,7 @@ check('씨앗 재적용: 그대로 3행 (멱등)', len(rows()) == 3)
 # ═══ 5. backfill — 처리됐지만 wiki_extract 에 없는/seed 뿐인 소스를 묶어서 ═══
 #   (위 seed 환경 이어서) s1·s2 = seed, 여기에 옛 ingested 45건 추가
 for i in range(45):
-    note(vault, 'AI Claude', f'old{i:02d}.md', f'옛영상{i:02d}', f'rid-old{i:02d}')
+    note(vault, 'AI Claude', f'old{i:02d}.md', f'옛영상{i:02d}', f'rid-old{i:02d}', src='video')   # (v4.6-b) backfill 은 영상 요약 소스만
 st = {'ingested': {f'rid-old{i:02d}': 'x' for i in range(45)}}
 st['ingested'].update({'rid-s1': 'x', 'rid-s2': 'x', 'rid-s3': 'x'})
 json.dump(st, open(wc.STATE_FILE, 'w', encoding='utf-8'))
@@ -270,7 +277,7 @@ check('대상 0이면 호출 0', CALLS == [])
 
 # --no-backfill · 신규 소스는 backfill 대상 아님
 root, vault = setup('nobf')
-note(vault, 'AI Claude', 'n1.md', 'N1', 'rid-n1')
+note(vault, 'AI Claude', 'n1.md', 'N1', 'rid-n1', src='video')
 json.dump({'ingested': {'rid-n1': 'x'}}, open(wc.STATE_FILE, 'w', encoding='utf-8'))
 code, out, r = run('--no-backfill')
 check('--no-backfill: 호출 0 · 대상은 남음', CALLS == [] and r['backfill_calls'] == 0 and r['backfill_left'] is None, str(r))
@@ -377,6 +384,35 @@ check('exclude: 추출 호출 안 함 · 페이지에 없음 · keep·미판정�
       code == 0 and ('single', '판매영상') not in CALLS and ('single', '좋은영상') in CALLS and ('single', '미판정영상') in CALLS
       and '판매영상' not in pg and '좋은영상' in pg and '미판정영상' in pg, str((CALLS, pg[:300])))
 check('exclude 노트 파일은 그대로', hashlib.sha256(open(px, 'rb').read()).hexdigest() == h and '품질 필터 제외 소스 1개' in out)
+
+# ═══ 10. (v4.6-b) backfill 은 실제 영상 요약 소스만 · stale(재요약)은 새 요약으로 다시 추출 ═══
+root, vault = setup('bfvideo')
+note(vault, 'AI Claude', 'p1.md', '옛설명란', 'rid-p1')                    # summary_src 없음(옛 노트) — 대상 아님
+note(vault, 'AI Claude', 'p2.md', '대체요약', 'rid-p2', src='app')         # 설명란 요약 — 대상 아님
+note(vault, 'AI Claude', 'p3.md', '재요약됨', 'rid-p3', src='video')       # 재요약 — stale 행 → 대상
+note(vault, 'AI Claude', 'p4.md', '영상요약새것', 'rid-p4', src='video')   # wiki_extract 없음 → 대상
+note(vault, 'AI Claude', 'p5.md', '영상요약완료', 'rid-p5', src='video')   # ok → 대상 아님
+c = sqlite3.connect(ldb.DB_PATH)
+c.execute("INSERT INTO wiki_extract (record_id,status,source,entities,concepts,attempts,created_at,updated_at) VALUES "
+          "('rid-p3','stale','single','[]','[{\"name\": \"MCP\", \"insight\": \"옛 지어낸 내용\"}]',0,'x','2026-10-01T00:00:00.000Z')")
+c.execute("INSERT INTO wiki_extract (record_id,status,source,entities,concepts,attempts,created_at,updated_at) VALUES "
+          "('rid-p5','ok','single','[]','[]',0,'x','2026-10-01T00:00:00.000Z')")
+c.commit(); c.close()
+json.dump({'ingested': {f'rid-p{i}': 'x' for i in range(1, 6)}}, open(wc.STATE_FILE, 'w', encoding='utf-8'))
+code, out, r = run('--render-only')
+check('stale 행은 다시 추출되기 전까지 페이지에 그대로(깜빡임 방지)', '옛 지어낸 내용' in page(vault, 'concepts', 'MCP'))
+wc.ENV['WIKI_BACKFILL_DAILY_MAX'] = '5'
+CALLS.clear()
+code, out, r = run()
+batch_prompts = [c for c in CALLS if c[0] == 'batch']
+rs = rows()
+check('backfill: 영상 요약 소스 2건(stale·없음)만 1회 · 설명란·옛 노트는 대상 아님',
+      len(batch_prompts) == 1 and r['backfill_done'] == 2 and r['backfill_left'] == 0 and 'rid-p1' not in rs and 'rid-p2' not in rs, str((r, CALLS)))
+check('stale → ok(batch) · 새 요약 결과로 교체', rs['rid-p3']['status'] == 'ok' and rs['rid-p3']['source'] == 'batch'
+      and json.loads(rs['rid-p3']['concepts']) == [{'name': '바이브코딩', 'insight': 'BF 재요약됨'}] and '옛 지어낸 내용' not in page(vault, 'concepts', 'MCP'), rs['rid-p3'])
+check('ok 행은 그대로', rs['rid-p5']['status'] == 'ok' and rs['rid-p5']['source'] == 'single')
+check('목록 밖 이름의 파일은 안내 페이지로 바꾸지 않음', (open(os.path.join(wi.CONCEPTS_DIR, '목록밖.md'), 'w', encoding='utf-8').write('손글씨') and False)
+      or (run('--render-only') and open(os.path.join(wi.CONCEPTS_DIR, '목록밖.md'), encoding='utf-8').read() == '손글씨'))
 
 # ═══ 마무리 ═══
 check('전체 네트워크 0회', NET_CALLS == [])

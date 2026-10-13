@@ -14,6 +14,7 @@
 //   7) (v4.2) 실행 실패 알림 — 통째 실패 판정, 직전 실행 점검 문구(끝나지 못한 실행·못 보낸 실패·빠진 정시 실행),
 //      상태 파일 읽기·쓰기, sendTelegram 은 성공/실패를 true/false 로 돌려주고 JSON 아닌 응답에도 죽지 않는다
 //   8) (v4.6) 상세 조회는 길이·공개 상태를 같은 1회 호출로 받고, 장부 저장은 요약 방식·등급·신호·요약 시각을 남긴다
+//   9) (v4.6-b) 재요약 단계는 던지지 않는다 — 꺼져 있으면 장부·네트워크 0, 장부 오류면 null 을 돌려줄 뿐 실행을 막지 않는다
 
 const https = require('https');
 const fs = require('fs');
@@ -353,6 +354,23 @@ const cases = [
     assert(await sendTelegram('c') === false, 'JSON 아닌 응답이 false 가 아니다');
     assert(await sendTelegram('d') === false, '네트워크 오류가 false 가 아니다');
     assert(calls.length === 4 && calls.every(c => c.host === 'api.telegram.org'), '요청 수·호스트가 다르다');
+  }],
+  ['runResummary: (v4.6-b) RESUMMARY=false 면 장부·네트워크 0 · 결과만 돌려준다', async () => {
+    const p = makeLibrary(SEED);
+    const before = fs.readFileSync(p);
+    const db = library.openLibrary(p);
+    _setLibDb(db);
+    process.env.RESUMMARY = 'false';
+    try {
+      const r = await sched.runResummary();
+      assert(r && r.enabled === false && r.done === 0, JSON.stringify(r));
+    } finally { delete process.env.RESUMMARY; _setLibDb(null); db.close(); }
+    assert(Buffer.compare(before, fs.readFileSync(p)) === 0, '장부가 바뀌었다');
+  }],
+  ['runResummary: (v4.6-b) 장부 연결이 없으면 던지지 않고 null', async () => {
+    _setLibDb(null);
+    const r = await sched.runResummary();
+    assert(r === null, JSON.stringify(r));
   }],
   ['updateStats: 업로드일을 안 주면 기존 날짜를 지킨다', async () => {
     const db = library.openLibrary(makeLibrary(SEED));

@@ -13,6 +13,8 @@
   5) 장부에 없는 영상 노트는 _trash 로 이동, 3중 안전장치 유지. 꿀팁 고아는 보고만 한다
   6) 두 번째 실행은 할 일 0 (멱등)
   7) 장부는 읽기 전용 — 실행 전후 바이트가 같다
+  8) (v4.6-b) 재요약(장부 summary_src video)·등급 변경 → 노트 요약 절만 제자리 교체(관련 항목 절 보존)·grade·summary_src 맞춤,
+     설명란 요약 행은 안 건드림, 경계를 못 찾으면 파일 그대로, 두 번째 실행은 0
 """
 import hashlib, io, json, os, sqlite3, subprocess, sys, tempfile
 from contextlib import redirect_stdout
@@ -197,6 +199,45 @@ def main():
     code, out, rj = run([])
     check('할 일 0 · 하위 단계 0', code == 0 and rj and (rj['added'], rj['tags_updated'], rj['orphans_removed']) == (0, 0, 0)
           and sub_calls == [], (rj, sub_calls))
+
+    print('▶ (v4.6-b) 재요약·등급 변경 노트 맞춤')
+    REL = '\n\n---\n## 🔗 관련 항목\n\n**재생목록**: [[AI Claude MOC]]\n'
+    p1 = os.path.join(vault, 'AI Claude/ch_v1_20260901.md')
+    orig1 = open(p1, encoding='utf-8').read()
+    open(p1, 'a', encoding='utf-8').write(REL)   # build_obsidian_wiki 가 붙인 절 흉내
+    before1 = open(p1, encoding='utf-8').read()
+    p2 = os.path.join(vault, 'AI Claude/ch_v2_20260902.md')
+    orig2 = open(p2, encoding='utf-8').read()
+    open(p2, 'w', encoding='utf-8').write('---\ntitle: "t"\nchannel: "ch"\ntags: ["AI Claude", "AI Gemini"]\n'
+                                           'video_url: https://www.youtube.com/watch?v=VVVVVVVVVV2\nnotion_id: rec-2\n---\n본문에 영상 보기 줄 없음\n')
+    before2 = open(p2, encoding='utf-8').read()
+    db_bak = open(ldb.DB_PATH, 'rb').read()
+    NEW = '## 영상 개요\n실제 영상 요약\n\n## 핵심 내용\n* **A**: 새 내용'
+    c = sqlite3.connect(ldb.DB_PATH)
+    c.execute("UPDATE videos SET summary=?, summary_src='video', grade='exclude' WHERE record_id='rec-1'", (NEW,))
+    c.execute("UPDATE videos SET summary='새요약2', summary_src='video', grade='keep' WHERE record_id='rec-2'")
+    c.commit(); c.close()
+    h3 = tree_hash(vault)
+    code, out, rj = run(['--dry-run'])
+    check('dry-run: 맞춤 예정 1 · 경계 못 찾음 1 · Vault 무변경', code == 0 and rj['refreshed'] == 1 and rj['refresh_skipped'] == 1 and tree_hash(vault) == h3, rj)
+    code, out, rj = run([])
+    t1 = open(p1, encoding='utf-8').read()
+    check('요약 절만 교체 · 관련 항목 절 보존 · 영상 보기 줄 그대로',
+          t1.endswith('---\n' + NEW + REL) and '기존 본문' not in t1 and '**▶ 영상 보기: **https://www.youtube.com/watch?v=X\n---\n' + NEW in t1, t1[-400:])
+    check('프론트매터: grade: exclude · summary_src: video 를 notion_id 앞에 넣음 · 다른 줄 그대로',
+          '\ngrade: exclude\nsummary_src: video\nnotion_id: rec-1\n---' in t1 and t1.split('\ngrade:')[0] == before1.split('\nnotion_id:')[0], t1[:400])
+    check('경계 못 찾은 노트는 그대로 · refresh_skipped 1', open(p2, encoding='utf-8').read() == before2 and rj['refresh_skipped'] == 1, rj)
+    check('refreshed 1 → 검색 인덱스 갱신 · 재구성·인제스트는 안 함', rj['refreshed'] == 1 and sub_calls == ['build_search_index.py'], (rj, sub_calls))
+    check('log.md 에 resummary 기록', 'resummary | 재요약·등급 변경 노트 1개' in open(so.LOG_FILE, encoding='utf-8').read())
+    code, out, rj = run([])
+    check('두 번째 실행: 맞춤 0 · 하위 단계 0', rj['refreshed'] == 0 and sub_calls == [], (rj, sub_calls))
+    c = sqlite3.connect(ldb.DB_PATH); c.execute("UPDATE videos SET grade='keep' WHERE record_id='rec-1'"); c.commit(); c.close()
+    code, out, rj = run([])
+    t1b = open(p1, encoding='utf-8').read()
+    check('장부 grade 만 고치면 노트 grade 줄만 바뀜(요약은 그대로)', rj['refreshed'] == 1 and t1b == t1.replace('grade: exclude', 'grade: keep'), t1b[:300])
+    sub_calls.clear()
+    open(ldb.DB_PATH, 'wb').write(db_bak)   # 이후 안전장치 시험은 원래 장부로
+    open(p1, 'w', encoding='utf-8').write(orig1); open(p2, 'w', encoding='utf-8').write(orig2)
 
     print('▶ 안전장치')
     h1 = tree_hash(vault)

@@ -5,6 +5,8 @@
 #   2. 장부에만 있는 영상 → .md 추가 (본문 = 요약 마크다운)
 #   3. 장부에 없는 notion_id 를 가진 영상 노트 → _trash/ 격리 (3중 안전장치)
 #   4. 장부 tips 중 노트 없는 것 → AI 꿀팁/ 노트 추가 (꿀팁 고아는 보고만 한다)
+#   (v4.6-b) 장부가 실제 영상 요약(summary_src video)인데 노트 프론트매터 summary_src·grade 가 다르면
+#            그 노트의 요약 절만 제자리 교체 + grade·summary_src 를 맞춘다 (재요약 · 장부 grade 수정)
 #   5. 변경이 있으면 MOC·Wiki·검색 인덱스 재구성
 #
 # 실행: /opt/homebrew/bin/python3 sync_obsidian.py [--rebuild] [--no-tips] [--orphans-dry-run] [--dry-run]
@@ -190,6 +192,90 @@ def sync_existing_tags(videos, dry_run=False):
     else:
         log(f'  ✅ 변경 없음 (모두 최신 상태)\n')
     return updated
+
+# ── (v4.6-b) 재요약된 영상 노트 요약 절 제자리 교체 ──
+# 노트 모양: 프론트매터 · (빈 줄) · '**▶ 영상 보기: **URL' · '---' · 요약 · (build_obsidian_wiki 가 붙인) '\n\n---\n## 🔗 관련 항목…'
+# 요약 = '---' 줄 다음부터 관련 항목 절 앞까지. 관련 항목 절은 그대로 둔다. 경계를 못 찾으면 그 노트는 건드리지 않는다.
+WATCH_RE = re.compile(r'^\*\*▶ 영상 보기: \*\*[^\n]*\n---[ \t]*\n', re.M)
+RELATED_MARK = '\n\n---\n## 🔗 관련 항목'
+
+def _set_fm_key(content, key, value):
+    """프론트매터의 key 줄을 value 로. 없으면 notion_id 줄 앞(없으면 프론트매터 끝)에 넣는다. 프론트매터가 없으면 None"""
+    m = FM_RE.match(content)
+    if not m:
+        return None
+    fm = m.group(1)
+    line = f'{key}: {value}'
+    km = re.search(rf'^{re.escape(key)}:.*$', fm, re.M)
+    if km:
+        fm2 = fm[:km.start()] + line + fm[km.end():]
+    else:
+        nm = re.search(r'^notion_id:.*$', fm, re.M)
+        fm2 = (fm[:nm.start()] + line + '\n' + fm[nm.start():]) if nm else (fm + '\n' + line)
+    return content[:m.start(1)] + fm2 + content[m.end(1):]
+
+def refreshed_note(content, rec, replace_body):
+    """새 노트 내용(바뀔 게 없으면 원문 그대로) 또는 경계를 못 찾으면 None"""
+    new = content
+    if replace_body:
+        m = FM_RE.match(new)
+        w = WATCH_RE.search(new, m.end() if m else 0)
+        if not m or not w:
+            return None
+        start = w.end()
+        end = new.find(RELATED_MARK, start)
+        if end < 0:
+            end = len(new)
+            tail = '\n' if new.endswith('\n') else ''
+        else:
+            tail = ''
+        new = new[:start] + nfc(rec.get('summary') or '').strip('\n') + tail + new[end:]
+    for key, val in (('grade', rec.get('grade') or 'null'), ('summary_src', rec.get('summary_src') or 'app')):
+        new = _set_fm_key(new, key, val)
+        if new is None:
+            return None
+    return nfc(new)
+
+REFRESH_STATS = {'skipped': 0}
+
+def refresh_changed_notes(videos, dry_run=False):
+    """장부 summary_src 가 'video' 인 행만 본다. 노트 프론트매터 summary_src 가 video 가 아니면 요약 절 교체 + 키 맞춤,
+    video 인데 grade 만 다르면 grade 줄만. 바뀐(dry_run 이면 바뀔) 노트 수 반환. 설명란 요약 행·노트 없는 행은 건드리지 않는다."""
+    REFRESH_STATS['skipped'] = 0
+    targets = [v for v in videos if v.get('summary_src') == 'video']
+    if not targets:
+        return 0
+    log('🔁 재요약·등급 변경 노트 맞춤 중...')
+    id_to_path = get_existing_notion_ids()
+    changed = 0
+    for v in targets:
+        p = id_to_path.get(v['record_id'])
+        if not p:
+            continue
+        try:
+            content = nfc(open(p, encoding='utf-8', errors='ignore').read())
+        except Exception:
+            continue
+        cur_src, cur_grade = fm_value(content, 'summary_src'), fm_value(content, 'grade')
+        want_grade = v.get('grade') or 'null'
+        if cur_src == 'video' and cur_grade == want_grade:
+            continue
+        new = refreshed_note(content, v, replace_body=(cur_src != 'video'))
+        if new is None:
+            REFRESH_STATS['skipped'] += 1
+            log(f'    ⚠️  요약 절 경계를 못 찾음 — 건드리지 않음: {nfc(os.path.relpath(p, VAULT))}')
+            continue
+        if new == content:
+            continue
+        changed += 1
+        if dry_run:
+            if changed <= 10:
+                log(f'    [dry-run] {"요약 교체" if cur_src != "video" else "grade"} → {want_grade}  {nfc(os.path.relpath(p, VAULT))}')
+            continue
+        open(p, 'w', encoding='utf-8').write(new)
+    log(f'  ✅ {changed}개 노트 {"맞춤 예정 (dry-run)" if dry_run else "맞춤"}'
+        + (f' · 경계 못 찾아 건너뜀 {REFRESH_STATS["skipped"]}' if REFRESH_STATS['skipped'] else '') + '\n')
+    return changed
 
 # ── 영상 노트 내용 ──
 # 노션 시절 노트(본문 블록 → 마크다운)와 같은 모양: 빈 줄(썸네일 자리) · '▶ 영상 보기' · 구분선 · 요약.
@@ -488,6 +574,9 @@ def main():
     # 기존 파일 tags 를 장부 topics 로 항상 동기화 (변경이 없으면 파일 쓰기 0건)
     tags_updated = sync_existing_tags(videos, dry_run=DRY)
 
+    # 1.2단계 (v4.6-b): 재요약·등급 변경 노트 요약 절 제자리 교체 (해당 없으면 파일 읽기만)
+    refreshed = refresh_changed_notes(videos, dry_run=DRY)
+
     # 1단계: 신규 파일 추가
     added, skipped = sync_new_pages(videos, dry_run=DRY)
 
@@ -503,6 +592,7 @@ def main():
         print('RESULT_JSON:' + json.dumps({
             'dry_run': True, 'videos': len(videos), 'tips': len(tips),
             'added': added, 'tips_added': tips_added, 'tags_updated': tags_updated,
+            'refreshed': refreshed, 'refresh_skipped': REFRESH_STATS['skipped'],
             'orphans_candidates': ORPHAN_STATS['candidates'], 'orphans_blocked': ORPHAN_STATS['blocked'], 'skipped_same_path': skipped['same_path'], 'skipped_same_url': skipped['same_url'],
             'tips_orphans': tips_orphans, 'elapsed': round(time.time() - start),
         }, ensure_ascii=False))
@@ -553,8 +643,8 @@ def main():
         else:
             log('ℹ️  wiki_ingest.py 없음 — 건너뜀')
 
-    # 4단계: 검색 인덱스 증분 갱신 (신규/변경이 있을 때만)
-    if added > 0 or tags_updated > 0 or orphans_removed > 0 or force:
+    # 4단계: 검색 인덱스 증분 갱신 (신규/변경이 있을 때만. v4.6-b 재요약·등급 변경 포함 — exclude 는 인덱스에서 빠진다)
+    if added > 0 or tags_updated > 0 or orphans_removed > 0 or refreshed > 0 or force:
         log('\n🔍 검색 인덱스 갱신 중...')
         idx_script = os.path.join(SCRIPT_DIR, 'build_search_index.py')
         if os.path.exists(idx_script):
@@ -579,6 +669,10 @@ def main():
             'Wiki 재구성': '완료' if rebuilt else '생략',
             '소요시간': f'{elapsed}초',
         })
+    if refreshed > 0:
+        write_wiki_log('resummary', f'재요약·등급 변경 노트 {refreshed}개 맞춤', {
+            '내용': '요약 절 제자리 교체(관련 항목 절 보존) · grade·summary_src 맞춤',
+        })
     if orphans_removed > 0:
         write_wiki_log('cleanup', f'고아 파일 {orphans_removed}개 격리', {
             '격리 위치': '_trash/ (내용 보존)',
@@ -596,6 +690,8 @@ def main():
         'added': added,
         'tips_added': tips_added,
         'tags_updated': tags_updated,
+        'refreshed': refreshed,
+        'refresh_skipped': REFRESH_STATS['skipped'],
         'orphans_removed': orphans_removed,
         'orphans_candidates': ORPHAN_STATS['candidates'],
         'orphans_blocked': ORPHAN_STATS['blocked'],

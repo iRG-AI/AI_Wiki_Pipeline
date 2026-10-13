@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const library = require('./lib/library');   // v4.0 로컬 장부 (node:sqlite)
 const videoSummary = require('./lib/video_summary');   // v4.6 실제 영상 요약 + 품질 신호
+const resummarize = require('./lib/resummarize');      // v4.6-b 기존분 재요약 (3.5 Flash-Lite, 실행당 5편)
 
 // ══════════════════════════════════
 // ★ .env 파일에서 환경변수 로드 ★
@@ -1240,6 +1241,32 @@ function formatElapsed(ms) {
   return `${String(h).padStart(2,'0')}시간 ${String(m).padStart(2,'0')}분`;
 }
 
+// ── (v4.6-b) 기존분 재요약 — 신규 처리 뒤, 장부 연결이 열려 있을 때. 던지지 않는다(실행 결과에 영향 없음) ──
+async function runResummary() {
+  try {
+    if (!resummarize.settings(process.env).enabled) {   // 꺼져 있으면 장부·네트워크·모듈 로드 0
+      const r = await resummarize.run({ env: process.env });
+      log(`  ${resummarize.summaryLine(r)}`);
+      return r;
+    }
+    const yt = require('./lib/youtube_oauth');   // todayKey (태평양시) — 새 날짜 키를 따로 만들지 않는다
+    const r = await resummarize.run({
+      db: libDb, fetchDetails: getBatchDetails, todayKey: yt.todayKey, env: process.env, log,
+      makeSummarizer: ({ model, reserveSeconds }) => videoSummary.makeVideoSummarizer({
+        request: httpsRequest, getKey: getActiveGeminiKey, rotateKey: rotateGeminiKey,
+        keysCount: CONFIG.geminiApiKeys.length, describe: geminiSummarize, validateSummary,
+        todayKey: yt.todayKey, log, env: process.env, quotaFile: path.join(__dirname, '.video_quota.json'),
+        model, reserveSeconds, fallback: false,
+      }),
+    });
+    log(`  ${resummarize.summaryLine(r)}`);
+    return r;
+  } catch (e) {
+    log(`  ⚠️ 재요약 단계 오류 — 이번 실행은 건너뜀(실행 결과에는 영향 없음): ${shortReason(e)}`);
+    return null;
+  }
+}
+
 async function main() {
   log('');
   const startTime = Date.now();
@@ -1343,6 +1370,13 @@ async function main() {
         results.push({ name: pl.name, saved: 0, skip: 0, error: 1 });
       }
     }
+  }
+
+  // (v4.6-b) 기존분 재요약 — 마스터 모드·장부를 읽은 실행만. 저장·Skip·오류 집계에 넣지 않는다
+  let resum = null;
+  if (useMasterMode && libCache && libDb) {
+    log(`\n▶ 기존분 재요약 (실제 영상)...`);
+    resum = await runResummary();
   }
 
   // 장부 연결은 여기서 닫는다 (뒤이은 kakao_ingest·sync_obsidian 은 각자 연다)
@@ -1452,6 +1486,7 @@ async function main() {
 
     if (pendingCount >= 1000) queueLines.push(`⚠️ 큐 적체 — 원인 확인 필요`);
   }
+  if (resum && resum.done > 0) queueLines.push(resummarize.summaryLine(resum));   // (v4.6-b)
 
   const msg = [
     `🎬 YouTube 요약 완료`,
@@ -1572,6 +1607,7 @@ if (require.main === module) {
     ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror, runLibraryBackup,
     sendTelegram, readRunState, writeRunState, runNotices, isWholeRunFailure, escapeHtml,   // (v4.2) 실행 실패 알림
     validateSummary,   // (v4.6) scripts/test_video_summary.js
+    runResummary,      // (v4.6-b) scripts/test_scheduler_guards.js
     _setLibDb: (db) => { libDb = db; },   // 테스트 전용 (scripts/test_scheduler_guards.js)
   };
 }

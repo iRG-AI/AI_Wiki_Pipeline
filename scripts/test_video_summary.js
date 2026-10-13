@@ -9,6 +9,8 @@
 //   4) 영상 입력 403 은 그 영상만 대체, 연속 2회면 그 실행에서 영상 입력을 끈다(403 난사 방지). 중간에 성공하면 다시 센다
 //   5) 등급은 코드 규칙 — promo_main·generic·AI 무관 중 하나라도면 exclude, 신호가 없으면(대체 요약) null
 //   6) 하루 분량 누계는 .video_quota.json 에 태평양시 날짜로 — 날짜가 바뀌면 0부터
+//   7) (v4.6-b) 모델 인자 — 2.x 는 thinkingBudget 0, 3.x 는 thinkingLevel minimal(thinkingBudget 은 400). 대체 없음(fallback:false)·신규 몫 예약.
+//      bad_summary 는 어느 검사에 걸렸는지 로그 1줄. promo_main 은 무료 자료 배포·구독 유도를 판매로 보지 않는다
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -33,7 +35,7 @@ const ok200 = (sig = SIG(), md = GOOD_MD, videoTok = 42600) => ({
 const V = (o = {}) => ({ videoId: 'VVVVVVVVVV1', title: '제목', channelTitle: '채널', description: '설명', tags: ['t'],
                           privacy: 'public', durationSec: 600, ...o });
 
-function harness({ script = [], env = {}, today = '2026-10-12', quota } = {}) {
+function harness({ script = [], env = {}, today = '2026-10-12', quota, extra = {} } = {}) {
   const quotaFile = path.join(TMP, `q-${++seq}.json`);
   if (quota) fs.writeFileSync(quotaFile, JSON.stringify(quota));
   const h = { requests: [], described: [], rotations: 0, logs: [], quotaFile };
@@ -48,7 +50,7 @@ function harness({ script = [], env = {}, today = '2026-10-12', quota } = {}) {
     getKey: () => 'TESTKEY', rotateKey: () => { h.rotations++; return true; }, keysCount: 4,
     describe: async (v) => { h.described.push(v.videoId); return '설명란 요약'; },
     validateSummary, todayKey: () => today, log: (m) => h.logs.push(m), sleep: async () => {},
-    quotaFile, env,
+    quotaFile, env, ...extra,
   });
   h.quota = () => JSON.parse(fs.readFileSync(quotaFile, 'utf8'));
   return h;
@@ -173,6 +175,44 @@ const cases = [
     const h = harness({ env: { VIDEO_SUMMARY: 'false' } });
     const r = await h.s.summarize(V());
     assert(r.src === 'app' && h.requests.length === 0 && JSON.parse(r.quality).fallback === 'VIDEO_SUMMARY=false', r.quality);
+  }],
+  ['(v4.6-b) thinkingConfig: 2.x = thinkingBudget 0 · 3.x = thinkingLevel minimal (thinkingBudget 없음)', async () => {
+    assert(vs.thinkingConfigFor('gemini-2.5-flash').thinkingBudget === 0, '2.5');
+    const t = vs.thinkingConfigFor('gemini-3.5-flash-lite');
+    assert(t.thinkingLevel === 'minimal' && !('thinkingBudget' in t), JSON.stringify(t));
+    const g = vs.buildBody(V(), { model: 'gemini-3.5-flash-lite' }).generationConfig;
+    assert(g.thinkingConfig.thinkingLevel === 'minimal' && g.mediaResolution === 'MEDIA_RESOLUTION_LOW', JSON.stringify(g.thinkingConfig));
+    assert(vs.buildBody(V()).generationConfig.thinkingConfig.thinkingBudget === 0, '기본 모델은 2.5');
+  }],
+  ['(v4.6-b) 모델 인자: 요청 경로·quality.model 이 그 모델', async () => {
+    const h = harness({ script: [ok200()], extra: { model: 'gemini-3.5-flash-lite' } });
+    const r = await h.s.summarize(V());
+    assert(r.ok && /gemini-3\.5-flash-lite:generateContent/.test(h.requests[0].opts.path) && JSON.parse(r.quality).model === 'gemini-3.5-flash-lite', r.quality);
+    assert(h.requests[0].body.generationConfig.thinkingConfig.thinkingLevel === 'minimal', '본문 thinking');
+  }],
+  ['(v4.6-b) fallback:false — 실패하면 설명란 요약을 부르지 않고 {ok:false, reason}', async () => {
+    const h = harness({ script: [ok200(SIG(), GOOD_MD, 0), { status: 400, data: {} }], extra: { fallback: false } });
+    const r1 = await h.s.summarize(V()); const r2 = await h.s.summarize(V({ privacy: 'unlisted' })); const r3 = await h.s.summarize(V());
+    assert(r1.ok === false && r1.reason === 'no_video_tokens' && r2.reason === 'privacy:unlisted' && r3.reason === 'video_http_400', JSON.stringify([r1, r2, r3]));
+    assert(h.described.length === 0 && h.logs.some(l => /영상 요약 실패 \(no_video_tokens\)/.test(l)), h.logs.join('|'));
+  }],
+  ['(v4.6-b) reserveSeconds: 하루 상한에서 예약분을 빼고 판단 (신규 몫 보호)', async () => {
+    const h = harness({ quota: { date: '2026-10-12', seconds: 5 * 3600, calls: 9 }, extra: { reserveSeconds: 3 * 3600, fallback: false } });
+    const r = await h.s.summarize(V({ durationSec: 600 }));
+    assert(r.ok === false && r.reason === 'daily_video_cap' && h.requests.length === 0, JSON.stringify(r));
+    const h2 = harness({ script: [ok200()], quota: { date: '2026-10-12', seconds: 5 * 3600, calls: 9 } });
+    assert((await h2.s.summarize(V({ durationSec: 600 }))).src === 'video', '예약 없으면 통과해야');
+  }],
+  ['(v4.6-b) bad_summary 사유: summaryProblem · 로그 1줄', async () => {
+    assert(vs.summaryProblem(GOOD_MD) === '' && vs.summaryProblem('') === 'empty' && vs.summaryProblem('요약 불가') === 'empty', '기본');
+    assert(vs.summaryProblem('## 영상 개요\n짧음') === 'missing:## 핵심 내용|## 주요 인사이트|## 활용 포인트', vs.summaryProblem('## 영상 개요\n짧음'));
+    assert(vs.summaryProblem(GOOD_MD.replace('실무에 이렇게 활용할 수 있다.', '짧다')) === 'short_tail:2', '활용 포인트 짧음');
+    const h = harness({ script: [ok200(SIG(), '## 영상 개요\n## 핵심 내용\n## 주요 인사이트\n본문')] });
+    const r = await h.s.summarize(V());
+    assert(r.src === 'app' && h.logs.some(l => l.includes('(bad_summary: missing:## 활용 포인트)')) && h.s.stats.reasons.bad_summary === 1, h.logs.join('|'));
+  }],
+  ['(v4.6-b) promo_main 프롬프트: 무료 자료 배포·구독 유도·끝에 잠깐 알리는 자기 홍보는 판매 아님', async () => {
+    assert(/무료 자료·템플릿·키트 배포/.test(vs.PROMPT) && /돈을 받는/.test(vs.PROMPT) && /자신의/.test(vs.PROMPT) && /잠깐 알리는 정도도 false/.test(vs.PROMPT), '프롬프트 문구');
   }],
 ];
 

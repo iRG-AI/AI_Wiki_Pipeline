@@ -13,6 +13,7 @@
 > v4.4: 꿀팁 제목 보완 `scripts/retitle_tips.py` — 장부 `title`·`updated_at` + 노트 제자리 수정·파일명 변경 + Vault 링크 치환을 한 번에(dry-run 기본, 쓰기 전 백업).
 > v4.5: Wiki 합성 결과 누적 — 장부 `wiki_extract`(user_version 2)에 소스별로 쌓고, `_wiki` 개념·엔티티·index 페이지는 매 실행 전체로 다시 그린다. 옛 소스는 `--backfill` 묶음 추출(하루 30회).
 > v4.6-a: 신규 영상은 실제 영상(YouTube URL)으로 요약하고 같은 호출의 사실 신호로 코드가 등급(keep·exclude)을 매긴다. 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`). `grade: exclude` 노트는 Wiki 합성·검색에서만 뺀다. 안 되면 설명란 요약으로 대체.
+> v4.6-b: 설명란 요약 약 3,000편을 정시 실행마다 최대 5편 · 하루 20편씩 실제 영상(Gemini 3.5 Flash-Lite)으로 다시 요약(`lib/resummarize.js`, 신규 영상 분량 3시간 예약, 실패하면 기존 요약 유지). 노트는 요약 절만 제자리 교체(`sync_obsidian.py:refresh_changed_notes`), Wiki backfill 은 실제 영상 요약 노트만, 항목 0 `_wiki` 페이지는 안내 문구로.
 
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
@@ -65,14 +66,15 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
-# 회귀 테스트 10종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
-/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 31/31  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장
-/opt/homebrew/bin/node scripts/test_video_summary.js         # 17/17  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 (가짜 요청)
+# 회귀 테스트 11종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
+/opt/homebrew/bin/node scripts/test_video_summary.js         # 23/23  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 (가짜 요청)
+/opt/homebrew/bin/node scripts/test_resummarize.js           # 9/9    (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 (임시 장부, 가짜 요약기)
 /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
 /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
-/opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 57/57  Wiki 추출 누적·재렌더·backfill·씨앗·품질 제외 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
+/opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 64/64  Wiki 추출 누적·재렌더·backfill(v4.6-b 영상 요약 소스만·stale)·씨앗·품질 제외·항목 0 안내 페이지 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
 /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
-/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 24/24  장부 → Vault (임시 Vault)
+/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 32/32  장부 → Vault (임시 Vault) · (v4.6-b) 재요약 노트 요약 절 제자리 교체
 /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
 /opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 11/11  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외
 /opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
@@ -151,6 +153,7 @@ YouTube "AI 영상목록" (마스터 모드)
     → scheduler.js:processMasterIngest()
     → lib/classifier.js:classifyTopics()  [Gemini 2.5 Flash, 토픽 1~5개]
     → saveToLibrary()                     [로컬 장부 data/library.db 저장 — lib/library.js]
+    → runResummary()                      [(v4.6-b) 기존분 재요약 — lib/resummarize.js, 실행당 최대 5편]
     → lib/youtube_oauth.js:addToPlaylist() [토픽별 YouTube 재생목록 추가]
     → kakao_ingest.py --apply --if-new    [카톡 CSV → 장부 tips]
     → sheet_mirror.py                     [장부 변경분 → 구글 시트 (보기용)]
@@ -199,6 +202,8 @@ YouTube "AI 영상목록" (마스터 모드)
 | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐 · v4.6 `summarySrc`·`grade`·`quality`·`summarized_at`)·`addTopic`·`updateStats`. |
 | `lib/video_summary.js` | (v4.6) 실제 영상 요약 — 요청 생성(`buildBody`)·응답 검사(`parseResponse`, 영상 토큰 0 = 실패)·등급 규칙(`computeGrade`)·하루 분량 누계(`.video_quota.json`)·대체 경로(`makeVideoSummarizer`). 아래 「실제 영상 요약·품질 필터」. |
 | `scripts/test_video_summary.js` | (v4.6) `lib/video_summary.js` 회귀 테스트. 요청 함수는 가짜(네트워크 0), 상태 파일은 임시 폴더. |
+| `lib/resummarize.js` | (v4.6-b) 기존분 재요약 — 후보 선정(`library.resummaryCandidates`)·`videos.list` 1회·요약기(`makeVideoSummarizer` 모델·`fallback:false`·`reserveSeconds`)·결과 분류(건너뜀·실패·중단)·장부 갱신. 아래 「기존분 재요약」. |
+| `scripts/test_resummarize.js` | (v4.6-b) `lib/resummarize.js` + 장부 재요약 헬퍼 회귀 테스트. 임시 장부, 영상 조회·요약기는 가짜(네트워크 0). |
 | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
 | `scripts/test_sync_obsidian.py` | (v4.0 2단계) `sync_obsidian.py` 회귀 테스트. 임시 Vault·임시 장부, 하위 단계(재구성·인제스트·인덱스)는 가짜로 바꿔 실제 Vault 를 건드리지 않는다. |
 | `scripts/test_sheet_mirror.py` · `scripts/fake_gas_server.js` | (v4.0 3단계) 시트 미러 회귀 테스트. 가짜 서버가 `gas/sheet_mirror.gs` 원본을 node `vm` 에 올리고 시트·302 리다이렉트를 흉내 낸다(127.0.0.1). 실제 구글 요청 0. |
@@ -314,9 +319,9 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
 - **v4.4 까지의 결함:** `update_concept_page`·`update_entity_page`·`build_wiki_index` 가 그 실행분만으로 파일 전체를 다시 써서, 페이지마다 그 페이지를 마지막으로 건드린 실행분(1~10건)만 남았다(05-12 도입 때부터). 추출 결과를 어디에도 저장하지 않아 되살릴 원본이 없었다. **페이지를 실행분으로 다시 쓰는 코드로 되돌리지 말 것.**
 - 페이지는 파생물이다. 손으로 고치면 다음 실행에 덮인다. 고칠 것은 `wiki_extract` 또는 노트다. `--render-only` 로 Gemini 없이 다시 그린다.
 - 렌더는 결정적이다 — `last_updated`·index 「마지막 갱신」은 실행 시각이 아니라 기여한 행의 `updated_at` 최댓값(KST). 그래서 할 일 없는 실행은 파일을 하나도 쓰지 않는다.
-- Vault 에서 빠진 소스(고아·격리)는 페이지에서 저절로 빠진다(장부 행은 남김). retitle 로 바뀐 파일명·제목도 저절로 따라간다. 항목이 0이 된 이름의 기존 페이지는 지우지 않는다.
+- Vault 에서 빠진 소스(고아·격리)는 페이지에서 저절로 빠진다(장부 행은 남김). retitle 로 바뀐 파일명·제목도 저절로 따라간다. 항목이 0이 된 이름의 기존 페이지는 지우지 않는다 — (v4.6-b) 이름이 `ENTITIES`·`CONCEPTS` 목록 안이면 안내 문구 페이지(`source_count: 0`, 시각 없음 — 결정적)로 다시 그리고 index 에서 뺀다. 목록 밖 파일은 건드리지 않는다.
 - **응답을 못 읽으면(깨진 JSON) 실패다.** v4.4 까지는 빈 결과로 성공 처리해 그 소스가 조용히 빠졌다. 지금은 `failed` 행 attempts+1, ingested 에 안 넣어 다음 실행이 다시 시도, **3회(`MAX_FAILS`)에서 포기**(ingested 표시). 정상 JSON 의 빈 결과는 `ok`.
-- **backfill:** `.wiki_state.json` ingested 에 있지만 `wiki_extract` 가 없거나 `seed` 뿐인 소스를 `WIKI_BACKFILL_BATCH`(기본 20)개씩 한 호출로 추출. 하루(태평양시) `WIKI_BACKFILL_DAILY_MAX`(기본 30, 0 = 끔)회 상한(두 설정 모두 프로세스 환경변수가 `.env` 보다 먼저 — 시험 1회는 `WIKI_BACKFILL_DAILY_MAX=1 python3 wiki_ingest.py`) — 사용량은 `.wiki_state.json` 의 `backfill: {date, calls}`. **영상 요약과 같은 무료 키를 쓰므로 상한을 올리면 요약이 429 를 맞는다.** 실패한 호출도 1회로 센다.
+- **backfill:** (v4.6-b) **노트 프론트매터 `summary_src: video`(실제 영상 요약)인 소스만** — 설명란만 보고 지어낸 옛 요약으로 Wiki 를 채우지 않는다. 재요약이 `wiki_extract` 를 `stale` 로 돌려 두면 다시 추출된다(`stale` 행은 그때까지 페이지에 그대로). `.wiki_state.json` ingested 에 있지만 `wiki_extract` 가 없거나 ok 가 아닌(seed·failed·stale) 소스를 `WIKI_BACKFILL_BATCH`(기본 20)개씩 한 호출로 추출. 하루(태평양시) `WIKI_BACKFILL_DAILY_MAX`(기본 30, 0 = 끔)회 상한(두 설정 모두 프로세스 환경변수가 `.env` 보다 먼저 — 시험 1회는 `WIKI_BACKFILL_DAILY_MAX=1 python3 wiki_ingest.py`) — 사용량은 `.wiki_state.json` 의 `backfill: {date, calls}`. **영상 요약과 같은 무료 키를 쓰므로 상한을 올리면 요약이 429 를 맞는다.** 실패한 호출도 1회로 센다.
 - backfill 은 launchd 17:30 실행(인자 없음)에서만 돈다. `sync_obsidian` 경로는 `--no-backfill` — 스케줄러 실행 시간을 늘리지 않는다. `--full`·`--limit` 도 backfill 하지 않는다.
 - 씨앗(`--seed-from-pages`)은 v4.5 적용 때 1회 — 옛 페이지에 남아 있던 항목(약 80건)을 `seed` 로 옮겨 backfill 이 끝나기 전에도 페이지가 비지 않게 한다. `ok` 행은 덮지 않는다. backfill 이 seed 를 batch 결과로 바꾼다.
 - `.wiki_state.json` 의 `entities`·`concepts` 는 이제 전체 카운트다(예전엔 마지막 실행분).
@@ -340,9 +345,27 @@ videos.list(statistics,snippet,contentDetails,status — 1유닛 그대로) → 
 - 무료 등급 영상 입력은 하루 8시간 분량 상한(미리보기 기능). `.video_quota.json` `{date(PT), seconds, calls}` 에 시도한 영상의 (앞 30분 기준) 초를 센다 — 실패 요청도 센다. `VIDEO_DAILY_SECONDS`(기본 28800)를 넘을 영상은 대체.
 - `.env` 스위치: `VIDEO_SUMMARY=false` 면 전부 설명란 요약(되돌리기), `VIDEO_MAX_SECONDS`(기본 1800), `VIDEO_DAILY_SECONDS`(기본 28800).
 - `PARALLEL = 1` 유지 — 30분 영상 1편 ≈ 18만 토큰(약 103토큰/초: 영상 71 + 음성 32). 병렬이면 무료 분당 토큰 한도에 걸린다.
-- 노트 프론트매터에 `grade:`(keep·exclude·null)·`summary_src:` 가 붙는다(새 노트만 — 옛 노트는 v4.6-b 재요약 때). **`grade: exclude` 노트는 Vault 에 남고** `wiki_ingest.py:collect_sources`(추출·backfill·페이지 렌더)와 `build_search_index.py:collect_notes`(검색)에서만 빠진다. MOC·시트는 그대로. 제외를 되돌리려면 장부 `grade` 와 노트 프론트매터를 함께 고친다.
+- 노트 프론트매터에 `grade:`(keep·exclude·null)·`summary_src:` 가 붙는다(새 노트 · v4.6-b 재요약된 옛 노트). **`grade: exclude` 노트는 Vault 에 남고** `wiki_ingest.py:collect_sources`(추출·backfill·페이지 렌더)와 `build_search_index.py:collect_notes`(검색)에서만 빠진다. MOC·시트는 그대로. 제외를 되돌리려면 (v4.6-b) 장부 `grade`(+ `updated_at`)만 고친다 — 다음 `sync_obsidian` 이 노트 프론트매터를 맞춘다.
 - 판정: `scheduler.log` 의 `🎬 요약 방식: 영상 N (제외 등급 N) · 설명란 대체 N {사유}` 줄, `sqlite3 "file:data/library.db?mode=ro" "select summary_src, grade, count(*) from videos group by 1,2"`.
-- 범위 밖(v4.6-b): 기존 약 3,000편 재요약(`summary_src != 'video'`), 노트 요약 절 제자리 교체, Wiki backfill 재개(지금 `.env WIKI_BACKFILL_DAILY_MAX=0`), 항목 0이 된 `_wiki` 페이지 처리, 재요약 모델(2.5 Flash-Lite 는 신규 프로젝트에 404 — 후보 `gemini-3.5-flash-lite`, 음성 토큰이 따로 안 잡혀 품질 확인 필요).
+- (v4.6-b) `promo_main` 프롬프트에 "무료 자료·템플릿·키트 배포, 구독·댓글 유도는 판매가 아니다 — 돈을 받는 판매·모집만 true" 를 넣었다(좁힘 — 10-13 12:00 무료 키트 시연 영상 오판). 영상 대부분이 사용법·정보이고 끝이나 중간에 자기 강의·상품을 잠깐 알리는 정도도 false(사전 검증: 끝에 강의 모집을 붙인 시연 영상이 exclude 로 잡혔다). bad_summary 는 어느 검사에 걸렸는지 로그 1줄(`summaryProblem`: `empty`·`missing:<절>`·`short_tail:N`).
+
+### 기존분 재요약 (v4.6-b) — 옛 설명란 요약을 실제 영상 요약으로, 천천히
+
+```
+scheduler.js main: 마스터 인제스트(신규 영상) 뒤 · 장부 연결이 열려 있을 때 → runResummary() → lib/resummarize.run()
+   [오늘(PT) 재요약 수 = 장부 quality.resummary_day · 상한 안이면 후보(summary_src != 'video' · resummary_skip 없음 · 최신 업로드부터)
+    → videos.list 1회 → 요약기(RESUMMARY_MODEL, fallback:false, reserveSeconds) → 성공: updateResummary / 실패: 건너뜀·실패 표시 / 중단]
+   → sheet_mirror (updated_at 변경분) → sync_obsidian:refresh_changed_notes (요약 절 교체) → 17:30 wiki_ingest backfill (stale 재추출)
+```
+
+- **신규 영상이 먼저다.** 실행당 `RESUMMARY_PER_RUN`(5) · 하루(PT) `RESUMMARY_DAILY_MAX`(20) · 하루 영상 분량 8시간 중 `RESUMMARY_RESERVE_SECONDS`(10800)는 신규 몫으로 남긴다(PT 하루 안 실행 순서 18→00→06→12시 — 앞 실행이 다 쓰면 12시 신규가 설명란 요약으로 밀린다). 분량 누계는 신규와 같은 `.video_quota.json`.
+- 모델은 `RESUMMARY_MODEL`(기본 `gemini-3.5-flash-lite`). 무료 한도가 모델별로 따로라 본 파이프라인의 2.5 Flash 하루 한도를 먹지 않는다. **3.x 모델은 `thinkingBudget` 을 400 으로 거절한다** — `video_summary.thinkingConfigFor` 가 2.x 는 `thinkingBudget: 0`, 그 밖은 `thinkingLevel: 'minimal'`. 2.5 Flash 의 `thinkingBudget: 0` 은 그대로 둘 것.
+- **실패하면 설명란 요약으로 대체하지 않는다**(기존 요약 유지). 목록에 없음(`gone`)·공개 아님·길이 모름·영상 토큰 0 → `quality.resummary_skip`(다시 안 함). `bad_json`·`bad_signals`·`bad_summary`·`video_403`·그 밖 4xx → `resummary_fail` +1, 2회면 건너뜀. 429·5xx·네트워크·하루 분량·`video_403_repeated`·`VIDEO_SUMMARY=false` → 그 실행 재요약 중단. 건너뜀·실패 표시는 시트에 안 보이는 `quality` 만 바꾸므로 `updated_at` 을 안 건드린다.
+- 성공(`lib/library.js:updateResummary`, 한 트랜잭션): `summary`·`summary_src='video'`·`grade`·`quality`(+`resummary:true`·`resummary_day`)·`summarized_at`·`updated_at` + 그 소스의 `wiki_extract` → `status='stale'`, `attempts=0`(`updated_at` 은 그대로 — 렌더 결정성). 이미 `video` 인 행은 건드리지 않는다. 토픽(재생목록 분류)은 다시 하지 않는다.
+- `runResummary` 는 던지지 않는다 — 재요약 단계가 실패해도 저장·Skip·오류 집계·실행 판정에 영향이 없다. 결과 줄 `🔁 재요약: N편 (제외 등급 N) · 건너뜀 N · 실패 N {사유} · 오늘 N/20 · 남은 대상 N`(1편 이상이면 그 실행의 완료 텔레그램에도 한 줄 — 텔레그램은 기존 조건대로 신규·변경이 있을 때만 나간다).
+- 노트(`sync_obsidian.py:refresh_changed_notes`): 장부 `summary_src` 가 `video` 인 행만 본다. 노트 프론트매터 `summary_src` 가 `video` 가 아니면 요약 절(`**▶ 영상 보기: **` 줄 다음 `---` 줄 뒤부터 `\n\n---\n## 🔗 관련 항목` 앞까지)을 새 요약으로 바꾸고 `grade`·`summary_src` 를 맞춘다(없으면 `notion_id` 줄 앞에 넣음). `video` 인데 `grade` 만 다르면 그 줄만. 경계를 못 찾으면 파일을 통째로 다시 쓰지 않고 그대로 둔 채 `RESULT_JSON.refresh_skipped` 로 보고. 바뀐 노트가 있으면 검색 인덱스를 갱신한다(재구성·인제스트는 안 함).
+- 끄기: `.env RESUMMARY=false`(재요약만) · `VIDEO_SUMMARY=false`(영상 입력 전부). 진행 판정: `sqlite3 "file:data/library.db?mode=ro" "select json_extract(quality,'$.model'), grade, count(*) from videos where summary_src='video' group by 1,2"` · 건너뜀 `… where json_extract(quality,'$.resummary_skip') is not null`.
+- 처리량: 하루 약 19편 → 공개 약 2,950편에 약 5개월. 영상 8시간 상한이 프로젝트별(키별)이면 나중에 상한만 올려 당길 수 있다(미확인).
 
 ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
 
@@ -500,7 +523,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 - 재시도 소진 시 `cls`가 `undefined`인 채 `cls.topics`로 진입하던 잠복 TypeError 경로가 있었다. `clsAttempt < maxClsAttempts` 가드와 루프 직후 `if (!cls) throw` **가드 2개가 짝**이다. 한쪽만 지우면 되살아난다.
 - `classifyTopics`를 `maxRetries: 0`으로 호출하는 것은 **의도된 설계**다. 재시도는 키 교체를 하는 바깥 루프가 담당한다.
 
-**Gemini API 최적화 (중요)**: Gemini 2.5 Flash 모델 사용 시 내부 추론 과정에서 과다한 "Thinking 토큰" 과금을 방지하기 위해 반드시 API 호출 옵션에 `generationConfig: { thinkingConfig: { thinkingBudget: 0 } }`를 적용해야 합니다 (비용 85% 절감 효과).
+**Gemini API 최적화 (중요)**: Gemini 2.5 Flash 모델 사용 시 내부 추론 과정에서 과다한 "Thinking 토큰" 과금을 방지하기 위해 반드시 API 호출 옵션에 `generationConfig: { thinkingConfig: { thinkingBudget: 0 } }`를 적용해야 합니다 (비용 85% 절감 효과). (v4.6-b) 3.x 모델(`gemini-3.5-flash-lite` 등)은 `thinkingBudget` 을 400 INVALID_ARGUMENT 로 거절한다 — `thinkingConfig: { thinkingLevel: 'minimal' }`(`lib/video_summary.js:thinkingConfigFor`).
 
 **토픽 추가 시**: `playlists.json`에 새 항목 추가 + `build_obsidian_wiki.py`의 `VALID_NOTION_TAGS` 동기화 필수.
 
@@ -560,6 +583,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-13 (v4.6-b — 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)** — 배경: 장부의 옛 요약 약 3,000편이 설명란 추론이라 일부가 지어낸 내용이고, 그래서 Wiki backfill 을 정지해 뒀다. 10-13 비교 5건에서 `gemini-3.5-flash-lite` 가 2.5 Flash 와 등급·신호 5/5 일치(말 내용 포함, 요약은 약 65% 길이), 3.x 는 `thinkingBudget: 0` 을 400 으로 거절. 수정: `lib/resummarize.js` 신규(scheduler 매 실행 신규 처리 뒤, 실행당 5 · 하루 20 · 신규 몫 3시간 예약, 실패 시 기존 요약 유지·건너뜀/실패/중단 분류), `lib/video_summary.js` 모델 인자·`thinkingConfigFor`·`fallback:false`·`reserveSeconds`·`summaryProblem`(bad_summary 사유 로그)·promo_main 프롬프트 좁힘(무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보는 판매 아님), `lib/library.js` 재요약 헬퍼(`updateResummary` — `updated_at` + `wiki_extract` stale), `sync_obsidian.py:refresh_changed_notes`(요약 절 제자리 교체·관련 항목 보존·장부 grade 만 고쳐도 노트가 따라옴), `wiki_ingest.py` backfill 대상 = `summary_src: video` 만 · 항목 0 페이지 안내 문구. 스키마 무변경(user_version 3). `.env WIKI_BACKFILL_DAILY_MAX=0` 정지 줄 제거. 테스트: 신규 `test_resummarize.js` 9/9, `test_video_summary.js` 23/23(+6), `test_scheduler_guards.js` 33/33(+2), `test_sync_obsidian.py` 32/32(+8), `test_wiki_ingest.py` 64/64(+7). 회귀 테스트 11종. 지시서 `docs/tasks/2026-10-13-v46b-resummarize.md`.
 - **2026-10-13 (v4.6-a — 실제 영상 요약 + 품질 필터, 신규 영상부터)** — 배경(10-12 시험): 요약이 제목·설명란만 보고 "추론해서라도 작성"이라 설명란이 빈약하면 지어낸 내용이 됐다(`mW5k5CbO4sA` 「AI 데이터 활용」 = 실제는 Python 문자열 강의). 수정: `lib/video_summary.js` 신규 — 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로(LOW, 30분 넘으면 앞 30분), JSON 으로 요약 + 사실 신호, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → exclude). 영상 토큰 0(삭제 영상)·비공개·403(연속 2회면 그 실행 끔)·429 소진·하루 8시간 분량(`.video_quota.json`)은 설명란 요약으로 대체. `getBatchDetails` 가 `contentDetails,status` 도 받음(1유닛 그대로). 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`, `migrate_library.py` 가 v1·v2 → v3 한 번에). 노트 프론트매터 `grade`·`summary_src`, `grade: exclude` 는 `wiki_ingest`·`build_search_index` 에서만 제외. `.env` 스위치 `VIDEO_SUMMARY`·`VIDEO_MAX_SECONDS`·`VIDEO_DAILY_SECONDS`. 테스트: 신규 `test_video_summary.js` 17/17, `test_scheduler_guards.js` 31/31(+2), `test_wiki_ingest.py` 57/57(+6), `test_sync_obsidian.py` 24/24(+1), `test_build_wiki_index.py` 11/11(+1). 회귀 테스트 10종. 지시서 `docs/tasks/2026-10-13-v46a-video-summary.md`.
 - **2026-10-12 (v4.5 — Wiki 합성 결과 누적)** — 결함: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서(05-12 도입 때부터) 페이지 56개의 source_count 가 1~10, index 9행뿐이었다(합성 소스 3,619건). 추출 결과를 저장하지 않아 되살릴 원본이 없었다. 수정: 장부에 `wiki_extract` 표(user_version 1 → 2, `scripts/migrate_library.py`), 소스별 누적 + 매 실행 전체 재렌더(결정적, 내용 같으면 안 씀, 고아 제외·retitle 반영), 깨진 응답은 실패로 3회까지 재시도, 옛 페이지 항목 씨앗(`--seed-from-pages`), 옛 소스 backfill(20개 묶음, 하루 30회, launchd 경로만 — `sync_obsidian` 은 `--no-backfill`). `backup_library.py` 행 수에 `wiki_extract` 추가. 테스트: 신규 `test_wiki_ingest.py` 51/51, `test_backup_library.py` 버전 기대값을 `SCHEMA_VERSION` 으로. 회귀 테스트 9종. 지시서 `docs/tasks/2026-10-12-wiki-extract-store.md`.
 - **2026-10-12 (v4.4 — 꿀팁 제목 보완 도구)** — `scripts/retitle_tips.py`(+ `scripts/test_retitle_tips.py` 49/49) 신규: 장부 tips 제목·`updated_at` + 「AI 꿀팁」 노트 제자리 수정·파일명 변경 + Vault 링크 치환, dry-run 기본·쓰기 전 백업(`data/retitle_backup/`, gitignore 의 `data/` 아래). 앱 코드·데몬 무변경. 첫 적용 5건(`docs/tasks/2026-10-12-retitle-tips.csv`). 회귀 테스트 8종. 지시서 `docs/tasks/2026-10-12-retitle-tips.md`.

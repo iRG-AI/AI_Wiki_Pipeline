@@ -1,0 +1,1459 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index a799e01..d558819 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -13,6 +13,7 @@
+ > v4.4: 꿀팁 제목 보완 `scripts/retitle_tips.py` — 장부 `title`·`updated_at` + 노트 제자리 수정·파일명 변경 + Vault 링크 치환을 한 번에(dry-run 기본, 쓰기 전 백업).
+ > v4.5: Wiki 합성 결과 누적 — 장부 `wiki_extract`(user_version 2)에 소스별로 쌓고, `_wiki` 개념·엔티티·index 페이지는 매 실행 전체로 다시 그린다. 옛 소스는 `--backfill` 묶음 추출(하루 30회).
+ > v4.6-a: 신규 영상은 실제 영상(YouTube URL)으로 요약하고 같은 호출의 사실 신호로 코드가 등급(keep·exclude)을 매긴다. 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`). `grade: exclude` 노트는 Wiki 합성·검색에서만 뺀다. 안 되면 설명란 요약으로 대체.
++> v4.6-b: 설명란 요약 약 3,000편을 정시 실행마다 최대 5편 · 하루 20편씩 실제 영상(Gemini 3.5 Flash-Lite)으로 다시 요약(`lib/resummarize.js`, 신규 영상 분량 3시간 예약, 실패하면 기존 요약 유지). 노트는 요약 절만 제자리 교체(`sync_obsidian.py:refresh_changed_notes`), Wiki backfill 은 실제 영상 요약 노트만, 항목 0 `_wiki` 페이지는 안내 문구로.
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -65,14 +66,15 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
+ 
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+-# 회귀 테스트 10종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+-/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 31/31  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장
+-/opt/homebrew/bin/node scripts/test_video_summary.js         # 17/17  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 (가짜 요청)
++# 회귀 테스트 11종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
++/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
++/opt/homebrew/bin/node scripts/test_video_summary.js         # 23/23  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 (가짜 요청)
++/opt/homebrew/bin/node scripts/test_resummarize.js           # 9/9    (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 (임시 장부, 가짜 요약기)
+ /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
+ /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
+-/opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 57/57  Wiki 추출 누적·재렌더·backfill·씨앗·품질 제외 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
++/opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 64/64  Wiki 추출 누적·재렌더·backfill(v4.6-b 영상 요약 소스만·stale)·씨앗·품질 제외·항목 0 안내 페이지 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+-/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 24/24  장부 → Vault (임시 Vault)
++/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 32/32  장부 → Vault (임시 Vault) · (v4.6-b) 재요약 노트 요약 절 제자리 교체
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+ /opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 11/11  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외
+ /opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
+@@ -151,6 +153,7 @@ YouTube "AI 영상목록" (마스터 모드)
+     → scheduler.js:processMasterIngest()
+     → lib/classifier.js:classifyTopics()  [Gemini 2.5 Flash, 토픽 1~5개]
+     → saveToLibrary()                     [로컬 장부 data/library.db 저장 — lib/library.js]
++    → runResummary()                      [(v4.6-b) 기존분 재요약 — lib/resummarize.js, 실행당 최대 5편]
+     → lib/youtube_oauth.js:addToPlaylist() [토픽별 YouTube 재생목록 추가]
+     → kakao_ingest.py --apply --if-new    [카톡 CSV → 장부 tips]
+     → sheet_mirror.py                     [장부 변경분 → 구글 시트 (보기용)]
+@@ -199,6 +202,8 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐 · v4.6 `summarySrc`·`grade`·`quality`·`summarized_at`)·`addTopic`·`updateStats`. |
+ | `lib/video_summary.js` | (v4.6) 실제 영상 요약 — 요청 생성(`buildBody`)·응답 검사(`parseResponse`, 영상 토큰 0 = 실패)·등급 규칙(`computeGrade`)·하루 분량 누계(`.video_quota.json`)·대체 경로(`makeVideoSummarizer`). 아래 「실제 영상 요약·품질 필터」. |
+ | `scripts/test_video_summary.js` | (v4.6) `lib/video_summary.js` 회귀 테스트. 요청 함수는 가짜(네트워크 0), 상태 파일은 임시 폴더. |
++| `lib/resummarize.js` | (v4.6-b) 기존분 재요약 — 후보 선정(`library.resummaryCandidates`)·`videos.list` 1회·요약기(`makeVideoSummarizer` 모델·`fallback:false`·`reserveSeconds`)·결과 분류(건너뜀·실패·중단)·장부 갱신. 아래 「기존분 재요약」. |
++| `scripts/test_resummarize.js` | (v4.6-b) `lib/resummarize.js` + 장부 재요약 헬퍼 회귀 테스트. 임시 장부, 영상 조회·요약기는 가짜(네트워크 0). |
+ | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
+ | `scripts/test_sync_obsidian.py` | (v4.0 2단계) `sync_obsidian.py` 회귀 테스트. 임시 Vault·임시 장부, 하위 단계(재구성·인제스트·인덱스)는 가짜로 바꿔 실제 Vault 를 건드리지 않는다. |
+ | `scripts/test_sheet_mirror.py` · `scripts/fake_gas_server.js` | (v4.0 3단계) 시트 미러 회귀 테스트. 가짜 서버가 `gas/sheet_mirror.gs` 원본을 node `vm` 에 올리고 시트·302 리다이렉트를 흉내 낸다(127.0.0.1). 실제 구글 요청 0. |
+@@ -314,9 +319,9 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
+ - **v4.4 까지의 결함:** `update_concept_page`·`update_entity_page`·`build_wiki_index` 가 그 실행분만으로 파일 전체를 다시 써서, 페이지마다 그 페이지를 마지막으로 건드린 실행분(1~10건)만 남았다(05-12 도입 때부터). 추출 결과를 어디에도 저장하지 않아 되살릴 원본이 없었다. **페이지를 실행분으로 다시 쓰는 코드로 되돌리지 말 것.**
+ - 페이지는 파생물이다. 손으로 고치면 다음 실행에 덮인다. 고칠 것은 `wiki_extract` 또는 노트다. `--render-only` 로 Gemini 없이 다시 그린다.
+ - 렌더는 결정적이다 — `last_updated`·index 「마지막 갱신」은 실행 시각이 아니라 기여한 행의 `updated_at` 최댓값(KST). 그래서 할 일 없는 실행은 파일을 하나도 쓰지 않는다.
+-- Vault 에서 빠진 소스(고아·격리)는 페이지에서 저절로 빠진다(장부 행은 남김). retitle 로 바뀐 파일명·제목도 저절로 따라간다. 항목이 0이 된 이름의 기존 페이지는 지우지 않는다.
++- Vault 에서 빠진 소스(고아·격리)는 페이지에서 저절로 빠진다(장부 행은 남김). retitle 로 바뀐 파일명·제목도 저절로 따라간다. 항목이 0이 된 이름의 기존 페이지는 지우지 않는다 — (v4.6-b) 이름이 `ENTITIES`·`CONCEPTS` 목록 안이면 안내 문구 페이지(`source_count: 0`, 시각 없음 — 결정적)로 다시 그리고 index 에서 뺀다. 목록 밖 파일은 건드리지 않는다.
+ - **응답을 못 읽으면(깨진 JSON) 실패다.** v4.4 까지는 빈 결과로 성공 처리해 그 소스가 조용히 빠졌다. 지금은 `failed` 행 attempts+1, ingested 에 안 넣어 다음 실행이 다시 시도, **3회(`MAX_FAILS`)에서 포기**(ingested 표시). 정상 JSON 의 빈 결과는 `ok`.
+-- **backfill:** `.wiki_state.json` ingested 에 있지만 `wiki_extract` 가 없거나 `seed` 뿐인 소스를 `WIKI_BACKFILL_BATCH`(기본 20)개씩 한 호출로 추출. 하루(태평양시) `WIKI_BACKFILL_DAILY_MAX`(기본 30, 0 = 끔)회 상한(두 설정 모두 프로세스 환경변수가 `.env` 보다 먼저 — 시험 1회는 `WIKI_BACKFILL_DAILY_MAX=1 python3 wiki_ingest.py`) — 사용량은 `.wiki_state.json` 의 `backfill: {date, calls}`. **영상 요약과 같은 무료 키를 쓰므로 상한을 올리면 요약이 429 를 맞는다.** 실패한 호출도 1회로 센다.
++- **backfill:** (v4.6-b) **노트 프론트매터 `summary_src: video`(실제 영상 요약)인 소스만** — 설명란만 보고 지어낸 옛 요약으로 Wiki 를 채우지 않는다. 재요약이 `wiki_extract` 를 `stale` 로 돌려 두면 다시 추출된다(`stale` 행은 그때까지 페이지에 그대로). `.wiki_state.json` ingested 에 있지만 `wiki_extract` 가 없거나 ok 가 아닌(seed·failed·stale) 소스를 `WIKI_BACKFILL_BATCH`(기본 20)개씩 한 호출로 추출. 하루(태평양시) `WIKI_BACKFILL_DAILY_MAX`(기본 30, 0 = 끔)회 상한(두 설정 모두 프로세스 환경변수가 `.env` 보다 먼저 — 시험 1회는 `WIKI_BACKFILL_DAILY_MAX=1 python3 wiki_ingest.py`) — 사용량은 `.wiki_state.json` 의 `backfill: {date, calls}`. **영상 요약과 같은 무료 키를 쓰므로 상한을 올리면 요약이 429 를 맞는다.** 실패한 호출도 1회로 센다.
+ - backfill 은 launchd 17:30 실행(인자 없음)에서만 돈다. `sync_obsidian` 경로는 `--no-backfill` — 스케줄러 실행 시간을 늘리지 않는다. `--full`·`--limit` 도 backfill 하지 않는다.
+ - 씨앗(`--seed-from-pages`)은 v4.5 적용 때 1회 — 옛 페이지에 남아 있던 항목(약 80건)을 `seed` 로 옮겨 backfill 이 끝나기 전에도 페이지가 비지 않게 한다. `ok` 행은 덮지 않는다. backfill 이 seed 를 batch 결과로 바꾼다.
+ - `.wiki_state.json` 의 `entities`·`concepts` 는 이제 전체 카운트다(예전엔 마지막 실행분).
+@@ -340,9 +345,27 @@ videos.list(statistics,snippet,contentDetails,status — 1유닛 그대로) →
+ - 무료 등급 영상 입력은 하루 8시간 분량 상한(미리보기 기능). `.video_quota.json` `{date(PT), seconds, calls}` 에 시도한 영상의 (앞 30분 기준) 초를 센다 — 실패 요청도 센다. `VIDEO_DAILY_SECONDS`(기본 28800)를 넘을 영상은 대체.
+ - `.env` 스위치: `VIDEO_SUMMARY=false` 면 전부 설명란 요약(되돌리기), `VIDEO_MAX_SECONDS`(기본 1800), `VIDEO_DAILY_SECONDS`(기본 28800).
+ - `PARALLEL = 1` 유지 — 30분 영상 1편 ≈ 18만 토큰(약 103토큰/초: 영상 71 + 음성 32). 병렬이면 무료 분당 토큰 한도에 걸린다.
+-- 노트 프론트매터에 `grade:`(keep·exclude·null)·`summary_src:` 가 붙는다(새 노트만 — 옛 노트는 v4.6-b 재요약 때). **`grade: exclude` 노트는 Vault 에 남고** `wiki_ingest.py:collect_sources`(추출·backfill·페이지 렌더)와 `build_search_index.py:collect_notes`(검색)에서만 빠진다. MOC·시트는 그대로. 제외를 되돌리려면 장부 `grade` 와 노트 프론트매터를 함께 고친다.
++- 노트 프론트매터에 `grade:`(keep·exclude·null)·`summary_src:` 가 붙는다(새 노트 · v4.6-b 재요약된 옛 노트). **`grade: exclude` 노트는 Vault 에 남고** `wiki_ingest.py:collect_sources`(추출·backfill·페이지 렌더)와 `build_search_index.py:collect_notes`(검색)에서만 빠진다. MOC·시트는 그대로. 제외를 되돌리려면 (v4.6-b) 장부 `grade`(+ `updated_at`)만 고친다 — 다음 `sync_obsidian` 이 노트 프론트매터를 맞춘다.
+ - 판정: `scheduler.log` 의 `🎬 요약 방식: 영상 N (제외 등급 N) · 설명란 대체 N {사유}` 줄, `sqlite3 "file:data/library.db?mode=ro" "select summary_src, grade, count(*) from videos group by 1,2"`.
+-- 범위 밖(v4.6-b): 기존 약 3,000편 재요약(`summary_src != 'video'`), 노트 요약 절 제자리 교체, Wiki backfill 재개(지금 `.env WIKI_BACKFILL_DAILY_MAX=0`), 항목 0이 된 `_wiki` 페이지 처리, 재요약 모델(2.5 Flash-Lite 는 신규 프로젝트에 404 — 후보 `gemini-3.5-flash-lite`, 음성 토큰이 따로 안 잡혀 품질 확인 필요).
++- (v4.6-b) `promo_main` 프롬프트에 "무료 자료·템플릿·키트 배포, 구독·댓글 유도는 판매가 아니다 — 돈을 받는 판매·모집만 true" 를 넣었다(좁힘 — 10-13 12:00 무료 키트 시연 영상 오판). 영상 대부분이 사용법·정보이고 끝이나 중간에 자기 강의·상품을 잠깐 알리는 정도도 false(사전 검증: 끝에 강의 모집을 붙인 시연 영상이 exclude 로 잡혔다). bad_summary 는 어느 검사에 걸렸는지 로그 1줄(`summaryProblem`: `empty`·`missing:<절>`·`short_tail:N`).
++
++### 기존분 재요약 (v4.6-b) — 옛 설명란 요약을 실제 영상 요약으로, 천천히
++
++```
++scheduler.js main: 마스터 인제스트(신규 영상) 뒤 · 장부 연결이 열려 있을 때 → runResummary() → lib/resummarize.run()
++   [오늘(PT) 재요약 수 = 장부 quality.resummary_day · 상한 안이면 후보(summary_src != 'video' · resummary_skip 없음 · 최신 업로드부터)
++    → videos.list 1회 → 요약기(RESUMMARY_MODEL, fallback:false, reserveSeconds) → 성공: updateResummary / 실패: 건너뜀·실패 표시 / 중단]
++   → sheet_mirror (updated_at 변경분) → sync_obsidian:refresh_changed_notes (요약 절 교체) → 17:30 wiki_ingest backfill (stale 재추출)
++```
++
++- **신규 영상이 먼저다.** 실행당 `RESUMMARY_PER_RUN`(5) · 하루(PT) `RESUMMARY_DAILY_MAX`(20) · 하루 영상 분량 8시간 중 `RESUMMARY_RESERVE_SECONDS`(10800)는 신규 몫으로 남긴다(PT 하루 안 실행 순서 18→00→06→12시 — 앞 실행이 다 쓰면 12시 신규가 설명란 요약으로 밀린다). 분량 누계는 신규와 같은 `.video_quota.json`.
++- 모델은 `RESUMMARY_MODEL`(기본 `gemini-3.5-flash-lite`). 무료 한도가 모델별로 따로라 본 파이프라인의 2.5 Flash 하루 한도를 먹지 않는다. **3.x 모델은 `thinkingBudget` 을 400 으로 거절한다** — `video_summary.thinkingConfigFor` 가 2.x 는 `thinkingBudget: 0`, 그 밖은 `thinkingLevel: 'minimal'`. 2.5 Flash 의 `thinkingBudget: 0` 은 그대로 둘 것.
++- **실패하면 설명란 요약으로 대체하지 않는다**(기존 요약 유지). 목록에 없음(`gone`)·공개 아님·길이 모름·영상 토큰 0 → `quality.resummary_skip`(다시 안 함). `bad_json`·`bad_signals`·`bad_summary`·`video_403`·그 밖 4xx → `resummary_fail` +1, 2회면 건너뜀. 429·5xx·네트워크·하루 분량·`video_403_repeated`·`VIDEO_SUMMARY=false` → 그 실행 재요약 중단. 건너뜀·실패 표시는 시트에 안 보이는 `quality` 만 바꾸므로 `updated_at` 을 안 건드린다.
++- 성공(`lib/library.js:updateResummary`, 한 트랜잭션): `summary`·`summary_src='video'`·`grade`·`quality`(+`resummary:true`·`resummary_day`)·`summarized_at`·`updated_at` + 그 소스의 `wiki_extract` → `status='stale'`, `attempts=0`(`updated_at` 은 그대로 — 렌더 결정성). 이미 `video` 인 행은 건드리지 않는다. 토픽(재생목록 분류)은 다시 하지 않는다.
++- `runResummary` 는 던지지 않는다 — 재요약 단계가 실패해도 저장·Skip·오류 집계·실행 판정에 영향이 없다. 결과 줄 `🔁 재요약: N편 (제외 등급 N) · 건너뜀 N · 실패 N {사유} · 오늘 N/20 · 남은 대상 N`(1편 이상이면 그 실행의 완료 텔레그램에도 한 줄 — 텔레그램은 기존 조건대로 신규·변경이 있을 때만 나간다).
++- 노트(`sync_obsidian.py:refresh_changed_notes`): 장부 `summary_src` 가 `video` 인 행만 본다. 노트 프론트매터 `summary_src` 가 `video` 가 아니면 요약 절(`**▶ 영상 보기: **` 줄 다음 `---` 줄 뒤부터 `\n\n---\n## 🔗 관련 항목` 앞까지)을 새 요약으로 바꾸고 `grade`·`summary_src` 를 맞춘다(없으면 `notion_id` 줄 앞에 넣음). `video` 인데 `grade` 만 다르면 그 줄만. 경계를 못 찾으면 파일을 통째로 다시 쓰지 않고 그대로 둔 채 `RESULT_JSON.refresh_skipped` 로 보고. 바뀐 노트가 있으면 검색 인덱스를 갱신한다(재구성·인제스트는 안 함).
++- 끄기: `.env RESUMMARY=false`(재요약만) · `VIDEO_SUMMARY=false`(영상 입력 전부). 진행 판정: `sqlite3 "file:data/library.db?mode=ro" "select json_extract(quality,'$.model'), grade, count(*) from videos where summary_src='video' group by 1,2"` · 건너뜀 `… where json_extract(quality,'$.resummary_skip') is not null`.
++- 처리량: 하루 약 19편 → 공개 약 2,950편에 약 5개월. 영상 8시간 상한이 프로젝트별(키별)이면 나중에 상한만 올려 당길 수 있다(미확인).
+ 
+ ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
+ 
+@@ -500,7 +523,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ - 재시도 소진 시 `cls`가 `undefined`인 채 `cls.topics`로 진입하던 잠복 TypeError 경로가 있었다. `clsAttempt < maxClsAttempts` 가드와 루프 직후 `if (!cls) throw` **가드 2개가 짝**이다. 한쪽만 지우면 되살아난다.
+ - `classifyTopics`를 `maxRetries: 0`으로 호출하는 것은 **의도된 설계**다. 재시도는 키 교체를 하는 바깥 루프가 담당한다.
+ 
+-**Gemini API 최적화 (중요)**: Gemini 2.5 Flash 모델 사용 시 내부 추론 과정에서 과다한 "Thinking 토큰" 과금을 방지하기 위해 반드시 API 호출 옵션에 `generationConfig: { thinkingConfig: { thinkingBudget: 0 } }`를 적용해야 합니다 (비용 85% 절감 효과).
++**Gemini API 최적화 (중요)**: Gemini 2.5 Flash 모델 사용 시 내부 추론 과정에서 과다한 "Thinking 토큰" 과금을 방지하기 위해 반드시 API 호출 옵션에 `generationConfig: { thinkingConfig: { thinkingBudget: 0 } }`를 적용해야 합니다 (비용 85% 절감 효과). (v4.6-b) 3.x 모델(`gemini-3.5-flash-lite` 등)은 `thinkingBudget` 을 400 INVALID_ARGUMENT 로 거절한다 — `thinkingConfig: { thinkingLevel: 'minimal' }`(`lib/video_summary.js:thinkingConfigFor`).
+ 
+ **토픽 추가 시**: `playlists.json`에 새 항목 추가 + `build_obsidian_wiki.py`의 `VALID_NOTION_TAGS` 동기화 필수.
+ 
+@@ -560,6 +583,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-13 (v4.6-b — 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)** — 배경: 장부의 옛 요약 약 3,000편이 설명란 추론이라 일부가 지어낸 내용이고, 그래서 Wiki backfill 을 정지해 뒀다. 10-13 비교 5건에서 `gemini-3.5-flash-lite` 가 2.5 Flash 와 등급·신호 5/5 일치(말 내용 포함, 요약은 약 65% 길이), 3.x 는 `thinkingBudget: 0` 을 400 으로 거절. 수정: `lib/resummarize.js` 신규(scheduler 매 실행 신규 처리 뒤, 실행당 5 · 하루 20 · 신규 몫 3시간 예약, 실패 시 기존 요약 유지·건너뜀/실패/중단 분류), `lib/video_summary.js` 모델 인자·`thinkingConfigFor`·`fallback:false`·`reserveSeconds`·`summaryProblem`(bad_summary 사유 로그)·promo_main 프롬프트 좁힘(무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보는 판매 아님), `lib/library.js` 재요약 헬퍼(`updateResummary` — `updated_at` + `wiki_extract` stale), `sync_obsidian.py:refresh_changed_notes`(요약 절 제자리 교체·관련 항목 보존·장부 grade 만 고쳐도 노트가 따라옴), `wiki_ingest.py` backfill 대상 = `summary_src: video` 만 · 항목 0 페이지 안내 문구. 스키마 무변경(user_version 3). `.env WIKI_BACKFILL_DAILY_MAX=0` 정지 줄 제거. 테스트: 신규 `test_resummarize.js` 9/9, `test_video_summary.js` 23/23(+6), `test_scheduler_guards.js` 33/33(+2), `test_sync_obsidian.py` 32/32(+8), `test_wiki_ingest.py` 64/64(+7). 회귀 테스트 11종. 지시서 `docs/tasks/2026-10-13-v46b-resummarize.md`.
+ - **2026-10-13 (v4.6-a — 실제 영상 요약 + 품질 필터, 신규 영상부터)** — 배경(10-12 시험): 요약이 제목·설명란만 보고 "추론해서라도 작성"이라 설명란이 빈약하면 지어낸 내용이 됐다(`mW5k5CbO4sA` 「AI 데이터 활용」 = 실제는 Python 문자열 강의). 수정: `lib/video_summary.js` 신규 — 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로(LOW, 30분 넘으면 앞 30분), JSON 으로 요약 + 사실 신호, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → exclude). 영상 토큰 0(삭제 영상)·비공개·403(연속 2회면 그 실행 끔)·429 소진·하루 8시간 분량(`.video_quota.json`)은 설명란 요약으로 대체. `getBatchDetails` 가 `contentDetails,status` 도 받음(1유닛 그대로). 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`, `migrate_library.py` 가 v1·v2 → v3 한 번에). 노트 프론트매터 `grade`·`summary_src`, `grade: exclude` 는 `wiki_ingest`·`build_search_index` 에서만 제외. `.env` 스위치 `VIDEO_SUMMARY`·`VIDEO_MAX_SECONDS`·`VIDEO_DAILY_SECONDS`. 테스트: 신규 `test_video_summary.js` 17/17, `test_scheduler_guards.js` 31/31(+2), `test_wiki_ingest.py` 57/57(+6), `test_sync_obsidian.py` 24/24(+1), `test_build_wiki_index.py` 11/11(+1). 회귀 테스트 10종. 지시서 `docs/tasks/2026-10-13-v46a-video-summary.md`.
+ - **2026-10-12 (v4.5 — Wiki 합성 결과 누적)** — 결함: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서(05-12 도입 때부터) 페이지 56개의 source_count 가 1~10, index 9행뿐이었다(합성 소스 3,619건). 추출 결과를 저장하지 않아 되살릴 원본이 없었다. 수정: 장부에 `wiki_extract` 표(user_version 1 → 2, `scripts/migrate_library.py`), 소스별 누적 + 매 실행 전체 재렌더(결정적, 내용 같으면 안 씀, 고아 제외·retitle 반영), 깨진 응답은 실패로 3회까지 재시도, 옛 페이지 항목 씨앗(`--seed-from-pages`), 옛 소스 backfill(20개 묶음, 하루 30회, launchd 경로만 — `sync_obsidian` 은 `--no-backfill`). `backup_library.py` 행 수에 `wiki_extract` 추가. 테스트: 신규 `test_wiki_ingest.py` 51/51, `test_backup_library.py` 버전 기대값을 `SCHEMA_VERSION` 으로. 회귀 테스트 9종. 지시서 `docs/tasks/2026-10-12-wiki-extract-store.md`.
+ - **2026-10-12 (v4.4 — 꿀팁 제목 보완 도구)** — `scripts/retitle_tips.py`(+ `scripts/test_retitle_tips.py` 49/49) 신규: 장부 tips 제목·`updated_at` + 「AI 꿀팁」 노트 제자리 수정·파일명 변경 + Vault 링크 치환, dry-run 기본·쓰기 전 백업(`data/retitle_backup/`, gitignore 의 `data/` 아래). 앱 코드·데몬 무변경. 첫 적용 5건(`docs/tasks/2026-10-12-retitle-tips.csv`). 회귀 테스트 8종. 지시서 `docs/tasks/2026-10-12-retitle-tips.md`.
+diff --git a/CLAUDE.md b/CLAUDE.md
+index fe1f042..d79f07e 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
+ > v4.4: 꿀팁 제목 보완 `scripts/retitle_tips.py` — 장부 `title`·`updated_at` + 노트 제자리 수정·파일명 변경 + Vault 링크 치환을 한 번에(dry-run 기본, 쓰기 전 백업).
+ > v4.5: Wiki 합성 결과 누적 — 장부 `wiki_extract`(user_version 2)에 소스별로 쌓고, `_wiki` 개념·엔티티·index 페이지는 매 실행 전체로 다시 그린다. 옛 소스는 `--backfill` 묶음 추출(하루 30회).
+ > v4.6-a: 신규 영상은 실제 영상(YouTube URL)으로 요약하고 같은 호출의 사실 신호로 코드가 등급(keep·exclude)을 매긴다. 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`). `grade: exclude` 노트는 Wiki 합성·검색에서만 뺀다. 안 되면 설명란 요약으로 대체.
++> v4.6-b: 설명란 요약 약 3,000편을 정시 실행마다 최대 5편 · 하루 20편씩 실제 영상(Gemini 3.5 Flash-Lite)으로 다시 요약(`lib/resummarize.js`, 신규 영상 분량 3시간 예약, 실패하면 기존 요약 유지). 노트는 요약 절만 제자리 교체(`sync_obsidian.py:refresh_changed_notes`), Wiki backfill 은 실제 영상 요약 노트만, 항목 0 `_wiki` 페이지는 안내 문구로.
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -63,14 +64,15 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
+ 
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+-# 회귀 테스트 10종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+-/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 31/31  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장
+-/opt/homebrew/bin/node scripts/test_video_summary.js         # 17/17  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 (가짜 요청)
++# 회귀 테스트 11종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
++/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
++/opt/homebrew/bin/node scripts/test_video_summary.js         # 23/23  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 (가짜 요청)
++/opt/homebrew/bin/node scripts/test_resummarize.js           # 9/9    (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 (임시 장부, 가짜 요약기)
+ /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
+ /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
+-/opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 57/57  Wiki 추출 누적·재렌더·backfill·씨앗·품질 제외 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
++/opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 64/64  Wiki 추출 누적·재렌더·backfill(v4.6-b 영상 요약 소스만·stale)·씨앗·품질 제외·항목 0 안내 페이지 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+-/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 24/24  장부 → Vault (임시 Vault)
++/opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 32/32  장부 → Vault (임시 Vault) · (v4.6-b) 재요약 노트 요약 절 제자리 교체
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+ /opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 11/11  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외
+ /opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
+@@ -149,6 +151,7 @@ YouTube "AI 영상목록" (마스터 모드)
+     → scheduler.js:processMasterIngest()
+     → lib/classifier.js:classifyTopics()  [Gemini 2.5 Flash, 토픽 1~5개]
+     → saveToLibrary()                     [로컬 장부 data/library.db 저장 — lib/library.js]
++    → runResummary()                      [(v4.6-b) 기존분 재요약 — lib/resummarize.js, 실행당 최대 5편]
+     → lib/youtube_oauth.js:addToPlaylist() [토픽별 YouTube 재생목록 추가]
+     → kakao_ingest.py --apply --if-new    [카톡 CSV → 장부 tips]
+     → sheet_mirror.py                     [장부 변경분 → 구글 시트 (보기용)]
+@@ -197,6 +200,8 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐 · v4.6 `summarySrc`·`grade`·`quality`·`summarized_at`)·`addTopic`·`updateStats`. |
+ | `lib/video_summary.js` | (v4.6) 실제 영상 요약 — 요청 생성(`buildBody`)·응답 검사(`parseResponse`, 영상 토큰 0 = 실패)·등급 규칙(`computeGrade`)·하루 분량 누계(`.video_quota.json`)·대체 경로(`makeVideoSummarizer`). 아래 「실제 영상 요약·품질 필터」. |
+ | `scripts/test_video_summary.js` | (v4.6) `lib/video_summary.js` 회귀 테스트. 요청 함수는 가짜(네트워크 0), 상태 파일은 임시 폴더. |
++| `lib/resummarize.js` | (v4.6-b) 기존분 재요약 — 후보 선정(`library.resummaryCandidates`)·`videos.list` 1회·요약기(`makeVideoSummarizer` 모델·`fallback:false`·`reserveSeconds`)·결과 분류(건너뜀·실패·중단)·장부 갱신. 아래 「기존분 재요약」. |
++| `scripts/test_resummarize.js` | (v4.6-b) `lib/resummarize.js` + 장부 재요약 헬퍼 회귀 테스트. 임시 장부, 영상 조회·요약기는 가짜(네트워크 0). |
+ | `scripts/test_kakao_ingest.py` | (v4.0 2단계) `kakao_ingest.py` 회귀 테스트. 임시 장부·임시 CSV, 네트워크 0회. |
+ | `scripts/test_sync_obsidian.py` | (v4.0 2단계) `sync_obsidian.py` 회귀 테스트. 임시 Vault·임시 장부, 하위 단계(재구성·인제스트·인덱스)는 가짜로 바꿔 실제 Vault 를 건드리지 않는다. |
+ | `scripts/test_sheet_mirror.py` · `scripts/fake_gas_server.js` | (v4.0 3단계) 시트 미러 회귀 테스트. 가짜 서버가 `gas/sheet_mirror.gs` 원본을 node `vm` 에 올리고 시트·302 리다이렉트를 흉내 낸다(127.0.0.1). 실제 구글 요청 0. |
+@@ -312,9 +317,9 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
+ - **v4.4 까지의 결함:** `update_concept_page`·`update_entity_page`·`build_wiki_index` 가 그 실행분만으로 파일 전체를 다시 써서, 페이지마다 그 페이지를 마지막으로 건드린 실행분(1~10건)만 남았다(05-12 도입 때부터). 추출 결과를 어디에도 저장하지 않아 되살릴 원본이 없었다. **페이지를 실행분으로 다시 쓰는 코드로 되돌리지 말 것.**
+ - 페이지는 파생물이다. 손으로 고치면 다음 실행에 덮인다. 고칠 것은 `wiki_extract` 또는 노트다. `--render-only` 로 Gemini 없이 다시 그린다.
+ - 렌더는 결정적이다 — `last_updated`·index 「마지막 갱신」은 실행 시각이 아니라 기여한 행의 `updated_at` 최댓값(KST). 그래서 할 일 없는 실행은 파일을 하나도 쓰지 않는다.
+-- Vault 에서 빠진 소스(고아·격리)는 페이지에서 저절로 빠진다(장부 행은 남김). retitle 로 바뀐 파일명·제목도 저절로 따라간다. 항목이 0이 된 이름의 기존 페이지는 지우지 않는다.
++- Vault 에서 빠진 소스(고아·격리)는 페이지에서 저절로 빠진다(장부 행은 남김). retitle 로 바뀐 파일명·제목도 저절로 따라간다. 항목이 0이 된 이름의 기존 페이지는 지우지 않는다 — (v4.6-b) 이름이 `ENTITIES`·`CONCEPTS` 목록 안이면 안내 문구 페이지(`source_count: 0`, 시각 없음 — 결정적)로 다시 그리고 index 에서 뺀다. 목록 밖 파일은 건드리지 않는다.
+ - **응답을 못 읽으면(깨진 JSON) 실패다.** v4.4 까지는 빈 결과로 성공 처리해 그 소스가 조용히 빠졌다. 지금은 `failed` 행 attempts+1, ingested 에 안 넣어 다음 실행이 다시 시도, **3회(`MAX_FAILS`)에서 포기**(ingested 표시). 정상 JSON 의 빈 결과는 `ok`.
+-- **backfill:** `.wiki_state.json` ingested 에 있지만 `wiki_extract` 가 없거나 `seed` 뿐인 소스를 `WIKI_BACKFILL_BATCH`(기본 20)개씩 한 호출로 추출. 하루(태평양시) `WIKI_BACKFILL_DAILY_MAX`(기본 30, 0 = 끔)회 상한(두 설정 모두 프로세스 환경변수가 `.env` 보다 먼저 — 시험 1회는 `WIKI_BACKFILL_DAILY_MAX=1 python3 wiki_ingest.py`) — 사용량은 `.wiki_state.json` 의 `backfill: {date, calls}`. **영상 요약과 같은 무료 키를 쓰므로 상한을 올리면 요약이 429 를 맞는다.** 실패한 호출도 1회로 센다.
++- **backfill:** (v4.6-b) **노트 프론트매터 `summary_src: video`(실제 영상 요약)인 소스만** — 설명란만 보고 지어낸 옛 요약으로 Wiki 를 채우지 않는다. 재요약이 `wiki_extract` 를 `stale` 로 돌려 두면 다시 추출된다(`stale` 행은 그때까지 페이지에 그대로). `.wiki_state.json` ingested 에 있지만 `wiki_extract` 가 없거나 ok 가 아닌(seed·failed·stale) 소스를 `WIKI_BACKFILL_BATCH`(기본 20)개씩 한 호출로 추출. 하루(태평양시) `WIKI_BACKFILL_DAILY_MAX`(기본 30, 0 = 끔)회 상한(두 설정 모두 프로세스 환경변수가 `.env` 보다 먼저 — 시험 1회는 `WIKI_BACKFILL_DAILY_MAX=1 python3 wiki_ingest.py`) — 사용량은 `.wiki_state.json` 의 `backfill: {date, calls}`. **영상 요약과 같은 무료 키를 쓰므로 상한을 올리면 요약이 429 를 맞는다.** 실패한 호출도 1회로 센다.
+ - backfill 은 launchd 17:30 실행(인자 없음)에서만 돈다. `sync_obsidian` 경로는 `--no-backfill` — 스케줄러 실행 시간을 늘리지 않는다. `--full`·`--limit` 도 backfill 하지 않는다.
+ - 씨앗(`--seed-from-pages`)은 v4.5 적용 때 1회 — 옛 페이지에 남아 있던 항목(약 80건)을 `seed` 로 옮겨 backfill 이 끝나기 전에도 페이지가 비지 않게 한다. `ok` 행은 덮지 않는다. backfill 이 seed 를 batch 결과로 바꾼다.
+ - `.wiki_state.json` 의 `entities`·`concepts` 는 이제 전체 카운트다(예전엔 마지막 실행분).
+@@ -338,9 +343,27 @@ videos.list(statistics,snippet,contentDetails,status — 1유닛 그대로) →
+ - 무료 등급 영상 입력은 하루 8시간 분량 상한(미리보기 기능). `.video_quota.json` `{date(PT), seconds, calls}` 에 시도한 영상의 (앞 30분 기준) 초를 센다 — 실패 요청도 센다. `VIDEO_DAILY_SECONDS`(기본 28800)를 넘을 영상은 대체.
+ - `.env` 스위치: `VIDEO_SUMMARY=false` 면 전부 설명란 요약(되돌리기), `VIDEO_MAX_SECONDS`(기본 1800), `VIDEO_DAILY_SECONDS`(기본 28800).
+ - `PARALLEL = 1` 유지 — 30분 영상 1편 ≈ 18만 토큰(약 103토큰/초: 영상 71 + 음성 32). 병렬이면 무료 분당 토큰 한도에 걸린다.
+-- 노트 프론트매터에 `grade:`(keep·exclude·null)·`summary_src:` 가 붙는다(새 노트만 — 옛 노트는 v4.6-b 재요약 때). **`grade: exclude` 노트는 Vault 에 남고** `wiki_ingest.py:collect_sources`(추출·backfill·페이지 렌더)와 `build_search_index.py:collect_notes`(검색)에서만 빠진다. MOC·시트는 그대로. 제외를 되돌리려면 장부 `grade` 와 노트 프론트매터를 함께 고친다.
++- 노트 프론트매터에 `grade:`(keep·exclude·null)·`summary_src:` 가 붙는다(새 노트 · v4.6-b 재요약된 옛 노트). **`grade: exclude` 노트는 Vault 에 남고** `wiki_ingest.py:collect_sources`(추출·backfill·페이지 렌더)와 `build_search_index.py:collect_notes`(검색)에서만 빠진다. MOC·시트는 그대로. 제외를 되돌리려면 (v4.6-b) 장부 `grade`(+ `updated_at`)만 고친다 — 다음 `sync_obsidian` 이 노트 프론트매터를 맞춘다.
+ - 판정: `scheduler.log` 의 `🎬 요약 방식: 영상 N (제외 등급 N) · 설명란 대체 N {사유}` 줄, `sqlite3 "file:data/library.db?mode=ro" "select summary_src, grade, count(*) from videos group by 1,2"`.
+-- 범위 밖(v4.6-b): 기존 약 3,000편 재요약(`summary_src != 'video'`), 노트 요약 절 제자리 교체, Wiki backfill 재개(지금 `.env WIKI_BACKFILL_DAILY_MAX=0`), 항목 0이 된 `_wiki` 페이지 처리, 재요약 모델(2.5 Flash-Lite 는 신규 프로젝트에 404 — 후보 `gemini-3.5-flash-lite`, 음성 토큰이 따로 안 잡혀 품질 확인 필요).
++- (v4.6-b) `promo_main` 프롬프트에 "무료 자료·템플릿·키트 배포, 구독·댓글 유도는 판매가 아니다 — 돈을 받는 판매·모집만 true" 를 넣었다(좁힘 — 10-13 12:00 무료 키트 시연 영상 오판). 영상 대부분이 사용법·정보이고 끝이나 중간에 자기 강의·상품을 잠깐 알리는 정도도 false(사전 검증: 끝에 강의 모집을 붙인 시연 영상이 exclude 로 잡혔다). bad_summary 는 어느 검사에 걸렸는지 로그 1줄(`summaryProblem`: `empty`·`missing:<절>`·`short_tail:N`).
++
++### 기존분 재요약 (v4.6-b) — 옛 설명란 요약을 실제 영상 요약으로, 천천히
++
++```
++scheduler.js main: 마스터 인제스트(신규 영상) 뒤 · 장부 연결이 열려 있을 때 → runResummary() → lib/resummarize.run()
++   [오늘(PT) 재요약 수 = 장부 quality.resummary_day · 상한 안이면 후보(summary_src != 'video' · resummary_skip 없음 · 최신 업로드부터)
++    → videos.list 1회 → 요약기(RESUMMARY_MODEL, fallback:false, reserveSeconds) → 성공: updateResummary / 실패: 건너뜀·실패 표시 / 중단]
++   → sheet_mirror (updated_at 변경분) → sync_obsidian:refresh_changed_notes (요약 절 교체) → 17:30 wiki_ingest backfill (stale 재추출)
++```
++
++- **신규 영상이 먼저다.** 실행당 `RESUMMARY_PER_RUN`(5) · 하루(PT) `RESUMMARY_DAILY_MAX`(20) · 하루 영상 분량 8시간 중 `RESUMMARY_RESERVE_SECONDS`(10800)는 신규 몫으로 남긴다(PT 하루 안 실행 순서 18→00→06→12시 — 앞 실행이 다 쓰면 12시 신규가 설명란 요약으로 밀린다). 분량 누계는 신규와 같은 `.video_quota.json`.
++- 모델은 `RESUMMARY_MODEL`(기본 `gemini-3.5-flash-lite`). 무료 한도가 모델별로 따로라 본 파이프라인의 2.5 Flash 하루 한도를 먹지 않는다. **3.x 모델은 `thinkingBudget` 을 400 으로 거절한다** — `video_summary.thinkingConfigFor` 가 2.x 는 `thinkingBudget: 0`, 그 밖은 `thinkingLevel: 'minimal'`. 2.5 Flash 의 `thinkingBudget: 0` 은 그대로 둘 것.
++- **실패하면 설명란 요약으로 대체하지 않는다**(기존 요약 유지). 목록에 없음(`gone`)·공개 아님·길이 모름·영상 토큰 0 → `quality.resummary_skip`(다시 안 함). `bad_json`·`bad_signals`·`bad_summary`·`video_403`·그 밖 4xx → `resummary_fail` +1, 2회면 건너뜀. 429·5xx·네트워크·하루 분량·`video_403_repeated`·`VIDEO_SUMMARY=false` → 그 실행 재요약 중단. 건너뜀·실패 표시는 시트에 안 보이는 `quality` 만 바꾸므로 `updated_at` 을 안 건드린다.
++- 성공(`lib/library.js:updateResummary`, 한 트랜잭션): `summary`·`summary_src='video'`·`grade`·`quality`(+`resummary:true`·`resummary_day`)·`summarized_at`·`updated_at` + 그 소스의 `wiki_extract` → `status='stale'`, `attempts=0`(`updated_at` 은 그대로 — 렌더 결정성). 이미 `video` 인 행은 건드리지 않는다. 토픽(재생목록 분류)은 다시 하지 않는다.
++- `runResummary` 는 던지지 않는다 — 재요약 단계가 실패해도 저장·Skip·오류 집계·실행 판정에 영향이 없다. 결과 줄 `🔁 재요약: N편 (제외 등급 N) · 건너뜀 N · 실패 N {사유} · 오늘 N/20 · 남은 대상 N`(1편 이상이면 그 실행의 완료 텔레그램에도 한 줄 — 텔레그램은 기존 조건대로 신규·변경이 있을 때만 나간다).
++- 노트(`sync_obsidian.py:refresh_changed_notes`): 장부 `summary_src` 가 `video` 인 행만 본다. 노트 프론트매터 `summary_src` 가 `video` 가 아니면 요약 절(`**▶ 영상 보기: **` 줄 다음 `---` 줄 뒤부터 `\n\n---\n## 🔗 관련 항목` 앞까지)을 새 요약으로 바꾸고 `grade`·`summary_src` 를 맞춘다(없으면 `notion_id` 줄 앞에 넣음). `video` 인데 `grade` 만 다르면 그 줄만. 경계를 못 찾으면 파일을 통째로 다시 쓰지 않고 그대로 둔 채 `RESULT_JSON.refresh_skipped` 로 보고. 바뀐 노트가 있으면 검색 인덱스를 갱신한다(재구성·인제스트는 안 함).
++- 끄기: `.env RESUMMARY=false`(재요약만) · `VIDEO_SUMMARY=false`(영상 입력 전부). 진행 판정: `sqlite3 "file:data/library.db?mode=ro" "select json_extract(quality,'$.model'), grade, count(*) from videos where summary_src='video' group by 1,2"` · 건너뜀 `… where json_extract(quality,'$.resummary_skip') is not null`.
++- 처리량: 하루 약 19편 → 공개 약 2,950편에 약 5개월. 영상 8시간 상한이 프로젝트별(키별)이면 나중에 상한만 올려 당길 수 있다(미확인).
+ 
+ ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
+ 
+@@ -498,7 +521,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ - 재시도 소진 시 `cls`가 `undefined`인 채 `cls.topics`로 진입하던 잠복 TypeError 경로가 있었다. `clsAttempt < maxClsAttempts` 가드와 루프 직후 `if (!cls) throw` **가드 2개가 짝**이다. 한쪽만 지우면 되살아난다.
+ - `classifyTopics`를 `maxRetries: 0`으로 호출하는 것은 **의도된 설계**다. 재시도는 키 교체를 하는 바깥 루프가 담당한다.
+ 
+-**Gemini API 최적화 (중요)**: Gemini 2.5 Flash 모델 사용 시 내부 추론 과정에서 과다한 "Thinking 토큰" 과금을 방지하기 위해 반드시 API 호출 옵션에 `generationConfig: { thinkingConfig: { thinkingBudget: 0 } }`를 적용해야 합니다 (비용 85% 절감 효과).
++**Gemini API 최적화 (중요)**: Gemini 2.5 Flash 모델 사용 시 내부 추론 과정에서 과다한 "Thinking 토큰" 과금을 방지하기 위해 반드시 API 호출 옵션에 `generationConfig: { thinkingConfig: { thinkingBudget: 0 } }`를 적용해야 합니다 (비용 85% 절감 효과). (v4.6-b) 3.x 모델(`gemini-3.5-flash-lite` 등)은 `thinkingBudget` 을 400 INVALID_ARGUMENT 로 거절한다 — `thinkingConfig: { thinkingLevel: 'minimal' }`(`lib/video_summary.js:thinkingConfigFor`).
+ 
+ **토픽 추가 시**: `playlists.json`에 새 항목 추가 + `build_obsidian_wiki.py`의 `VALID_NOTION_TAGS` 동기화 필수.
+ 
+@@ -558,6 +581,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-13 (v4.6-b — 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)** — 배경: 장부의 옛 요약 약 3,000편이 설명란 추론이라 일부가 지어낸 내용이고, 그래서 Wiki backfill 을 정지해 뒀다. 10-13 비교 5건에서 `gemini-3.5-flash-lite` 가 2.5 Flash 와 등급·신호 5/5 일치(말 내용 포함, 요약은 약 65% 길이), 3.x 는 `thinkingBudget: 0` 을 400 으로 거절. 수정: `lib/resummarize.js` 신규(scheduler 매 실행 신규 처리 뒤, 실행당 5 · 하루 20 · 신규 몫 3시간 예약, 실패 시 기존 요약 유지·건너뜀/실패/중단 분류), `lib/video_summary.js` 모델 인자·`thinkingConfigFor`·`fallback:false`·`reserveSeconds`·`summaryProblem`(bad_summary 사유 로그)·promo_main 프롬프트 좁힘(무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보는 판매 아님), `lib/library.js` 재요약 헬퍼(`updateResummary` — `updated_at` + `wiki_extract` stale), `sync_obsidian.py:refresh_changed_notes`(요약 절 제자리 교체·관련 항목 보존·장부 grade 만 고쳐도 노트가 따라옴), `wiki_ingest.py` backfill 대상 = `summary_src: video` 만 · 항목 0 페이지 안내 문구. 스키마 무변경(user_version 3). `.env WIKI_BACKFILL_DAILY_MAX=0` 정지 줄 제거. 테스트: 신규 `test_resummarize.js` 9/9, `test_video_summary.js` 23/23(+6), `test_scheduler_guards.js` 33/33(+2), `test_sync_obsidian.py` 32/32(+8), `test_wiki_ingest.py` 64/64(+7). 회귀 테스트 11종. 지시서 `docs/tasks/2026-10-13-v46b-resummarize.md`.
+ - **2026-10-13 (v4.6-a — 실제 영상 요약 + 품질 필터, 신규 영상부터)** — 배경(10-12 시험): 요약이 제목·설명란만 보고 "추론해서라도 작성"이라 설명란이 빈약하면 지어낸 내용이 됐다(`mW5k5CbO4sA` 「AI 데이터 활용」 = 실제는 Python 문자열 강의). 수정: `lib/video_summary.js` 신규 — 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로(LOW, 30분 넘으면 앞 30분), JSON 으로 요약 + 사실 신호, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → exclude). 영상 토큰 0(삭제 영상)·비공개·403(연속 2회면 그 실행 끔)·429 소진·하루 8시간 분량(`.video_quota.json`)은 설명란 요약으로 대체. `getBatchDetails` 가 `contentDetails,status` 도 받음(1유닛 그대로). 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`, `migrate_library.py` 가 v1·v2 → v3 한 번에). 노트 프론트매터 `grade`·`summary_src`, `grade: exclude` 는 `wiki_ingest`·`build_search_index` 에서만 제외. `.env` 스위치 `VIDEO_SUMMARY`·`VIDEO_MAX_SECONDS`·`VIDEO_DAILY_SECONDS`. 테스트: 신규 `test_video_summary.js` 17/17, `test_scheduler_guards.js` 31/31(+2), `test_wiki_ingest.py` 57/57(+6), `test_sync_obsidian.py` 24/24(+1), `test_build_wiki_index.py` 11/11(+1). 회귀 테스트 10종. 지시서 `docs/tasks/2026-10-13-v46a-video-summary.md`.
+ - **2026-10-12 (v4.5 — Wiki 합성 결과 누적)** — 결함: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서(05-12 도입 때부터) 페이지 56개의 source_count 가 1~10, index 9행뿐이었다(합성 소스 3,619건). 추출 결과를 저장하지 않아 되살릴 원본이 없었다. 수정: 장부에 `wiki_extract` 표(user_version 1 → 2, `scripts/migrate_library.py`), 소스별 누적 + 매 실행 전체 재렌더(결정적, 내용 같으면 안 씀, 고아 제외·retitle 반영), 깨진 응답은 실패로 3회까지 재시도, 옛 페이지 항목 씨앗(`--seed-from-pages`), 옛 소스 backfill(20개 묶음, 하루 30회, launchd 경로만 — `sync_obsidian` 은 `--no-backfill`). `backup_library.py` 행 수에 `wiki_extract` 추가. 테스트: 신규 `test_wiki_ingest.py` 51/51, `test_backup_library.py` 버전 기대값을 `SCHEMA_VERSION` 으로. 회귀 테스트 9종. 지시서 `docs/tasks/2026-10-12-wiki-extract-store.md`.
+ - **2026-10-12 (v4.4 — 꿀팁 제목 보완 도구)** — `scripts/retitle_tips.py`(+ `scripts/test_retitle_tips.py` 49/49) 신규: 장부 tips 제목·`updated_at` + 「AI 꿀팁」 노트 제자리 수정·파일명 변경 + Vault 링크 치환, dry-run 기본·쓰기 전 백업(`data/retitle_backup/`, gitignore 의 `data/` 아래). 앱 코드·데몬 무변경. 첫 적용 5건(`docs/tasks/2026-10-12-retitle-tips.csv`). 회귀 테스트 8종. 지시서 `docs/tasks/2026-10-12-retitle-tips.md`.
+diff --git a/README.md b/README.md
+index a7c6f5e..32734a0 100644
+--- a/README.md
++++ b/README.md
+@@ -13,6 +13,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카
+ > v4.4: 카톡 꿀팁의 추정 제목(「제목 미확인」·URL 조각)을 원문 제목으로 고치는 `scripts/retitle_tips.py` 를 넣었습니다 — 장부·Obsidian 노트(파일명 포함)·링크를 함께 바꿉니다.
+ > v4.5: Wiki 합성 결과(엔티티·개념)를 장부 `wiki_extract` 에 쌓고 `_wiki` 페이지를 매번 전체로 다시 그립니다.
+ > v4.6-a: 신규 영상은 **실제 영상**(YouTube URL)을 Gemini 에 넣어 요약하고, 판매가 주목적·일반론·AI 무관 영상은 등급 `exclude` 로 표시해 Wiki 합성·검색에서만 뺍니다(노트는 그대로). 영상 입력이 안 되면 예전처럼 설명란으로 요약합니다.
++> v4.6-b: 예전에 설명란만 보고 만든 요약 약 3,000편을 **실제 영상으로 천천히 다시 요약**합니다(정시 실행마다 최대 5편, 하루 20편, Gemini 3.5 Flash-Lite — 신규 영상 몫 3시간은 남겨 둠). 노트는 요약 절만 제자리에서 바뀌고, Wiki 합성은 실제 영상 요약 노트만 다시 추출합니다.
+ > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
+ > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
+ 
+@@ -199,7 +200,8 @@ AI_Wiki_Pipeline/
+ │   ├── library.js                     # (v4.0) 장부 Node 헬퍼 (openLibrary·insertVideo·addTopic·updateStats)
+ │   ├── library_db.py                  # (v4.0) 장부 Python 헬퍼 (open_existing — 없으면 만들지 않음)
+ │   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 3 = v4.6 videos.grade·quality·summarized_at)
+-│   ├── video_summary.js               # (v4.6) 실제 영상 요약 + 품질 신호 · 등급 규칙 · 하루 영상 분량 누계
++│   ├── video_summary.js               # (v4.6) 실제 영상 요약 + 품질 신호 · 등급 규칙 · 하루 영상 분량 누계 (v4.6-b 모델 인자·대체 없음·신규 몫 예약)
++│   ├── resummarize.js                 # (v4.6-b) 기존분 재요약 — 후보 선정·상한·건너뜀/실패/중단 처리 (scheduler.js 가 매 실행 호출)
+ │   ├── env_util.py                    # (v4.0) .env 읽기 (의존성 없음)
+ │   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
+ │   ├── classifier.js                  # Gemini 기반 토픽 분류기
+@@ -211,7 +213,7 @@ AI_Wiki_Pipeline/
+ │   ├── migrate_library.py             # (v4.5·v4.6) 장부 스키마 이전 1·2 → 3 (dry-run 기본, 백업 먼저)
+ │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
+ │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
+-│   └── test_*.{js,py}                 # 회귀 테스트 10종 (네트워크 0회)
++│   └── test_*.{js,py}                 # 회귀 테스트 11종 (네트워크 0회)
+ ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
+ ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
+ ├── docs/cowork-project-instructions.md # (옛) Cowork 프로젝트 인수인계 사본 (2026-08-17) — 현재 원본은 Cowork 프로젝트 설정
+@@ -257,7 +259,7 @@ SHEET_MIRROR_TOKEN=<openssl rand -hex 24 로 만든 값 — Apps Script 스크
+ LIBRARY_BACKUP_DIR=~/Library/CloudStorage/GoogleDrive-<계정>/내 드라이브/YouTube_Ledger_Backup
+ 
+ # (v4.5) Wiki 합성 backfill — 옛 소스를 묶어서 다시 추출. 영상 요약과 같은 Gemini 무료 키를 쓰므로 올리지 말 것
+-WIKI_BACKFILL_DAILY_MAX=30                          # 하루(태평양시) 호출 상한, 0 = 끔 (없으면 30)
++WIKI_BACKFILL_DAILY_MAX=30                          # 하루(태평양시) 호출 상한, 0 = 끔 (없으면 30). (v4.6-b) 대상은 실제 영상 요약 노트만
+ WIKI_BACKFILL_BATCH=20                              # 한 호출에 묶는 소스 수 1~40 (없으면 20)
+ 
+ # (v4.6) 실제 영상 요약 — 없으면 아래 기본값. false 면 예전처럼 설명란으로만 요약
+@@ -265,6 +267,13 @@ VIDEO_SUMMARY=true
+ VIDEO_MAX_SECONDS=1800                              # 이보다 긴 영상은 앞부분만 (Gemini videoMetadata.endOffset)
+ VIDEO_DAILY_SECONDS=28800                           # 하루(태평양시) 영상 입력 분량 상한 — 무료 등급 8시간
+ 
++# (v4.6-b) 기존분 재요약 — 없으면 아래 기본값. false 면 재요약만 끈다 (VIDEO_SUMMARY=false 도 재요약을 끈다)
++RESUMMARY=true
++RESUMMARY_MODEL=gemini-3.5-flash-lite               # 신규 요약(2.5 Flash)과 무료 한도가 모델별로 따로
++RESUMMARY_PER_RUN=5                                 # 정시 실행 1회당 편수
++RESUMMARY_DAILY_MAX=20                              # 하루(태평양시) 편수 — 장부 quality.resummary_day 로 센다
++RESUMMARY_RESERVE_SECONDS=10800                     # 하루 영상 분량 상한에서 신규 영상 몫으로 남길 초(3시간)
++
+ # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
+ WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
+ WIKI_LAN_ASK_DAILY_MAX=20                           # AI 답변 24시간 총량 (Gemini 무료 한도 보호)
+@@ -431,6 +440,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ | 버전 | 날짜 | 주요 내용 요약 |
+ | :-- | :--- | :--- |
++| **v4.6-b** | 2026-10-13 | **기존분 재요약 + 노트 요약 절 제자리 교체 + backfill 재개**: 설명란 요약 약 3,000편(`summary_src != 'video'`)을 정시 실행마다 최대 5편 · 하루 20편씩 실제 영상으로 다시 요약(`lib/resummarize.js`, Gemini 3.5 Flash-Lite — 10-13 비교 5건 등급·신호 일치, 신규 영상 분량 3시간 예약, 실패하면 기존 요약 유지). `sync_obsidian.py` 가 재요약·등급 변경 노트의 요약 절만 교체(관련 항목 절 보존). Wiki backfill 은 실제 영상 요약 노트만(재요약 시 `wiki_extract` stale), 항목 0 `_wiki` 페이지는 안내 문구로. promo_main 에서 무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보 제외, bad_summary 사유 로그. 회귀 테스트 11종 |
+ | **v4.6-a** | 2026-10-13 | **실제 영상 요약 + 품질 필터(신규 영상부터)**: 설명란만 보고 "추론해서라도" 쓰던 요약이 빈약한 설명란에서 지어낸 내용이 되던 문제 수정. 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로 넣어(LOW, 30분 넘으면 앞 30분) 요약 + 사실 신호를 받고, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → `exclude`). 삭제·비공개·403·한도는 설명란 요약으로 대체. 장부 user_version 3(`grade`·`quality`·`summarized_at`), 노트 프론트매터 `grade`·`summary_src`, `exclude` 는 Wiki 합성·검색에서만 제외. 회귀 테스트 10종 |
+ | **v4.5** | 2026-10-12 | **Wiki 합성 결과 누적**: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서 페이지마다 1~10건만 남던 결함(05-12 도입 때부터) 수정. 추출 결과를 장부 새 표 `wiki_extract`(user_version 2, `scripts/migrate_library.py`)에 소스별로 쌓고 매 실행 전체로 다시 그림(내용 같으면 안 씀). 깨진 응답은 실패로 재시도(3회), 옛 페이지 항목 씨앗, 옛 소스 3천여 건은 20개 묶음 backfill(하루 30회, 약 6일). 회귀 테스트 9종 |
+ | **v4.4** | 2026-10-12 | **꿀팁 제목 보완 도구**: 카톡 인제스트가 URL 로만 추정한 꿀팁 제목(「유튜브 영상 (제목 미확인)」·`courses` 등, 46건 누적)을 원문 제목으로 고치는 `scripts/retitle_tips.py`(CSV 입력, dry-run 기본). 장부 `title`·`updated_at`(시트 미러 반영) + 자동 메모 비움, 「AI 꿀팁」 노트 제자리 수정·파일명 변경, Vault `[[링크]]` 치환을 함께 하고 쓰기 전에 장부·파일을 백업. 첫 적용 5건. 회귀 테스트 8종 |
+@@ -459,6 +469,23 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ ### 📝 상세 변경 내역 (Detailed Change Log)
+ 
++#### [v4.6-b] — 2026-10-13 (🔁 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)
++
++**배경.** v4.6-a 는 신규 영상부터 실제 영상으로 요약했다. 장부의 옛 요약 약 3,000편은 여전히 설명란만 보고 만든 것이라 일부는 지어낸 내용이고, 그래서 Wiki backfill(옛 소스 재추출)을 정지해 두었다(`.env WIKI_BACKFILL_DAILY_MAX=0`). 10-13 비교에서 Gemini 3.5 Flash-Lite 는 2.5 Flash 와 등급·신호가 5/5 같았고(Python 강의 = not_ai, 컨설팅 모집 = promo_main 포함) 말 내용도 정확히 옮겼다 — 요약은 약 65% 길이. 같은 날 12:00 실행에서 무료 레퍼런스 키트를 나눠 주는 시연 영상이 promo_main 으로 제외됐다(오판).
++
++| 항목 | 내용 |
++|---|---|
++| 재요약 | `lib/resummarize.js` — 후보 `summary_src != 'video'` · 건너뜀 표시 없음 · 최신 업로드부터. `scheduler.js` 가 신규 처리 뒤 매 실행 호출(던지지 않음, 저장·Skip·오류 집계 밖). 상한: 실행당 `RESUMMARY_PER_RUN` 5 · 하루(PT) `RESUMMARY_DAILY_MAX` 20(장부 `quality.resummary_day` 로 셈) · 하루 영상 분량 8시간 중 `RESUMMARY_RESERVE_SECONDS` 3시간은 신규 몫. 모델 `RESUMMARY_MODEL` 기본 `gemini-3.5-flash-lite`(`thinkingLevel: minimal` — 3.x 는 `thinkingBudget` 을 400 으로 거절) |
++| 실패 | 대체 요약 없이 기존 요약 유지. 삭제·공개 아님·영상 토큰 0 → `quality.resummary_skip`(다시 안 함), 형식 실패 2회 → 건너뜀, 429·5xx·하루 분량·403 연속 → 그 실행 중단. 건너뜀·실패 표시는 `updated_at` 안 건드림 |
++| 장부 | 성공 시 `summary`·`summary_src 'video'`·`grade`·`quality`·`summarized_at`·`updated_at`(시트 미러) + 그 소스 `wiki_extract` → `stale`(attempts 0). 스키마 무변경(user_version 3) |
++| 노트 | `sync_obsidian.py:refresh_changed_notes` — 장부 `summary_src` 가 `video` 인데 노트 프론트매터와 다르면 요약 절(`▶ 영상 보기` 다음 `---` 부터 `🔗 관련 항목` 앞까지)만 교체 + `grade`·`summary_src` 맞춤. 경계를 못 찾으면 그대로 두고 `refresh_skipped` 로 보고. 장부 `grade` 만 고쳐도 노트가 따라옴 |
++| Wiki | backfill 대상 = 실제 영상 요약 노트(`summary_src: video`)만. `stale` 행은 다시 추출될 때까지 페이지에 그대로. 항목 0 이 된 이름(목록 안)의 기존 페이지는 안내 문구 페이지로(지우지 않음), index 에서 빠짐 |
++| 품질 신호 | `promo_main` 프롬프트에 "무료 자료·템플릿·키트 배포, 구독·댓글 유도는 판매 아님 — 돈을 받는 판매·모집만" 추가(좁힘 — 영상 끝·중간에 자기 강의를 잠깐 알리는 정도도 false). bad_summary 는 어느 검사에 걸렸는지 로그 1줄(`missing:…`·`short_tail:N`) |
++| 처리량 | 하루 약 19편 → 공개 약 2,950편에 약 5개월 |
++| 끄기 | `.env RESUMMARY=false`(재요약만) · `VIDEO_SUMMARY=false`(영상 입력 전부) |
++| 테스트 | 신규 `scripts/test_resummarize.js` 9/9, `test_video_summary.js` 23/23(+6), `test_scheduler_guards.js` 33/33(+2), `test_sync_obsidian.py` 32/32(+8), `test_wiki_ingest.py` 64/64(+7). 회귀 테스트 11종 |
++| 지시서 | `docs/tasks/2026-10-13-v46b-resummarize.md` |
++
+ #### [v4.6-a] — 2026-10-13 (🎬 실제 영상 요약 + 품질 필터, 신규 영상부터)
+ 
+ **배경.** `scheduler.js:geminiSummarize` 는 제목·채널·설명란·태그만 넣고 "정보가 부족해도 추론해서 반드시 작성"을 시켰다. 10-12 시험에서 설명란이 빈약한 `mW5k5CbO4sA` 「AI 데이터 활용」의 장부 요약(데이터 수집·정제·윤리)은 전부 지어낸 내용이었다 — 실제 영상은 VS Code 로 Python 문자열을 다루는 강의. 같은 시험에서 Gemini 에 YouTube URL 을 영상으로 넣으면 실제 내용을 요약했고, 판매 목적·일반론 같은 사실 판단은 맞았지만 모델이 매긴 A/B/C 등급은 컨설팅 판매 영상에도 A 를 줬다.
+diff --git a/lib/library.js b/lib/library.js
+index 9c42ea1..fe0d8a3 100644
+--- a/lib/library.js
++++ b/lib/library.js
+@@ -109,4 +109,66 @@ function updateStats(db, recordId, viewCount, subscriberCount, uploadDate) {
+   return Number(r.changes) === 1;
+ }
+ 
+-module.exports = { DB_PATH, loadSqlite, openLibrary, allVideos, insertVideo, addTopic, updateStats, schemaVersion };
++// ── (v4.6-b) 기존분 재요약 — lib/resummarize.js 가 부른다 ──
++// quality 는 JSON 문자열이다. 깨졌거나 비었으면 {} 로 보고 덮지 않고 합친다.
++function parseQuality(q) {
++  try { const o = JSON.parse(q || '{}'); return o && typeof o === 'object' && !Array.isArray(o) ? o : {}; } catch { return {}; }
++}
++// SQLite json_extract 는 깨진 JSON 에서 던지므로 json_valid 로 감싼다
++const Q_SKIP = "CASE WHEN json_valid(quality) THEN json_extract(quality, '$.resummary_skip') END";
++
++// 재요약 후보: 실제 영상 요약이 아니고 건너뜀 표시가 없는 행, 최신 업로드부터
++function resummaryCandidates(db, limit) {
++  return db.prepare(`SELECT record_id, video_id, title, channel, quality FROM videos
++    WHERE (summary_src IS NULL OR summary_src != 'video') AND video_id IS NOT NULL AND ${Q_SKIP} IS NULL
++    ORDER BY upload_date DESC, created_at DESC LIMIT ?`).all(limit);
++}
++function resummaryRemaining(db) {
++  return Number(db.prepare(`SELECT COUNT(*) AS n FROM videos
++    WHERE (summary_src IS NULL OR summary_src != 'video') AND video_id IS NOT NULL AND ${Q_SKIP} IS NULL`).get().n);
++}
++// 오늘(태평양시 날짜 문자열) 성공한 재요약 수 — 상태 파일 없이 장부에서 센다
++function resummaryDoneOn(db, day) {
++  return Number(db.prepare(`SELECT COUNT(*) AS n FROM videos
++    WHERE CASE WHEN json_valid(quality) THEN json_extract(quality, '$.resummary_day') END = ?`).get(day).n);
++}
++
++// 재요약 성공 → summary·summary_src 'video'·grade·quality·summarized_at·updated_at(시트 미러 워터마크) +
++// 그 소스의 wiki_extract 를 stale(attempts 0)로 — 다음 backfill 이 새 요약으로 다시 추출한다(updated_at 은 안 건드림: 렌더 결정성).
++// 이미 'video' 인 행은 건드리지 않는다(경합·재실행 방지). 반환: 바꿨으면 true
++function updateResummary(db, recordId, { summary, grade, quality }) {
++  const ts = nowIso();
++  db.exec('BEGIN');
++  try {
++    const r = db.prepare(`UPDATE videos SET summary = ?, summary_src = 'video', grade = ?, quality = ?, summarized_at = ?, updated_at = ?
++      WHERE record_id = ? AND (summary_src IS NULL OR summary_src != 'video')`)
++      .run(nfc(summary), GRADES.has(grade) ? grade : null, quality || null, ts, ts, recordId);
++    if (Number(r.changes) === 1) {
++      db.prepare("UPDATE wiki_extract SET status = 'stale', attempts = 0 WHERE record_id = ?").run(recordId);
++    }
++    db.exec('COMMIT');
++    return Number(r.changes) === 1;
++  } catch (e) {
++    try { db.exec('ROLLBACK'); } catch {}
++    throw e;
++  }
++}
++
++// 영구 건너뜀(삭제·비공개·영상 토큰 0 등) 또는 실패 횟수 기록. 시트에 안 보이는 quality 만 바꾸므로 updated_at 은 안 건드린다.
++const RESUMMARY_MAX_FAILS = 2;
++function markResummary(db, recordId, { skip, fail }) {
++  const row = db.prepare('SELECT quality FROM videos WHERE record_id = ?').get(recordId);
++  if (!row) return null;
++  const q = parseQuality(row.quality);
++  if (fail) {
++    q.resummary_fail = (+q.resummary_fail || 0) + 1;
++    q.resummary_last = String(fail).slice(0, 80);
++    if (q.resummary_fail >= RESUMMARY_MAX_FAILS) q.resummary_skip = `fail:${q.resummary_last}`;
++  }
++  if (skip) q.resummary_skip = String(skip).slice(0, 80);
++  db.prepare('UPDATE videos SET quality = ? WHERE record_id = ?').run(JSON.stringify(q), recordId);
++  return q;
++}
++
++module.exports = { DB_PATH, loadSqlite, openLibrary, allVideos, insertVideo, addTopic, updateStats, schemaVersion,
++                   parseQuality, resummaryCandidates, resummaryRemaining, resummaryDoneOn, updateResummary, markResummary, RESUMMARY_MAX_FAILS };
+diff --git a/lib/resummarize.js b/lib/resummarize.js
+new file mode 100644
+index 0000000..d2027e1
+--- /dev/null
++++ b/lib/resummarize.js
+@@ -0,0 +1,132 @@
++// v4.6-b 기존분 재요약 — 설명란만 보고 만든 옛 요약(summary_src != 'video')을 실제 영상 요약으로 천천히 바꾼다.
++// scheduler.js 가 매 실행 신규 영상 처리 뒤에 부른다(실패해도 실행 결과에 영향 없음 — 호출부가 try/catch).
++//
++// ★ 신규 영상이 먼저다. 재요약은
++//   - 실행당 RESUMMARY_PER_RUN(기본 5)편 · 태평양시 하루 RESUMMARY_DAILY_MAX(기본 20)편
++//   - 하루 영상 분량 상한(8시간)에서 RESUMMARY_RESERVE_SECONDS(기본 3시간)를 신규 몫으로 남기고 그 안에서만
++//     (PT 하루 안의 실행 순서가 18→00→06→12시라 앞 실행이 다 쓰면 12시 신규가 설명란 요약으로 밀린다)
++// ★ 모델은 RESUMMARY_MODEL(기본 gemini-3.5-flash-lite). 신규 요약(2.5 Flash)과 무료 한도가 모델별로 따로라
++//   본 파이프라인(요약·분류·Wiki·LAN 답변)의 2.5 Flash 하루 한도를 먹지 않는다. 10-13 비교 5건: 등급·신호 5/5 일치.
++// ★ 실패하면 설명란 요약으로 대체하지 않는다 — 기존 요약을 그대로 둔다(대체하면 지어낸 요약을 다시 쓰는 셈).
++//   - 삭제(목록에 없음)·공개 아님·길이 모름·영상 토큰 0 → 건너뜀 표시(다시 시도 안 함)
++//   - 응답 형식 실패(bad_json·bad_signals·bad_summary)·그 밖의 HTTP → 실패 1회, 2회면 건너뜀
++//   - 429·5xx 소진·네트워크·하루 분량·영상 입력 꺼짐(403 연속 2회 포함) → 이번 실행 재요약 중단(다음 실행이 이어서)
++// ★ 하루 횟수는 상태 파일 없이 장부 quality.resummary_day(태평양시 날짜)로 센다.
++'use strict';
++const library = require('./library');
++
++const DEFAULTS = { model: 'gemini-3.5-flash-lite', perRun: 5, dailyMax: 20, reserveSeconds: 3 * 3600 };
++
++function intEnv(env, key, def) {
++  const n = parseInt(env[key], 10);
++  return Number.isFinite(n) && n >= 0 ? n : def;
++}
++function settings(env = {}) {
++  return {
++    enabled: env.RESUMMARY !== 'false' && env.VIDEO_SUMMARY !== 'false',
++    model: (env.RESUMMARY_MODEL || '').trim() || DEFAULTS.model,
++    perRun: intEnv(env, 'RESUMMARY_PER_RUN', DEFAULTS.perRun),
++    dailyMax: intEnv(env, 'RESUMMARY_DAILY_MAX', DEFAULTS.dailyMax),
++    reserveSeconds: intEnv(env, 'RESUMMARY_RESERVE_SECONDS', DEFAULTS.reserveSeconds),
++  };
++}
++
++// 요약 실패 사유 → 'skip'(다시 시도 안 함) | 'fail'(1회 세고 2회면 건너뜀) | 'stop'(이번 실행 중단)
++const SKIP = new Set(['no_video_tokens', 'no_duration', 'gone']);
++const FAIL = new Set(['bad_json', 'bad_signals', 'bad_summary', 'video_403']);
++function classify(reason) {
++  const r = String(reason || '');
++  if (SKIP.has(r) || r.startsWith('privacy:')) return 'skip';
++  if (FAIL.has(r)) return 'fail';
++  const m = /^video_http_(\d+)$/.exec(r);
++  if (m) {
++    const code = +m[1];
++    return code === 0 || code === 429 || code >= 500 ? 'stop' : 'fail';
++  }
++  return 'stop';   // daily_video_cap · VIDEO_SUMMARY=false · video_403_repeated · 모르는 사유
++}
++
++// deps: db(node:sqlite) · fetchDetails(videoIds) → {id: {privacy, durationSec, description, tags, realChannelTitle}}
++//       makeSummarizer({model, reserveSeconds}) → {summarize, stats} (lib/video_summary.makeVideoSummarizer, fallback:false)
++//       todayKey() → 태평양시 날짜 · env · log · sleep
++// 반환: { enabled, done, exclude, skipped, failed, reasons, today, dailyMax, remaining, stopped, model }
++async function run(deps) {
++  const cfg = settings(deps.env || {});
++  const log = deps.log || (() => {});
++  const sleep = deps.sleep || (ms => new Promise(r => setTimeout(r, ms)));
++  const res = { enabled: cfg.enabled, model: cfg.model, done: 0, exclude: 0, skipped: 0, failed: 0, reasons: {},
++                today: 0, dailyMax: cfg.dailyMax, remaining: null, stopped: '' };
++  if (!cfg.enabled) { res.stopped = 'disabled'; return res; }
++
++  const db = deps.db;
++  const day = deps.todayKey();
++  res.today = library.resummaryDoneOn(db, day);
++  const budget = Math.min(cfg.perRun, Math.max(0, cfg.dailyMax - res.today));
++  if (budget <= 0) {
++    res.stopped = res.today >= cfg.dailyMax ? 'daily_max' : 'per_run_0';
++    res.remaining = library.resummaryRemaining(db);
++    return res;
++  }
++
++  // 건너뜀으로 빠질 행을 감안해 넉넉히 뽑는다(그래도 videos.list 1회 = 1유닛)
++  const cands = library.resummaryCandidates(db, Math.min(50, budget * 4));
++  const details = cands.length ? await deps.fetchDetails(cands.map(c => c.video_id)) : {};
++  const summarizer = deps.makeSummarizer({ model: cfg.model, reserveSeconds: cfg.reserveSeconds });
++  const note = (reason) => { res.reasons[reason] = (res.reasons[reason] || 0) + 1; };
++
++  for (const c of cands) {
++    if (res.done >= budget) break;
++    const d = details[c.video_id];
++    if (!d) {   // 목록에 없음 = 삭제·비공개 전환
++      library.markResummary(db, c.record_id, { skip: 'gone' });
++      res.skipped++; note('gone');
++      continue;
++    }
++    const v = { videoId: c.video_id, title: c.title, channelTitle: d.realChannelTitle || c.channel,
++                description: d.description, tags: d.tags, privacy: d.privacy, durationSec: d.durationSec };
++    log(`  🔁 재요약: ${String(c.title || '').slice(0, 50)}`);
++    const r = await summarizer.summarize(v);
++    if (r && r.ok) {
++      const q = library.parseQuality(r.quality);
++      const prev = library.parseQuality(c.quality);
++      const quality = JSON.stringify({ ...q, resummary: true, resummary_day: day,
++        ...(prev.resummary_fail ? { resummary_fail: prev.resummary_fail } : {}) });
++      if (library.updateResummary(db, c.record_id, { summary: r.summary, grade: r.grade, quality })) {
++        res.done++;
++        if (r.grade === 'exclude') res.exclude++;
++      }
++      await sleep(2000);
++      continue;
++    }
++    const reason = (r && r.reason) || 'unknown';
++    note(reason);
++    const kind = classify(reason);
++    if (kind === 'skip') {
++      library.markResummary(db, c.record_id, { skip: reason });
++      res.skipped++;
++    } else if (kind === 'fail') {
++      library.markResummary(db, c.record_id, { fail: reason });
++      res.failed++;
++    } else {
++      res.stopped = reason;
++      break;
++    }
++  }
++  res.today = library.resummaryDoneOn(db, day);
++  res.remaining = library.resummaryRemaining(db);
++  return res;
++}
++
++function summaryLine(r) {
++  if (!r) return '';
++  if (!r.enabled) return '🔁 재요약: 꺼짐 (RESUMMARY=false 또는 VIDEO_SUMMARY=false)';
++  const extra = [];
++  if (r.skipped) extra.push(`건너뜀 ${r.skipped}`);
++  if (r.failed) extra.push(`실패 ${r.failed}`);
++  const reasons = Object.keys(r.reasons).length ? ` ${JSON.stringify(r.reasons)}` : '';
++  const stop = r.stopped && r.stopped !== 'daily_max' ? ` · 중단 ${r.stopped}` : '';
++  return `🔁 재요약: ${r.done}편 (제외 등급 ${r.exclude})${extra.length ? ' · ' + extra.join(' · ') : ''}${reasons}` +
++         ` · 오늘 ${r.today}/${r.dailyMax}${stop} · 남은 대상 ${r.remaining ?? '?'}`;
++}
++
++module.exports = { run, settings, classify, summaryLine, DEFAULTS };
+diff --git a/lib/video_summary.js b/lib/video_summary.js
+index 725273c..c9c6328 100644
+--- a/lib/video_summary.js
++++ b/lib/video_summary.js
+@@ -10,6 +10,9 @@
+ //     연속 2회면 그 실행에서 영상 입력을 끈다(403 난사 방지 — 보안 원칙 1).
+ // ★ 무료 등급 영상 입력은 하루 8시간 분량 상한(미리보기 기능). .video_quota.json 에 태평양시 날짜로 초를 센다.
+ //   30분 넘는 영상은 videoMetadata.endOffset 으로 앞 30분만 넣는다(10-13 시험: endOffset 600s → 마지막 장면 09:59).
++// ★ (v4.6-b) 같은 모듈을 기존분 재요약(lib/resummarize.js)이 모델·대체 없음·신규 몫 예약으로 다시 쓴다.
++//   gemini-3.x 는 thinkingBudget 0 을 400 INVALID_ARGUMENT 로 거절한다(10-13 시험) → 모델별로 thinkingConfig 를 나눈다.
++//   2.5 Flash 의 thinkingBudget 0(비용 85% 절감)은 그대로 둘 것.
+ 'use strict';
+ const fs = require('fs');
+ const path = require('path');
+@@ -44,7 +47,10 @@ const PROMPT = `당신은 YouTube 영상 콘텐츠를 분석하는 전문 리서
+ 
+ [signals — 영상 전체를 기준으로 사실만 판정]
+ - promo_main: 영상을 만든 채널(제작자) **자신의** 강의·컨설팅·코칭·유료 커뮤니티·자기 상품을 팔거나 모집하는 것이 영상의 주목적이면 true.
+-  다른 회사의 AI 도구·서비스를 소개·시연하는 영상은 협찬·유료 광고·제휴여도 사용법이나 결과를 실제로 보여 주면 false
++  다른 회사의 AI 도구·서비스를 소개·시연하는 영상은 협찬·유료 광고·제휴여도 사용법이나 결과를 실제로 보여 주면 false.
++  무료 자료·템플릿·키트 배포, 구독·댓글·알림 설정·뉴스레터 유도는 판매가 아니므로 false.
++  영상 내용 대부분이 실제 사용법·정보이고 끝이나 중간에 자기 강의·상품을 잠깐 알리는 정도도 false
++  (영상의 주된 내용이 돈을 받는 강의·컨설팅·코칭·유료 커뮤니티·자기 상품을 팔거나 모집하는 것일 때만 true)
+ - sponsored: 협찬·유료 광고·제휴(어필리에이트) 표시나 언급이 있으면 true (이것만으로 영상을 낮게 보지 말 것)
+ - generic: 구체적인 도구·절차·수치·사례 없이 일반론·동기부여·소식 나열에 그치면 true
+ - ai_related: AI(생성형 AI·LLM·AI 도구·AI 개발·AI 산업)를 직접 다루면 true
+@@ -78,7 +84,12 @@ function parseDuration(s) {
+   return (+(m[1] || 0)) * 86400 + (+(m[2] || 0)) * 3600 + (+(m[3] || 0)) * 60 + (+(m[4] || 0));
+ }
+ 
+-function buildBody(v, { maxSeconds = DEFAULT_MAX_SECONDS } = {}) {
++// (v4.6-b) 2.x 는 thinkingBudget 0(비용 절감), 3.x 는 thinkingBudget 을 거절하므로 thinkingLevel minimal
++function thinkingConfigFor(model) {
++  return /^gemini-2\./.test(String(model || MODEL)) ? { thinkingBudget: 0 } : { thinkingLevel: 'minimal' };
++}
++
++function buildBody(v, { maxSeconds = DEFAULT_MAX_SECONDS, model = MODEL } = {}) {
+   const part = { fileData: { fileUri: `https://www.youtube.com/watch?v=${v.videoId}` } };
+   if (v.durationSec && v.durationSec > maxSeconds) part.videoMetadata = { endOffset: `${maxSeconds}s` };
+   const info = `[영상 정보 — 참고용]\n제목: ${v.title}\n채널: ${v.channelTitle}\n설명: ${(v.description || '(없음)').slice(0, 3000)}\n태그: ${v.tags?.join(', ') || '(없음)'}`;
+@@ -87,7 +98,7 @@ function buildBody(v, { maxSeconds = DEFAULT_MAX_SECONDS } = {}) {
+     generationConfig: {
+       temperature: 0.3,
+       maxOutputTokens: 4000,
+-      thinkingConfig: { thinkingBudget: 0 },
++      thinkingConfig: thinkingConfigFor(model),
+       mediaResolution: 'MEDIA_RESOLUTION_LOW',
+       responseMimeType: 'application/json',
+       responseSchema: RESPONSE_SCHEMA,
+@@ -101,7 +112,19 @@ function videoTokens(usage) {
+     .reduce((a, d) => a + (d.tokenCount || 0), 0);
+ }
+ 
+-// 200 응답 → { ok:true, summary, signals, videoTokens, promptTokens } | { ok:false, reason }
++// (v4.6-b) 요약이 4절 형식 검사(scheduler.js:validateSummary)에 걸린 이유 — 로그 1줄용. 통과면 ''
++const SECTIONS = ['## 영상 개요', '## 핵심 내용', '## 주요 인사이트', '## 활용 포인트'];
++function summaryProblem(summary) {
++  const s = String(summary || '');
++  if (!s.trim() || s === '요약 불가') return 'empty';
++  const missing = SECTIONS.filter(sec => !s.includes(sec));
++  if (missing.length) return `missing:${missing.join('|')}`;
++  const tail = s.slice(s.indexOf('## 활용 포인트') + '## 활용 포인트'.length).trim();
++  if (tail.length < 10) return `short_tail:${tail.length}`;
++  return '';
++}
++
++// 200 응답 → { ok:true, summary, signals, videoTokens, promptTokens } | { ok:false, reason[, detail] }
+ function parseResponse(data, validateSummary) {
+   const vt = videoTokens(data?.usageMetadata);
+   if (vt <= 0) return { ok: false, reason: 'no_video_tokens' };
+@@ -112,7 +135,7 @@ function parseResponse(data, validateSummary) {
+   const s = j?.signals || {};
+   const bools = ['promo_main', 'generic', 'ai_related', 'has_demo', 'sponsored'];
+   if (!bools.every(k => typeof s[k] === 'boolean')) return { ok: false, reason: 'bad_signals' };
+-  if (validateSummary && !validateSummary(summary)) return { ok: false, reason: 'bad_summary' };
++  if (validateSummary && !validateSummary(summary)) return { ok: false, reason: 'bad_summary', detail: summaryProblem(summary) || `len:${summary.length}` };
+   const signals = { promo_main: s.promo_main, generic: s.generic, ai_related: s.ai_related, has_demo: s.has_demo,
+                     sponsored: s.sponsored, reason: String(s.reason || '').slice(0, 300) };
+   return { ok: true, summary, signals, videoTokens: vt, promptTokens: data?.usageMetadata?.promptTokenCount || 0 };
+@@ -145,21 +168,29 @@ function writeQuota(file, q) {
+ // deps: request(options, body) → {status, data} · getKey() · rotateKey() · keysCount
+ //       describe(v) → 설명란 요약 문자열(scheduler.js:geminiSummarize) · validateSummary · todayKey · log · sleep
+ //       quotaFile · env(process.env 형태)
++//       (v4.6-b, 선택) model(기본 MODEL) · fallback(기본 true — false 면 실패 시 설명란 요약을 부르지 않고 {ok:false, reason} 반환)
++//                      · reserveSeconds(기본 0 — 하루 분량 상한에서 이만큼을 남겨 둔다. 재요약이 신규 영상 몫을 먹지 않게)
+ function makeVideoSummarizer(deps) {
+   const env = deps.env || {};
+   const enabled = env.VIDEO_SUMMARY !== 'false';
+   const maxSeconds = +env.VIDEO_MAX_SECONDS || DEFAULT_MAX_SECONDS;
+-  const dailySeconds = +env.VIDEO_DAILY_SECONDS || DEFAULT_DAILY_SECONDS;
++  const dailySeconds = (+env.VIDEO_DAILY_SECONDS || DEFAULT_DAILY_SECONDS) - Math.max(0, +deps.reserveSeconds || 0);
++  const model = deps.model || MODEL;
++  const useFallback = deps.fallback !== false;
+   const log = deps.log || (() => {});
+   const sleep = deps.sleep || (ms => new Promise(r => setTimeout(r, ms)));
+   const stats = { video: 0, fallback: 0, exclude: 0, reasons: {} };
+   let forbiddenInARow = 0;
+   let disabledReason = enabled ? '' : 'VIDEO_SUMMARY=false';
+ 
+-  async function fallback(v, reason) {
++  async function fallback(v, reason, detail) {
+     stats.fallback++;
+     stats.reasons[reason] = (stats.reasons[reason] || 0) + 1;
+-    log(`    ↩️  영상 입력 대신 설명란 요약 (${reason})`);
++    if (!useFallback) {
++      log(`    ↩️  영상 요약 실패 (${reason}${detail ? `: ${detail}` : ''})`);
++      return { ok: false, reason, detail: detail || '' };
++    }
++    log(`    ↩️  영상 입력 대신 설명란 요약 (${reason}${detail ? `: ${detail}` : ''})`);
+     const summary = await deps.describe(v);
+     return { summary, src: 'app', grade: null, quality: JSON.stringify({ fallback: reason }) };
+   }
+@@ -173,14 +204,14 @@ function makeVideoSummarizer(deps) {
+     const q = readQuota(deps.quotaFile, deps.todayKey);
+     if (q.seconds + sec > dailySeconds) return fallback(v, 'daily_video_cap');
+ 
+-    const body = buildBody(v, { maxSeconds });
++    const body = buildBody(v, { maxSeconds, model });
+     const maxAttempts = Math.max(3, deps.keysCount * 2);
+     let res;
+     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+       try {
+         res = await deps.request({
+           hostname: 'generativelanguage.googleapis.com',
+-          path: `/v1beta/models/${MODEL}:generateContent?key=${deps.getKey()}`,
++          path: `/v1beta/models/${model}:generateContent?key=${deps.getKey()}`,
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+         }, body);
+@@ -213,19 +244,19 @@ function makeVideoSummarizer(deps) {
+     forbiddenInARow = 0;
+ 
+     const p = parseResponse(res.data, deps.validateSummary);
+-    if (!p.ok) return fallback(v, p.reason);
++    if (!p.ok) return fallback(v, p.reason, p.detail);
+     const g = computeGrade(p.signals);
+     stats.video++;
+     if (g.grade === 'exclude') stats.exclude++;
+     log(`    🎬 영상 요약 (${Math.round(sec / 60)}분${v.durationSec > maxSeconds ? ' · 앞부분만' : ''}, 영상 토큰 ${p.videoTokens}) → ${g.grade}${g.why.length ? ` [${g.why.join(',')}]` : ''}`);
+     return {
+-      summary: p.summary, src: 'video', grade: g.grade,
+-      quality: JSON.stringify({ ...p.signals, why: g.why, model: MODEL, sec, clipped: v.durationSec > maxSeconds, video_tokens: p.videoTokens }),
++      ok: true, summary: p.summary, src: 'video', grade: g.grade,
++      quality: JSON.stringify({ ...p.signals, why: g.why, model, sec, clipped: v.durationSec > maxSeconds, video_tokens: p.videoTokens }),
+     };
+   }
+ 
+   return { summarize, stats };
+ }
+ 
+-module.exports = { MODEL, PROMPT, parseDuration, buildBody, parseResponse, computeGrade, videoTokens,
++module.exports = { MODEL, PROMPT, parseDuration, buildBody, parseResponse, computeGrade, videoTokens, summaryProblem, thinkingConfigFor,
+                    readQuota, writeQuota, makeVideoSummarizer, MAX_403_IN_A_ROW };
+diff --git a/scheduler.js b/scheduler.js
+index 48f1d8a..522d748 100644
+--- a/scheduler.js
++++ b/scheduler.js
+@@ -7,6 +7,7 @@ const fs = require('fs');
+ const path = require('path');
+ const library = require('./lib/library');   // v4.0 로컬 장부 (node:sqlite)
+ const videoSummary = require('./lib/video_summary');   // v4.6 실제 영상 요약 + 품질 신호
++const resummarize = require('./lib/resummarize');      // v4.6-b 기존분 재요약 (3.5 Flash-Lite, 실행당 5편)
+ 
+ // ══════════════════════════════════
+ // ★ .env 파일에서 환경변수 로드 ★
+@@ -1240,6 +1241,32 @@ function formatElapsed(ms) {
+   return `${String(h).padStart(2,'0')}시간 ${String(m).padStart(2,'0')}분`;
+ }
+ 
++// ── (v4.6-b) 기존분 재요약 — 신규 처리 뒤, 장부 연결이 열려 있을 때. 던지지 않는다(실행 결과에 영향 없음) ──
++async function runResummary() {
++  try {
++    if (!resummarize.settings(process.env).enabled) {   // 꺼져 있으면 장부·네트워크·모듈 로드 0
++      const r = await resummarize.run({ env: process.env });
++      log(`  ${resummarize.summaryLine(r)}`);
++      return r;
++    }
++    const yt = require('./lib/youtube_oauth');   // todayKey (태평양시) — 새 날짜 키를 따로 만들지 않는다
++    const r = await resummarize.run({
++      db: libDb, fetchDetails: getBatchDetails, todayKey: yt.todayKey, env: process.env, log,
++      makeSummarizer: ({ model, reserveSeconds }) => videoSummary.makeVideoSummarizer({
++        request: httpsRequest, getKey: getActiveGeminiKey, rotateKey: rotateGeminiKey,
++        keysCount: CONFIG.geminiApiKeys.length, describe: geminiSummarize, validateSummary,
++        todayKey: yt.todayKey, log, env: process.env, quotaFile: path.join(__dirname, '.video_quota.json'),
++        model, reserveSeconds, fallback: false,
++      }),
++    });
++    log(`  ${resummarize.summaryLine(r)}`);
++    return r;
++  } catch (e) {
++    log(`  ⚠️ 재요약 단계 오류 — 이번 실행은 건너뜀(실행 결과에는 영향 없음): ${shortReason(e)}`);
++    return null;
++  }
++}
++
+ async function main() {
+   log('');
+   const startTime = Date.now();
+@@ -1345,6 +1372,13 @@ async function main() {
+     }
+   }
+ 
++  // (v4.6-b) 기존분 재요약 — 마스터 모드·장부를 읽은 실행만. 저장·Skip·오류 집계에 넣지 않는다
++  let resum = null;
++  if (useMasterMode && libCache && libDb) {
++    log(`\n▶ 기존분 재요약 (실제 영상)...`);
++    resum = await runResummary();
++  }
++
+   // 장부 연결은 여기서 닫는다 (뒤이은 kakao_ingest·sync_obsidian 은 각자 연다)
+   if (libDb) { try { libDb.close(); } catch {} libDb = null; }
+ 
+@@ -1452,6 +1486,7 @@ async function main() {
+ 
+     if (pendingCount >= 1000) queueLines.push(`⚠️ 큐 적체 — 원인 확인 필요`);
+   }
++  if (resum && resum.done > 0) queueLines.push(resummarize.summaryLine(resum));   // (v4.6-b)
+ 
+   const msg = [
+     `🎬 YouTube 요약 완료`,
+@@ -1572,6 +1607,7 @@ if (require.main === module) {
+     ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror, runLibraryBackup,
+     sendTelegram, readRunState, writeRunState, runNotices, isWholeRunFailure, escapeHtml,   // (v4.2) 실행 실패 알림
+     validateSummary,   // (v4.6) scripts/test_video_summary.js
++    runResummary,      // (v4.6-b) scripts/test_scheduler_guards.js
+     _setLibDb: (db) => { libDb = db; },   // 테스트 전용 (scripts/test_scheduler_guards.js)
+   };
+ }
+diff --git a/scripts/test_resummarize.js b/scripts/test_resummarize.js
+new file mode 100644
+index 0000000..d34d406
+--- /dev/null
++++ b/scripts/test_resummarize.js
+@@ -0,0 +1,163 @@
++#!/usr/bin/env node
++// lib/resummarize.js (v4.6-b 기존분 재요약) + lib/library.js 재요약 헬퍼 회귀 테스트
++// — 네트워크 0회(영상 조회·요약기는 가짜), 임시 장부(lib/library_schema.sql 그대로).
++//   node scripts/test_resummarize.js
++//
++// 지키는 것:
++//   1) 후보 = summary_src != 'video' · 건너뜀 표시 없음 · 최신 업로드부터. 'video' 행은 다시 건드리지 않는다
++//   2) 성공 → summary·summary_src video·grade·quality(+resummary_day)·summarized_at·updated_at, wiki_extract → stale(attempts 0, updated_at 그대로)
++//   3) 실패는 대체 요약 없이 기존 요약 그대로 — 삭제·공개 아님·영상 토큰 0 은 건너뜀 표시, 형식 실패는 2회에 건너뜀(updated_at 안 건드림)
++//   4) 429·5xx·하루 분량·영상 입력 꺼짐은 그 실행 중단
++//   5) 실행당 상한 · 태평양시 하루 상한(장부 quality.resummary_day 로 셈) · RESUMMARY=false·VIDEO_SUMMARY=false 면 아무것도 안 함
++//   6) 모델·신규 몫 예약을 요약기에 넘긴다
++'use strict';
++const fs = require('fs');
++const os = require('os');
++const path = require('path');
++
++const out = (s) => process.stdout.write(s + '\n');
++const ROOT = path.join(__dirname, '..');
++const library = require(path.join(ROOT, 'lib', 'library'));
++const rs = require(path.join(ROOT, 'lib', 'resummarize'));
++
++const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'resummarize-'));
++let seq = 0;
++const OLD_TS = '2026-05-01T00:00:00.000Z';
++
++function makeDb(rows, extract = []) {
++  const p = path.join(TMP, `lib-${++seq}.db`);
++  const { DatabaseSync } = library.loadSqlite();
++  const raw = new DatabaseSync(p);
++  raw.exec(fs.readFileSync(path.join(ROOT, 'lib', 'library_schema.sql'), 'utf8'));
++  const ins = raw.prepare(`INSERT INTO videos (record_id, video_id, title, channel, upload_date, summary, summary_src, grade, quality, created_at, updated_at)
++    VALUES (?, ?, ?, 'ch', ?, ?, ?, ?, ?, ?, ?)`);
++  for (const r of rows) ins.run(r.id, r.vid, r.title || r.id, r.date, r.summary || '옛 요약', r.src || 'property', r.grade || null, r.quality || null, OLD_TS, OLD_TS);
++  for (const id of extract) {
++    raw.prepare(`INSERT INTO wiki_extract (record_id, status, source, entities, concepts, attempts, created_at, updated_at)
++      VALUES (?, 'ok', 'single', '[]', '[]', 1, 'x', ?)`).run(id, OLD_TS);
++  }
++  raw.close();
++  return library.openLibrary(p);
++}
++const row = (db, id) => db.prepare('SELECT * FROM videos WHERE record_id = ?').get(id);
++const Q = (db, id) => library.parseQuality(row(db, id).quality);
++
++const DET = (o = {}) => ({ privacy: 'public', durationSec: 600, description: '설명', tags: [], realChannelTitle: '채널', ...o });
++const GOOD = (grade = 'keep') => ({ ok: true, summary: '## 영상 개요\n새 요약', src: 'video', grade,
++  quality: JSON.stringify({ promo_main: grade === 'exclude', why: grade === 'exclude' ? ['promo_main'] : [], model: 'gemini-3.5-flash-lite', sec: 600 }) });
++const FAIL = (reason) => ({ ok: false, reason });
++
++function harness({ db, details = {}, script = [], env = {}, today = '2026-10-13' }) {
++  const h = { fetched: [], summarized: [], made: [], logs: [] };
++  h.run = () => rs.run({
++    db, env, todayKey: () => today, log: (m) => h.logs.push(m), sleep: async () => {},
++    fetchDetails: async (ids) => { h.fetched.push(ids); const m = {}; for (const id of ids) if (details[id]) m[id] = details[id]; return m; },
++    makeSummarizer: (opts) => { h.made.push(opts); return { summarize: async (v) => { h.summarized.push(v.videoId); const s = script.shift(); if (!s) throw new Error('대본 없음'); return s; } }; },
++  });
++  return h;
++}
++function assert(c, m) { if (!c) throw new Error(m); }
++
++const BASE = [
++  { id: 'r-old', vid: 'VID_OLD____', date: '2026-01-01' },
++  { id: 'r-new', vid: 'VID_NEW____', date: '2026-10-01' },
++  { id: 'r-mid', vid: 'VID_MID____', date: '2026-06-01', src: 'app', quality: '{"fallback":"bad_summary"}' },
++  { id: 'r-vid', vid: 'VID_DONE___', date: '2026-10-10', src: 'video', grade: 'keep' },
++  { id: 'r-bad', vid: 'VID_BADQ___', date: '2026-02-01', quality: '깨진 JSON' },
++];
++const allDetails = Object.fromEntries(BASE.map(r => [r.vid, DET()]));
++
++const cases = [
++  ['후보: video 아닌 행만 · 최신 업로드부터 · 깨진 quality 도 후보(던지지 않음)', async () => {
++    const db = makeDb(BASE);
++    const c = library.resummaryCandidates(db, 10).map(r => r.record_id);
++    assert(c.join() === 'r-new,r-mid,r-bad,r-old', c.join());
++    assert(library.resummaryRemaining(db) === 4, String(library.resummaryRemaining(db)));
++  }],
++  ['성공: 장부 갱신 · updated_at 새로 · wiki_extract stale(attempts 0 · updated_at 그대로) · 모델·예약 전달', async () => {
++    const db = makeDb(BASE, ['r-new']);
++    const h = harness({ db, details: allDetails, script: [GOOD('exclude'), GOOD()], env: { RESUMMARY_PER_RUN: '2' } });
++    const r = await h.run();
++    const n = row(db, 'r-new'); const q = Q(db, 'r-new');
++    assert(r.done === 2 && r.exclude === 1 && h.summarized.join() === 'VID_NEW____,VID_MID____', JSON.stringify(r));
++    assert(n.summary_src === 'video' && n.grade === 'exclude' && n.summary.includes('새 요약') && n.updated_at !== OLD_TS && n.summarized_at === n.updated_at, JSON.stringify(n));
++    assert(q.resummary === true && q.resummary_day === '2026-10-13' && q.model === 'gemini-3.5-flash-lite', JSON.stringify(q));
++    const w = db.prepare("SELECT * FROM wiki_extract WHERE record_id='r-new'").get();
++    assert(w.status === 'stale' && w.attempts === 0 && w.updated_at === OLD_TS, JSON.stringify(w));
++    assert(h.made.length === 1 && h.made[0].model === 'gemini-3.5-flash-lite' && h.made[0].reserveSeconds === 10800, JSON.stringify(h.made));
++    assert(h.fetched.length === 1, '영상 조회는 실행당 1회');
++    assert(r.today === 2 && r.remaining === 2, JSON.stringify(r));
++    assert(rs.summaryLine(r).startsWith('🔁 재요약: 2편 (제외 등급 1)') && rs.summaryLine(r).includes('오늘 2/20 · 남은 대상 2'), rs.summaryLine(r));
++  }],
++  ['이미 video 인 행은 updateResummary 가 건드리지 않는다', async () => {
++    const db = makeDb(BASE);
++    assert(library.updateResummary(db, 'r-vid', { summary: 'x', grade: 'exclude', quality: '{}' }) === false && row(db, 'r-vid').grade === 'keep', '덮어씀');
++  }],
++  ['건너뜀: 목록에 없음(gone)·일부공개·영상 토큰 0 → 표시 · 요약·updated_at 그대로 · 다음 실행 후보에서 빠짐', async () => {
++    const db = makeDb(BASE);
++    const det = { ...allDetails }; delete det.VID_NEW____;
++    const h = harness({ db, details: det, script: [FAIL('privacy:unlisted'), FAIL('no_video_tokens'), GOOD()] });
++    const r = await h.run();
++    assert(Q(db, 'r-new').resummary_skip === 'gone' && Q(db, 'r-mid').resummary_skip === 'privacy:unlisted' && Q(db, 'r-bad').resummary_skip === 'no_video_tokens', JSON.stringify([Q(db, 'r-new'), Q(db, 'r-mid'), Q(db, 'r-bad')]));
++    assert(Q(db, 'r-mid').fallback === 'bad_summary', '기존 quality 를 덮었다');
++    assert(row(db, 'r-new').summary === '옛 요약' && row(db, 'r-new').updated_at === OLD_TS && row(db, 'r-mid').updated_at === OLD_TS, 'updated_at 건드림');
++    assert(r.skipped === 3 && r.done === 1 && row(db, 'r-old').summary_src === 'video', JSON.stringify(r));
++    assert(library.resummaryCandidates(db, 10).length === 0, '건너뜀 표시가 후보에 남음');
++  }],
++  ['형식 실패: 1회는 다음에 다시 · 2회면 건너뜀 · 대체 요약 없음', async () => {
++    const db = makeDb([{ id: 'r1', vid: 'V1_________', date: '2026-10-01' }]);
++    const d = { V1_________: DET() };
++    await harness({ db, details: d, script: [FAIL('bad_summary')] }).run();
++    assert(Q(db, 'r1').resummary_fail === 1 && !Q(db, 'r1').resummary_skip && library.resummaryCandidates(db, 5).length === 1, JSON.stringify(Q(db, 'r1')));
++    await harness({ db, details: d, script: [FAIL('bad_json')] }).run();
++    assert(Q(db, 'r1').resummary_fail === 2 && Q(db, 'r1').resummary_skip === 'fail:bad_json' && row(db, 'r1').summary === '옛 요약', JSON.stringify(Q(db, 'r1')));
++  }],
++  ['중단: 429·5xx·하루 분량·영상 입력 꺼짐 → 그 실행 멈춤 · 표시 안 함', async () => {
++    for (const reason of ['video_http_429', 'video_http_503', 'video_http_0', 'daily_video_cap', 'video_403_repeated', 'VIDEO_SUMMARY=false']) {
++      const db = makeDb(BASE);
++      const h = harness({ db, details: allDetails, script: [FAIL(reason), GOOD()] });
++      const r = await h.run();
++      assert(r.stopped === reason && h.summarized.length === 1 && !Q(db, 'r-new').resummary_skip && !Q(db, 'r-new').resummary_fail, `${reason}: ${JSON.stringify(r)}`);
++    }
++    assert(rs.classify('video_http_400') === 'fail' && rs.classify('video_403') === 'fail' && rs.classify('privacy:private') === 'skip', '분류');
++  }],
++  ['하루 상한: 장부 resummary_day 로 센다 · 다 찼으면 요약기 안 만듦 · 날짜 바뀌면 다시', async () => {
++    const rows = BASE.concat([{ id: 'r-today', vid: 'VID_T______', date: '2026-03-01', src: 'video', quality: '{"resummary":true,"resummary_day":"2026-10-13"}' }]);
++    const db = makeDb(rows);
++    const h = harness({ db, details: allDetails, env: { RESUMMARY_DAILY_MAX: '1' } });
++    const r = await h.run();
++    assert(r.stopped === 'daily_max' && h.made.length === 0 && h.fetched.length === 0 && r.today === 1 && r.remaining === 4, JSON.stringify(r));
++    const h2 = harness({ db, details: allDetails, env: { RESUMMARY_DAILY_MAX: '1' }, script: [GOOD()], today: '2026-10-14' });
++    assert((await h2.run()).done === 1, '다음 날 다시');
++  }],
++  ['실행당 상한(기본 5) · 하루 남은 몫이 더 작으면 그만큼', async () => {
++    const many = Array.from({ length: 9 }, (_, i) => ({ id: `m${i}`, vid: `VM${i}_________`.slice(0, 11), date: `2026-09-0${i + 1}` }));
++    const det = Object.fromEntries(many.map(r => [r.vid, DET()]));
++    const db = makeDb(many);
++    const h = harness({ db, details: det, script: Array.from({ length: 9 }, () => GOOD()) });
++    assert((await h.run()).done === 5 && h.summarized.length === 5, '기본 5');
++    const h2 = harness({ db, details: det, script: Array.from({ length: 9 }, () => GOOD()), env: { RESUMMARY_DAILY_MAX: '7' } });
++    assert((await h2.run()).done === 2, '하루 7 - 오늘 5 = 2');
++  }],
++  ['RESUMMARY=false · VIDEO_SUMMARY=false 면 장부·조회·요약 0', async () => {
++    for (const env of [{ RESUMMARY: 'false' }, { VIDEO_SUMMARY: 'false' }]) {
++      const db = makeDb(BASE);
++      const h = harness({ db, details: allDetails, env });
++      const r = await h.run();
++      assert(!r.enabled && r.done === 0 && h.fetched.length === 0 && h.made.length === 0 && row(db, 'r-new').quality === null, JSON.stringify(env));
++      assert(rs.summaryLine(r).includes('꺼짐'), rs.summaryLine(r));
++    }
++    assert(rs.settings({ RESUMMARY_PER_RUN: 'x', RESUMMARY_MODEL: ' ' }).perRun === 5 && rs.settings({}).model === 'gemini-3.5-flash-lite', '기본값');
++  }],
++];
++
++(async () => {
++  let pass = 0;
++  for (const [name, fn] of cases) {
++    try { await fn(); pass++; out(`PASS  ${name}`); }
++    catch (e) { out(`FAIL  ${name}\n      → ${e.message}`); }
++  }
++  fs.rmSync(TMP, { recursive: true, force: true });
++  out(`\n${pass}/${cases.length} PASS`);
++  process.exit(pass === cases.length ? 0 : 1);
++})();
+diff --git a/scripts/test_scheduler_guards.js b/scripts/test_scheduler_guards.js
+index 2db725e..9a51151 100644
+--- a/scripts/test_scheduler_guards.js
++++ b/scripts/test_scheduler_guards.js
+@@ -14,6 +14,7 @@
+ //   7) (v4.2) 실행 실패 알림 — 통째 실패 판정, 직전 실행 점검 문구(끝나지 못한 실행·못 보낸 실패·빠진 정시 실행),
+ //      상태 파일 읽기·쓰기, sendTelegram 은 성공/실패를 true/false 로 돌려주고 JSON 아닌 응답에도 죽지 않는다
+ //   8) (v4.6) 상세 조회는 길이·공개 상태를 같은 1회 호출로 받고, 장부 저장은 요약 방식·등급·신호·요약 시각을 남긴다
++//   9) (v4.6-b) 재요약 단계는 던지지 않는다 — 꺼져 있으면 장부·네트워크 0, 장부 오류면 null 을 돌려줄 뿐 실행을 막지 않는다
+ 
+ const https = require('https');
+ const fs = require('fs');
+@@ -354,6 +355,23 @@ const cases = [
+     assert(await sendTelegram('d') === false, '네트워크 오류가 false 가 아니다');
+     assert(calls.length === 4 && calls.every(c => c.host === 'api.telegram.org'), '요청 수·호스트가 다르다');
+   }],
++  ['runResummary: (v4.6-b) RESUMMARY=false 면 장부·네트워크 0 · 결과만 돌려준다', async () => {
++    const p = makeLibrary(SEED);
++    const before = fs.readFileSync(p);
++    const db = library.openLibrary(p);
++    _setLibDb(db);
++    process.env.RESUMMARY = 'false';
++    try {
++      const r = await sched.runResummary();
++      assert(r && r.enabled === false && r.done === 0, JSON.stringify(r));
++    } finally { delete process.env.RESUMMARY; _setLibDb(null); db.close(); }
++    assert(Buffer.compare(before, fs.readFileSync(p)) === 0, '장부가 바뀌었다');
++  }],
++  ['runResummary: (v4.6-b) 장부 연결이 없으면 던지지 않고 null', async () => {
++    _setLibDb(null);
++    const r = await sched.runResummary();
++    assert(r === null, JSON.stringify(r));
++  }],
+   ['updateStats: 업로드일을 안 주면 기존 날짜를 지킨다', async () => {
+     const db = library.openLibrary(makeLibrary(SEED));
+     try {
+diff --git a/scripts/test_sync_obsidian.py b/scripts/test_sync_obsidian.py
+index d763190..3c978b4 100644
+--- a/scripts/test_sync_obsidian.py
++++ b/scripts/test_sync_obsidian.py
+@@ -13,6 +13,8 @@
+   5) 장부에 없는 영상 노트는 _trash 로 이동, 3중 안전장치 유지. 꿀팁 고아는 보고만 한다
+   6) 두 번째 실행은 할 일 0 (멱등)
+   7) 장부는 읽기 전용 — 실행 전후 바이트가 같다
++  8) (v4.6-b) 재요약(장부 summary_src video)·등급 변경 → 노트 요약 절만 제자리 교체(관련 항목 절 보존)·grade·summary_src 맞춤,
++     설명란 요약 행은 안 건드림, 경계를 못 찾으면 파일 그대로, 두 번째 실행은 0
+ """
+ import hashlib, io, json, os, sqlite3, subprocess, sys, tempfile
+ from contextlib import redirect_stdout
+@@ -198,6 +200,45 @@ def main():
+     check('할 일 0 · 하위 단계 0', code == 0 and rj and (rj['added'], rj['tags_updated'], rj['orphans_removed']) == (0, 0, 0)
+           and sub_calls == [], (rj, sub_calls))
+ 
++    print('▶ (v4.6-b) 재요약·등급 변경 노트 맞춤')
++    REL = '\n\n---\n## 🔗 관련 항목\n\n**재생목록**: [[AI Claude MOC]]\n'
++    p1 = os.path.join(vault, 'AI Claude/ch_v1_20260901.md')
++    orig1 = open(p1, encoding='utf-8').read()
++    open(p1, 'a', encoding='utf-8').write(REL)   # build_obsidian_wiki 가 붙인 절 흉내
++    before1 = open(p1, encoding='utf-8').read()
++    p2 = os.path.join(vault, 'AI Claude/ch_v2_20260902.md')
++    orig2 = open(p2, encoding='utf-8').read()
++    open(p2, 'w', encoding='utf-8').write('---\ntitle: "t"\nchannel: "ch"\ntags: ["AI Claude", "AI Gemini"]\n'
++                                           'video_url: https://www.youtube.com/watch?v=VVVVVVVVVV2\nnotion_id: rec-2\n---\n본문에 영상 보기 줄 없음\n')
++    before2 = open(p2, encoding='utf-8').read()
++    db_bak = open(ldb.DB_PATH, 'rb').read()
++    NEW = '## 영상 개요\n실제 영상 요약\n\n## 핵심 내용\n* **A**: 새 내용'
++    c = sqlite3.connect(ldb.DB_PATH)
++    c.execute("UPDATE videos SET summary=?, summary_src='video', grade='exclude' WHERE record_id='rec-1'", (NEW,))
++    c.execute("UPDATE videos SET summary='새요약2', summary_src='video', grade='keep' WHERE record_id='rec-2'")
++    c.commit(); c.close()
++    h3 = tree_hash(vault)
++    code, out, rj = run(['--dry-run'])
++    check('dry-run: 맞춤 예정 1 · 경계 못 찾음 1 · Vault 무변경', code == 0 and rj['refreshed'] == 1 and rj['refresh_skipped'] == 1 and tree_hash(vault) == h3, rj)
++    code, out, rj = run([])
++    t1 = open(p1, encoding='utf-8').read()
++    check('요약 절만 교체 · 관련 항목 절 보존 · 영상 보기 줄 그대로',
++          t1.endswith('---\n' + NEW + REL) and '기존 본문' not in t1 and '**▶ 영상 보기: **https://www.youtube.com/watch?v=X\n---\n' + NEW in t1, t1[-400:])
++    check('프론트매터: grade: exclude · summary_src: video 를 notion_id 앞에 넣음 · 다른 줄 그대로',
++          '\ngrade: exclude\nsummary_src: video\nnotion_id: rec-1\n---' in t1 and t1.split('\ngrade:')[0] == before1.split('\nnotion_id:')[0], t1[:400])
++    check('경계 못 찾은 노트는 그대로 · refresh_skipped 1', open(p2, encoding='utf-8').read() == before2 and rj['refresh_skipped'] == 1, rj)
++    check('refreshed 1 → 검색 인덱스 갱신 · 재구성·인제스트는 안 함', rj['refreshed'] == 1 and sub_calls == ['build_search_index.py'], (rj, sub_calls))
++    check('log.md 에 resummary 기록', 'resummary | 재요약·등급 변경 노트 1개' in open(so.LOG_FILE, encoding='utf-8').read())
++    code, out, rj = run([])
++    check('두 번째 실행: 맞춤 0 · 하위 단계 0', rj['refreshed'] == 0 and sub_calls == [], (rj, sub_calls))
++    c = sqlite3.connect(ldb.DB_PATH); c.execute("UPDATE videos SET grade='keep' WHERE record_id='rec-1'"); c.commit(); c.close()
++    code, out, rj = run([])
++    t1b = open(p1, encoding='utf-8').read()
++    check('장부 grade 만 고치면 노트 grade 줄만 바뀜(요약은 그대로)', rj['refreshed'] == 1 and t1b == t1.replace('grade: exclude', 'grade: keep'), t1b[:300])
++    sub_calls.clear()
++    open(ldb.DB_PATH, 'wb').write(db_bak)   # 이후 안전장치 시험은 원래 장부로
++    open(p1, 'w', encoding='utf-8').write(orig1); open(p2, 'w', encoding='utf-8').write(orig2)
++
+     print('▶ 안전장치')
+     h1 = tree_hash(vault)
+     os.replace(ldb.DB_PATH, ldb.DB_PATH + '.full')
+diff --git a/scripts/test_video_summary.js b/scripts/test_video_summary.js
+index 4638be8..bc16419 100644
+--- a/scripts/test_video_summary.js
++++ b/scripts/test_video_summary.js
+@@ -9,6 +9,8 @@
+ //   4) 영상 입력 403 은 그 영상만 대체, 연속 2회면 그 실행에서 영상 입력을 끈다(403 난사 방지). 중간에 성공하면 다시 센다
+ //   5) 등급은 코드 규칙 — promo_main·generic·AI 무관 중 하나라도면 exclude, 신호가 없으면(대체 요약) null
+ //   6) 하루 분량 누계는 .video_quota.json 에 태평양시 날짜로 — 날짜가 바뀌면 0부터
++//   7) (v4.6-b) 모델 인자 — 2.x 는 thinkingBudget 0, 3.x 는 thinkingLevel minimal(thinkingBudget 은 400). 대체 없음(fallback:false)·신규 몫 예약.
++//      bad_summary 는 어느 검사에 걸렸는지 로그 1줄. promo_main 은 무료 자료 배포·구독 유도를 판매로 보지 않는다
+ 'use strict';
+ const fs = require('fs');
+ const os = require('os');
+@@ -33,7 +35,7 @@ const ok200 = (sig = SIG(), md = GOOD_MD, videoTok = 42600) => ({
+ const V = (o = {}) => ({ videoId: 'VVVVVVVVVV1', title: '제목', channelTitle: '채널', description: '설명', tags: ['t'],
+                           privacy: 'public', durationSec: 600, ...o });
+ 
+-function harness({ script = [], env = {}, today = '2026-10-12', quota } = {}) {
++function harness({ script = [], env = {}, today = '2026-10-12', quota, extra = {} } = {}) {
+   const quotaFile = path.join(TMP, `q-${++seq}.json`);
+   if (quota) fs.writeFileSync(quotaFile, JSON.stringify(quota));
+   const h = { requests: [], described: [], rotations: 0, logs: [], quotaFile };
+@@ -48,7 +50,7 @@ function harness({ script = [], env = {}, today = '2026-10-12', quota } = {}) {
+     getKey: () => 'TESTKEY', rotateKey: () => { h.rotations++; return true; }, keysCount: 4,
+     describe: async (v) => { h.described.push(v.videoId); return '설명란 요약'; },
+     validateSummary, todayKey: () => today, log: (m) => h.logs.push(m), sleep: async () => {},
+-    quotaFile, env,
++    quotaFile, env, ...extra,
+   });
+   h.quota = () => JSON.parse(fs.readFileSync(quotaFile, 'utf8'));
+   return h;
+@@ -174,6 +176,44 @@ const cases = [
+     const r = await h.s.summarize(V());
+     assert(r.src === 'app' && h.requests.length === 0 && JSON.parse(r.quality).fallback === 'VIDEO_SUMMARY=false', r.quality);
+   }],
++  ['(v4.6-b) thinkingConfig: 2.x = thinkingBudget 0 · 3.x = thinkingLevel minimal (thinkingBudget 없음)', async () => {
++    assert(vs.thinkingConfigFor('gemini-2.5-flash').thinkingBudget === 0, '2.5');
++    const t = vs.thinkingConfigFor('gemini-3.5-flash-lite');
++    assert(t.thinkingLevel === 'minimal' && !('thinkingBudget' in t), JSON.stringify(t));
++    const g = vs.buildBody(V(), { model: 'gemini-3.5-flash-lite' }).generationConfig;
++    assert(g.thinkingConfig.thinkingLevel === 'minimal' && g.mediaResolution === 'MEDIA_RESOLUTION_LOW', JSON.stringify(g.thinkingConfig));
++    assert(vs.buildBody(V()).generationConfig.thinkingConfig.thinkingBudget === 0, '기본 모델은 2.5');
++  }],
++  ['(v4.6-b) 모델 인자: 요청 경로·quality.model 이 그 모델', async () => {
++    const h = harness({ script: [ok200()], extra: { model: 'gemini-3.5-flash-lite' } });
++    const r = await h.s.summarize(V());
++    assert(r.ok && /gemini-3\.5-flash-lite:generateContent/.test(h.requests[0].opts.path) && JSON.parse(r.quality).model === 'gemini-3.5-flash-lite', r.quality);
++    assert(h.requests[0].body.generationConfig.thinkingConfig.thinkingLevel === 'minimal', '본문 thinking');
++  }],
++  ['(v4.6-b) fallback:false — 실패하면 설명란 요약을 부르지 않고 {ok:false, reason}', async () => {
++    const h = harness({ script: [ok200(SIG(), GOOD_MD, 0), { status: 400, data: {} }], extra: { fallback: false } });
++    const r1 = await h.s.summarize(V()); const r2 = await h.s.summarize(V({ privacy: 'unlisted' })); const r3 = await h.s.summarize(V());
++    assert(r1.ok === false && r1.reason === 'no_video_tokens' && r2.reason === 'privacy:unlisted' && r3.reason === 'video_http_400', JSON.stringify([r1, r2, r3]));
++    assert(h.described.length === 0 && h.logs.some(l => /영상 요약 실패 \(no_video_tokens\)/.test(l)), h.logs.join('|'));
++  }],
++  ['(v4.6-b) reserveSeconds: 하루 상한에서 예약분을 빼고 판단 (신규 몫 보호)', async () => {
++    const h = harness({ quota: { date: '2026-10-12', seconds: 5 * 3600, calls: 9 }, extra: { reserveSeconds: 3 * 3600, fallback: false } });
++    const r = await h.s.summarize(V({ durationSec: 600 }));
++    assert(r.ok === false && r.reason === 'daily_video_cap' && h.requests.length === 0, JSON.stringify(r));
++    const h2 = harness({ script: [ok200()], quota: { date: '2026-10-12', seconds: 5 * 3600, calls: 9 } });
++    assert((await h2.s.summarize(V({ durationSec: 600 }))).src === 'video', '예약 없으면 통과해야');
++  }],
++  ['(v4.6-b) bad_summary 사유: summaryProblem · 로그 1줄', async () => {
++    assert(vs.summaryProblem(GOOD_MD) === '' && vs.summaryProblem('') === 'empty' && vs.summaryProblem('요약 불가') === 'empty', '기본');
++    assert(vs.summaryProblem('## 영상 개요\n짧음') === 'missing:## 핵심 내용|## 주요 인사이트|## 활용 포인트', vs.summaryProblem('## 영상 개요\n짧음'));
++    assert(vs.summaryProblem(GOOD_MD.replace('실무에 이렇게 활용할 수 있다.', '짧다')) === 'short_tail:2', '활용 포인트 짧음');
++    const h = harness({ script: [ok200(SIG(), '## 영상 개요\n## 핵심 내용\n## 주요 인사이트\n본문')] });
++    const r = await h.s.summarize(V());
++    assert(r.src === 'app' && h.logs.some(l => l.includes('(bad_summary: missing:## 활용 포인트)')) && h.s.stats.reasons.bad_summary === 1, h.logs.join('|'));
++  }],
++  ['(v4.6-b) promo_main 프롬프트: 무료 자료 배포·구독 유도·끝에 잠깐 알리는 자기 홍보는 판매 아님', async () => {
++    assert(/무료 자료·템플릿·키트 배포/.test(vs.PROMPT) && /돈을 받는/.test(vs.PROMPT) && /자신의/.test(vs.PROMPT) && /잠깐 알리는 정도도 false/.test(vs.PROMPT), '프롬프트 문구');
++  }],
+ ];
+ 
+ (async () => {
+diff --git a/scripts/test_wiki_ingest.py b/scripts/test_wiki_ingest.py
+index 29f0d19..ae8f27c 100644
+--- a/scripts/test_wiki_ingest.py
++++ b/scripts/test_wiki_ingest.py
+@@ -1,6 +1,6 @@
+ #!/usr/bin/env python3
+ """
+-wiki_ingest.py (v4.5 wiki_extract 누적·재렌더·backfill·씨앗 · v4.6 품질 필터 제외) + scripts/migrate_library.py(v1·v2 → v3) 회귀 테스트
++wiki_ingest.py (v4.5 wiki_extract 누적·재렌더·backfill·씨앗 · v4.6 품질 필터 제외 · v4.6-b backfill 영상 요약 소스만·항목 0 안내 페이지) + scripts/migrate_library.py(v1·v2 → v3) 회귀 테스트
+ — 네트워크 0회(Gemini 는 가짜), 실제 Vault·data/·상태 파일 무변경
+ 
+   /opt/homebrew/bin/python3 scripts/test_wiki_ingest.py
+@@ -76,10 +76,10 @@ def ok_json(ents=(), cons=(), rels=()):
+                        'relations': [{'from': a, 'to': b, 'type': t} for a, b, t in rels]}, ensure_ascii=False)
+ 
+ 
+-def note(vault, folder, fname, title, rid, date='2026-10-01', grade=None):
++def note(vault, folder, fname, title, rid, date='2026-10-01', grade=None, src=None):
+     p = os.path.join(vault, folder, fname)
+     os.makedirs(os.path.dirname(p), exist_ok=True)
+-    g = f'grade: {grade}\n' if grade else ''
++    g = (f'grade: {grade}\n' if grade else '') + (f'summary_src: {src}\n' if src else '')
+     open(p, 'w', encoding='utf-8').write(
+         f'---\ntitle: "{title}"\nchannel: "채널"\nupload_date: {date}\n{g}notion_id: {rid}\n---\n\n## 영상 개요\n{title} 본문\n')
+     return p
+@@ -168,6 +168,13 @@ p = page(vault, 'concepts', '바이브코딩')
+ check('제목·파일명 변경이 페이지에 반영', '[[a2|영상A 새 제목]]' in p and '[[a1|' not in p, p)
+ check('Vault 에서 빠진 소스는 페이지에서 빠짐 · 장부 행은 보존', '[[b1|' not in p and 'source_count: 2' in p and 'rid-b' in rows())
+ check('항목 0개가 된 MCP 기존 페이지는 지우지 않음', os.path.exists(os.path.join(vault, '_wiki', 'concepts', 'MCP.md')))
++mcp = page(vault, 'concepts', 'MCP')
++check('(v4.6-b) 항목 0 → 안내 페이지(source_count 0 · 옛 항목 없음) · index 에서 빠짐 · empty_pages 1',
++      'source_count: 0' in mcp and '지금 이 항목을 다룬 영상이 없습니다' in mcp and '[[b1|' not in mcp and r4['empty_pages'] == 1
++      and '[[MCP]]' not in open(os.path.join(vault, '_wiki', 'index.md'), encoding='utf-8').read(), (r4, mcp[:300]))
++h = tree_hash(os.path.join(vault, '_wiki'))
++code, out, r5 = run('--render-only')
++check('(v4.6-b) 안내 페이지도 결정적 — 다음 렌더 쓰기 0', tree_hash(os.path.join(vault, '_wiki')) == h and r5['empty_pages'] == 0, str(r5))
+ check('네트워크 0회', NET_CALLS == [])
+ 
+ # ═══ 2. 응답 해석 실패 — ingested 에 넣지 않고 3회에서 포기 ═══
+@@ -210,8 +217,8 @@ check('소진: 1건만 기록 · 나머지 미처리 · 렌더 됨 · backfill 
+ 
+ # ═══ 4. 씨앗 — 옛 페이지 항목을 wiki_extract 로 ═══
+ root, vault = setup('seed')
+-note(vault, 'AI Claude', 's1.md', 'S원1', 'rid-s1'); note(vault, 'AI Claude', 's2.md', 'S원2', 'rid-s2')
+-note(vault, 'AI Claude', '채널 [Tech]_[한영자막] 제목_20260914.md', '[한영자막] 제목', 'rid-s3')
++note(vault, 'AI Claude', 's1.md', 'S원1', 'rid-s1', src='video'); note(vault, 'AI Claude', 's2.md', 'S원2', 'rid-s2', src='video')
++note(vault, 'AI Claude', '채널 [Tech]_[한영자막] 제목_20260914.md', '[한영자막] 제목', 'rid-s3', src='video')
+ open(os.path.join(vault, '_wiki', 'entities', 'Claude.md'), 'w', encoding='utf-8').write(
+     '---\ntype: entity\nname: "Claude"\nsource_count: 2\nlast_updated: 2026-10-01 00:00\n---\n\n# Claude\n\n> 총 **2개** 영상에서 언급됨\n\n'
+     '## 🎯 주제로 다룬 영상 (1개)\n\n- [[s1|S원1]] `채널` 2026-10-01\n  > 옛 인사이트1\n\n'
+@@ -244,7 +251,7 @@ check('씨앗 재적용: 그대로 3행 (멱등)', len(rows()) == 3)
+ # ═══ 5. backfill — 처리됐지만 wiki_extract 에 없는/seed 뿐인 소스를 묶어서 ═══
+ #   (위 seed 환경 이어서) s1·s2 = seed, 여기에 옛 ingested 45건 추가
+ for i in range(45):
+-    note(vault, 'AI Claude', f'old{i:02d}.md', f'옛영상{i:02d}', f'rid-old{i:02d}')
++    note(vault, 'AI Claude', f'old{i:02d}.md', f'옛영상{i:02d}', f'rid-old{i:02d}', src='video')   # (v4.6-b) backfill 은 영상 요약 소스만
+ st = {'ingested': {f'rid-old{i:02d}': 'x' for i in range(45)}}
+ st['ingested'].update({'rid-s1': 'x', 'rid-s2': 'x', 'rid-s3': 'x'})
+ json.dump(st, open(wc.STATE_FILE, 'w', encoding='utf-8'))
+@@ -270,7 +277,7 @@ check('대상 0이면 호출 0', CALLS == [])
+ 
+ # --no-backfill · 신규 소스는 backfill 대상 아님
+ root, vault = setup('nobf')
+-note(vault, 'AI Claude', 'n1.md', 'N1', 'rid-n1')
++note(vault, 'AI Claude', 'n1.md', 'N1', 'rid-n1', src='video')
+ json.dump({'ingested': {'rid-n1': 'x'}}, open(wc.STATE_FILE, 'w', encoding='utf-8'))
+ code, out, r = run('--no-backfill')
+ check('--no-backfill: 호출 0 · 대상은 남음', CALLS == [] and r['backfill_calls'] == 0 and r['backfill_left'] is None, str(r))
+@@ -378,6 +385,35 @@ check('exclude: 추출 호출 안 함 · 페이지에 없음 · keep·미판정
+       and '판매영상' not in pg and '좋은영상' in pg and '미판정영상' in pg, str((CALLS, pg[:300])))
+ check('exclude 노트 파일은 그대로', hashlib.sha256(open(px, 'rb').read()).hexdigest() == h and '품질 필터 제외 소스 1개' in out)
+ 
++# ═══ 10. (v4.6-b) backfill 은 실제 영상 요약 소스만 · stale(재요약)은 새 요약으로 다시 추출 ═══
++root, vault = setup('bfvideo')
++note(vault, 'AI Claude', 'p1.md', '옛설명란', 'rid-p1')                    # summary_src 없음(옛 노트) — 대상 아님
++note(vault, 'AI Claude', 'p2.md', '대체요약', 'rid-p2', src='app')         # 설명란 요약 — 대상 아님
++note(vault, 'AI Claude', 'p3.md', '재요약됨', 'rid-p3', src='video')       # 재요약 — stale 행 → 대상
++note(vault, 'AI Claude', 'p4.md', '영상요약새것', 'rid-p4', src='video')   # wiki_extract 없음 → 대상
++note(vault, 'AI Claude', 'p5.md', '영상요약완료', 'rid-p5', src='video')   # ok → 대상 아님
++c = sqlite3.connect(ldb.DB_PATH)
++c.execute("INSERT INTO wiki_extract (record_id,status,source,entities,concepts,attempts,created_at,updated_at) VALUES "
++          "('rid-p3','stale','single','[]','[{\"name\": \"MCP\", \"insight\": \"옛 지어낸 내용\"}]',0,'x','2026-10-01T00:00:00.000Z')")
++c.execute("INSERT INTO wiki_extract (record_id,status,source,entities,concepts,attempts,created_at,updated_at) VALUES "
++          "('rid-p5','ok','single','[]','[]',0,'x','2026-10-01T00:00:00.000Z')")
++c.commit(); c.close()
++json.dump({'ingested': {f'rid-p{i}': 'x' for i in range(1, 6)}}, open(wc.STATE_FILE, 'w', encoding='utf-8'))
++code, out, r = run('--render-only')
++check('stale 행은 다시 추출되기 전까지 페이지에 그대로(깜빡임 방지)', '옛 지어낸 내용' in page(vault, 'concepts', 'MCP'))
++wc.ENV['WIKI_BACKFILL_DAILY_MAX'] = '5'
++CALLS.clear()
++code, out, r = run()
++batch_prompts = [c for c in CALLS if c[0] == 'batch']
++rs = rows()
++check('backfill: 영상 요약 소스 2건(stale·없음)만 1회 · 설명란·옛 노트는 대상 아님',
++      len(batch_prompts) == 1 and r['backfill_done'] == 2 and r['backfill_left'] == 0 and 'rid-p1' not in rs and 'rid-p2' not in rs, str((r, CALLS)))
++check('stale → ok(batch) · 새 요약 결과로 교체', rs['rid-p3']['status'] == 'ok' and rs['rid-p3']['source'] == 'batch'
++      and json.loads(rs['rid-p3']['concepts']) == [{'name': '바이브코딩', 'insight': 'BF 재요약됨'}] and '옛 지어낸 내용' not in page(vault, 'concepts', 'MCP'), rs['rid-p3'])
++check('ok 행은 그대로', rs['rid-p5']['status'] == 'ok' and rs['rid-p5']['source'] == 'single')
++check('목록 밖 이름의 파일은 안내 페이지로 바꾸지 않음', (open(os.path.join(wi.CONCEPTS_DIR, '목록밖.md'), 'w', encoding='utf-8').write('손글씨') and False)
++      or (run('--render-only') and open(os.path.join(wi.CONCEPTS_DIR, '목록밖.md'), encoding='utf-8').read() == '손글씨'))
++
+ # ═══ 마무리 ═══
+ check('전체 네트워크 0회', NET_CALLS == [])
+ check('실제 상태 파일·장부 경로는 건드리지 않음(경로 복원 전 확인)', REAL_STATE != wc.STATE_FILE and REAL_DB != ldb.DB_PATH)
+diff --git a/sync_obsidian.py b/sync_obsidian.py
+index be4076e..bb307d2 100644
+--- a/sync_obsidian.py
++++ b/sync_obsidian.py
+@@ -5,6 +5,8 @@
+ #   2. 장부에만 있는 영상 → .md 추가 (본문 = 요약 마크다운)
+ #   3. 장부에 없는 notion_id 를 가진 영상 노트 → _trash/ 격리 (3중 안전장치)
+ #   4. 장부 tips 중 노트 없는 것 → AI 꿀팁/ 노트 추가 (꿀팁 고아는 보고만 한다)
++#   (v4.6-b) 장부가 실제 영상 요약(summary_src video)인데 노트 프론트매터 summary_src·grade 가 다르면
++#            그 노트의 요약 절만 제자리 교체 + grade·summary_src 를 맞춘다 (재요약 · 장부 grade 수정)
+ #   5. 변경이 있으면 MOC·Wiki·검색 인덱스 재구성
+ #
+ # 실행: /opt/homebrew/bin/python3 sync_obsidian.py [--rebuild] [--no-tips] [--orphans-dry-run] [--dry-run]
+@@ -191,6 +193,90 @@ def sync_existing_tags(videos, dry_run=False):
+         log(f'  ✅ 변경 없음 (모두 최신 상태)\n')
+     return updated
+ 
++# ── (v4.6-b) 재요약된 영상 노트 요약 절 제자리 교체 ──
++# 노트 모양: 프론트매터 · (빈 줄) · '**▶ 영상 보기: **URL' · '---' · 요약 · (build_obsidian_wiki 가 붙인) '\n\n---\n## 🔗 관련 항목…'
++# 요약 = '---' 줄 다음부터 관련 항목 절 앞까지. 관련 항목 절은 그대로 둔다. 경계를 못 찾으면 그 노트는 건드리지 않는다.
++WATCH_RE = re.compile(r'^\*\*▶ 영상 보기: \*\*[^\n]*\n---[ \t]*\n', re.M)
++RELATED_MARK = '\n\n---\n## 🔗 관련 항목'
++
++def _set_fm_key(content, key, value):
++    """프론트매터의 key 줄을 value 로. 없으면 notion_id 줄 앞(없으면 프론트매터 끝)에 넣는다. 프론트매터가 없으면 None"""
++    m = FM_RE.match(content)
++    if not m:
++        return None
++    fm = m.group(1)
++    line = f'{key}: {value}'
++    km = re.search(rf'^{re.escape(key)}:.*$', fm, re.M)
++    if km:
++        fm2 = fm[:km.start()] + line + fm[km.end():]
++    else:
++        nm = re.search(r'^notion_id:.*$', fm, re.M)
++        fm2 = (fm[:nm.start()] + line + '\n' + fm[nm.start():]) if nm else (fm + '\n' + line)
++    return content[:m.start(1)] + fm2 + content[m.end(1):]
++
++def refreshed_note(content, rec, replace_body):
++    """새 노트 내용(바뀔 게 없으면 원문 그대로) 또는 경계를 못 찾으면 None"""
++    new = content
++    if replace_body:
++        m = FM_RE.match(new)
++        w = WATCH_RE.search(new, m.end() if m else 0)
++        if not m or not w:
++            return None
++        start = w.end()
++        end = new.find(RELATED_MARK, start)
++        if end < 0:
++            end = len(new)
++            tail = '\n' if new.endswith('\n') else ''
++        else:
++            tail = ''
++        new = new[:start] + nfc(rec.get('summary') or '').strip('\n') + tail + new[end:]
++    for key, val in (('grade', rec.get('grade') or 'null'), ('summary_src', rec.get('summary_src') or 'app')):
++        new = _set_fm_key(new, key, val)
++        if new is None:
++            return None
++    return nfc(new)
++
++REFRESH_STATS = {'skipped': 0}
++
++def refresh_changed_notes(videos, dry_run=False):
++    """장부 summary_src 가 'video' 인 행만 본다. 노트 프론트매터 summary_src 가 video 가 아니면 요약 절 교체 + 키 맞춤,
++    video 인데 grade 만 다르면 grade 줄만. 바뀐(dry_run 이면 바뀔) 노트 수 반환. 설명란 요약 행·노트 없는 행은 건드리지 않는다."""
++    REFRESH_STATS['skipped'] = 0
++    targets = [v for v in videos if v.get('summary_src') == 'video']
++    if not targets:
++        return 0
++    log('🔁 재요약·등급 변경 노트 맞춤 중...')
++    id_to_path = get_existing_notion_ids()
++    changed = 0
++    for v in targets:
++        p = id_to_path.get(v['record_id'])
++        if not p:
++            continue
++        try:
++            content = nfc(open(p, encoding='utf-8', errors='ignore').read())
++        except Exception:
++            continue
++        cur_src, cur_grade = fm_value(content, 'summary_src'), fm_value(content, 'grade')
++        want_grade = v.get('grade') or 'null'
++        if cur_src == 'video' and cur_grade == want_grade:
++            continue
++        new = refreshed_note(content, v, replace_body=(cur_src != 'video'))
++        if new is None:
++            REFRESH_STATS['skipped'] += 1
++            log(f'    ⚠️  요약 절 경계를 못 찾음 — 건드리지 않음: {nfc(os.path.relpath(p, VAULT))}')
++            continue
++        if new == content:
++            continue
++        changed += 1
++        if dry_run:
++            if changed <= 10:
++                log(f'    [dry-run] {"요약 교체" if cur_src != "video" else "grade"} → {want_grade}  {nfc(os.path.relpath(p, VAULT))}')
++            continue
++        open(p, 'w', encoding='utf-8').write(new)
++    log(f'  ✅ {changed}개 노트 {"맞춤 예정 (dry-run)" if dry_run else "맞춤"}'
++        + (f' · 경계 못 찾아 건너뜀 {REFRESH_STATS["skipped"]}' if REFRESH_STATS['skipped'] else '') + '\n')
++    return changed
++
+ # ── 영상 노트 내용 ──
+ # 노션 시절 노트(본문 블록 → 마크다운)와 같은 모양: 빈 줄(썸네일 자리) · '▶ 영상 보기' · 구분선 · 요약.
+ def _q(s):
+@@ -488,6 +574,9 @@ def main():
+     # 기존 파일 tags 를 장부 topics 로 항상 동기화 (변경이 없으면 파일 쓰기 0건)
+     tags_updated = sync_existing_tags(videos, dry_run=DRY)
+ 
++    # 1.2단계 (v4.6-b): 재요약·등급 변경 노트 요약 절 제자리 교체 (해당 없으면 파일 읽기만)
++    refreshed = refresh_changed_notes(videos, dry_run=DRY)
++
+     # 1단계: 신규 파일 추가
+     added, skipped = sync_new_pages(videos, dry_run=DRY)
+ 
+@@ -503,6 +592,7 @@ def main():
+         print('RESULT_JSON:' + json.dumps({
+             'dry_run': True, 'videos': len(videos), 'tips': len(tips),
+             'added': added, 'tips_added': tips_added, 'tags_updated': tags_updated,
++            'refreshed': refreshed, 'refresh_skipped': REFRESH_STATS['skipped'],
+             'orphans_candidates': ORPHAN_STATS['candidates'], 'orphans_blocked': ORPHAN_STATS['blocked'], 'skipped_same_path': skipped['same_path'], 'skipped_same_url': skipped['same_url'],
+             'tips_orphans': tips_orphans, 'elapsed': round(time.time() - start),
+         }, ensure_ascii=False))
+@@ -553,8 +643,8 @@ def main():
+         else:
+             log('ℹ️  wiki_ingest.py 없음 — 건너뜀')
+ 
+-    # 4단계: 검색 인덱스 증분 갱신 (신규/변경이 있을 때만)
+-    if added > 0 or tags_updated > 0 or orphans_removed > 0 or force:
++    # 4단계: 검색 인덱스 증분 갱신 (신규/변경이 있을 때만. v4.6-b 재요약·등급 변경 포함 — exclude 는 인덱스에서 빠진다)
++    if added > 0 or tags_updated > 0 or orphans_removed > 0 or refreshed > 0 or force:
+         log('\n🔍 검색 인덱스 갱신 중...')
+         idx_script = os.path.join(SCRIPT_DIR, 'build_search_index.py')
+         if os.path.exists(idx_script):
+@@ -579,6 +669,10 @@ def main():
+             'Wiki 재구성': '완료' if rebuilt else '생략',
+             '소요시간': f'{elapsed}초',
+         })
++    if refreshed > 0:
++        write_wiki_log('resummary', f'재요약·등급 변경 노트 {refreshed}개 맞춤', {
++            '내용': '요약 절 제자리 교체(관련 항목 절 보존) · grade·summary_src 맞춤',
++        })
+     if orphans_removed > 0:
+         write_wiki_log('cleanup', f'고아 파일 {orphans_removed}개 격리', {
+             '격리 위치': '_trash/ (내용 보존)',
+@@ -596,6 +690,8 @@ def main():
+         'added': added,
+         'tips_added': tips_added,
+         'tags_updated': tags_updated,
++        'refreshed': refreshed,
++        'refresh_skipped': REFRESH_STATS['skipped'],
+         'orphans_removed': orphans_removed,
+         'orphans_candidates': ORPHAN_STATS['candidates'],
+         'orphans_blocked': ORPHAN_STATS['blocked'],
+diff --git a/wiki_ingest.py b/wiki_ingest.py
+index 811435f..e2fe455 100644
+--- a/wiki_ingest.py
++++ b/wiki_ingest.py
+@@ -16,6 +16,10 @@ Karpathy LLM Wiki Ingest Engine
+   python3 wiki_ingest.py --full | --limit=N  (종전) 전체 재분석 / 처리 상한 (둘 다 backfill 안 함)
+ 
+ .env: WIKI_BACKFILL_DAILY_MAX(기본 30, 0 = 끔) · WIKI_BACKFILL_BATCH(기본 20)
++
++(v4.6-b) backfill 대상은 실제 영상으로 요약된 노트(프론트매터 summary_src: video)만이다 — 설명란만 보고 지어낸 옛 요약으로
++         Wiki 를 채우지 않는다. 재요약(lib/resummarize.js)이 wiki_extract 를 stale 로 돌려 두면 여기서 새 요약으로 다시 추출한다.
++         항목이 0개가 된 이름(목록 ENTITIES·CONCEPTS 안)의 기존 페이지는 안내 문구 페이지로 다시 그린다(지우지 않음 — 링크 유지).
+ """
+ 
+ import os, re, json, sys, time, unicodedata
+@@ -93,6 +97,7 @@ def collect_sources():
+                 'notion_id': fm.get('notion_id', ''),
+                 'upload_date': fm.get('upload_date', ''),
+                 'grade': fm.get('grade', ''),
++                'summary_src': fm.get('summary_src', ''),   # (v4.6-b) backfill 은 'video' 만
+                 'body': body[:3000],  # API 비용 절약
+             })
+     # (v4.6) grade: exclude 노트(판매 주목적·일반론·AI 무관)는 추출·backfill·페이지 렌더 모두에서 뺀다. 노트 자체는 그대로
+@@ -286,6 +291,11 @@ def save_fail(conn, rid, source):
+ def needs_backfill(row):
+     return row is None or (row['status'] != 'ok' and row['attempts'] < MAX_FAILS)
+ 
++def backfill_source(s, ingested, store):
++    """(v4.6-b) backfill 대상 = 예전에 처리됐고 · 실제 영상 요약 노트이고 · wiki_extract 가 없거나 ok 가 아님(seed·failed·stale)"""
++    rid = s['notion_id']
++    return bool(rid) and rid in ingested and s.get('summary_src') == 'video' and needs_backfill(store.get(rid))
++
+ # ══════════════════════════════════════
+ # 4. 페이지 렌더 (wiki_extract 전체 + 현재 Vault)
+ # ══════════════════════════════════════
+@@ -382,15 +392,36 @@ def render_index(entity_data, concept_data):
+     lines += ['', '---', '', '*이 파일은 `wiki_ingest.py` 실행 시 자동 갱신됩니다 (장부 wiki_extract 전체 기준).*']
+     return '\n'.join(lines)
+ 
++def render_empty_page(kind, name):
++    """(v4.6-b) 항목이 0개가 된 이름의 페이지 — 결정적(시각 없음)이라 할 일 없는 실행은 다시 쓰지 않는다"""
++    return '\n'.join(['---', f'type: {kind}', f'name: "{name}"', 'source_count: 0', '---', '', f'# {name}', '',
++                      '> 지금 이 항목을 다룬 영상이 없습니다 — 품질 필터로 제외됐거나, 실제 영상 재요약 뒤 다시 추출되기를 기다리는 중입니다.',
++                      '', '*이 파일은 `wiki_ingest.py` 실행 시 자동 갱신됩니다 (장부 wiki_extract 전체 기준).*', ''])
++
++def empty_pages(dir_path, names, data, kind):
++    """목록(names) 안 이름인데 이번 렌더에 항목이 없고 파일은 있는 페이지 → 안내 페이지로. 쓴 수 반환. 목록 밖 파일은 건드리지 않는다"""
++    w = 0
++    if not os.path.isdir(dir_path):
++        return 0
++    for f in sorted(os.listdir(dir_path)):
++        name = nfc(f)[:-3] if f.endswith('.md') else None
++        if not name or name in data or name not in names:
++            continue
++        w += write_if_changed(os.path.join(dir_path, f), render_empty_page(kind, name))
++    return w
++
+ def render_all(conn, sources):
+-    """반환: (entity_data, concept_data, 쓴 엔티티 수, 쓴 개념 수, index 를 썼는가). 항목 0개인 이름의 기존 페이지는 건드리지 않는다."""
++    """반환: (entity_data, concept_data, 쓴 엔티티 수, 쓴 개념 수, index 를 썼는가, 안내 페이지로 쓴 수).
++    (v4.6-b) 항목 0개인 이름(목록 안)의 기존 페이지는 지우지 않고 안내 문구 페이지로 다시 그린다. index 에는 안 실린다."""
+     os.makedirs(ENTITIES_DIR, exist_ok=True)
+     os.makedirs(CONCEPTS_DIR, exist_ok=True)
+     entity_data, concept_data = build_page_data(load_store(conn), sources)
+     ent_w = sum(write_if_changed(os.path.join(ENTITIES_DIR, nfc(f'{n}.md')), render_entity_page(n, es)) for n, es in entity_data.items())
+     con_w = sum(write_if_changed(os.path.join(CONCEPTS_DIR, nfc(f'{n}.md')), render_concept_page(n, es)) for n, es in concept_data.items())
++    empty_w = (empty_pages(ENTITIES_DIR, set(ENTITIES), entity_data, 'entity') +
++               empty_pages(CONCEPTS_DIR, set(CONCEPTS), concept_data, 'concept'))
+     idx_w = write_if_changed(os.path.join(WIKI_DIR, 'index.md'), render_index(entity_data, concept_data))
+-    return entity_data, concept_data, ent_w, con_w, idx_w
++    return entity_data, concept_data, ent_w, con_w, idx_w, empty_w
+ 
+ # ══════════════════════════════════════
+ # 5. 옛 페이지 → 씨앗 (v4.5 1회)
+@@ -602,7 +633,7 @@ def run(conn, state, ingested, sources, full_mode, render_only, no_backfill, lim
+         if bf.get('date') != today:
+             bf = {'date': today, 'calls': 0}
+         store = load_store(conn)
+-        targets = [s for s in sources if s['notion_id'] and s['notion_id'] in ingested and needs_backfill(store.get(s['notion_id']))]
++        targets = [s for s in sources if backfill_source(s, ingested, store)]
+         log(f'\n🧩 backfill: 대상 {len(targets)}건 · 오늘 {bf["calls"]}/{cap}회 사용')
+         while targets and bf['calls'] < cap:
+             bs = batch_size()
+@@ -632,14 +663,15 @@ def run(conn, state, ingested, sources, full_mode, render_only, no_backfill, lim
+             save_state(state)
+             log(f'  [{bf["calls"]}/{cap}] {len(got)}/{len(batch)}건 기록')
+         store = load_store(conn)
+-        bf_left = sum(1 for s in sources if s['notion_id'] and s['notion_id'] in ingested and needs_backfill(store.get(s['notion_id'])))
++        bf_left = sum(1 for s in sources if backfill_source(s, ingested, store))
+         state['backfill'] = bf
+         log(f'  backfill 남은 대상 {bf_left}건')
+ 
+     # ── 페이지 재렌더 (wiki_extract 전체 기준, 내용 같으면 안 씀) ──
+     log(f'\n📝 Wiki 페이지 렌더 중...')
+-    entity_data, concept_data, ent_updated, con_updated, idx_w = render_all(conn, sources)
+-    log(f'  엔티티 {len(entity_data)}개 중 {ent_updated}개 · 개념 {len(concept_data)}개 중 {con_updated}개 · index {"갱신" if idx_w else "그대로"}')
++    entity_data, concept_data, ent_updated, con_updated, idx_w, empty_w = render_all(conn, sources)
++    log(f'  엔티티 {len(entity_data)}개 중 {ent_updated}개 · 개념 {len(concept_data)}개 중 {con_updated}개 · index {"갱신" if idx_w else "그대로"}'
++        + (f' · 항목 0 안내 페이지 {empty_w}개' if empty_w else ''))
+ 
+     state['ingested'] = ingested
+     state['last_run'] = datetime.now().isoformat()
+@@ -652,7 +684,7 @@ def run(conn, state, ingested, sources, full_mode, render_only, no_backfill, lim
+     log(f'  처리: {processed}개 | 해석 실패: {failed}개 | 오류: {errors}개 | backfill: {bf_calls}회 {bf_done}건')
+     log(f'  소요시간: {elapsed}초')
+ 
+-    if processed or failed or bf_calls or ent_updated or con_updated:
++    if processed or failed or bf_calls or ent_updated or con_updated or empty_w:
+         write_wiki_log('ingest', f'{processed}개 소스 처리' + (f' · backfill {bf_done}건' if bf_calls else ''), {
+             '처리': f'{processed}개',
+             '해석 실패': f'{failed}개',
+@@ -667,7 +699,7 @@ def run(conn, state, ingested, sources, full_mode, render_only, no_backfill, lim
+     print('WIKI_RESULT:' + json.dumps({
+         'processed': processed, 'errors': errors, 'failed': failed,
+         'entities_updated': ent_updated, 'concepts_updated': con_updated,
+-        'entities': len(entity_data), 'concepts': len(concept_data),
++        'entities': len(entity_data), 'concepts': len(concept_data), 'empty_pages': empty_w,
+         'backfill_calls': bf_calls, 'backfill_done': bf_done, 'backfill_left': bf_left,
+         'elapsed': elapsed,
+     }))

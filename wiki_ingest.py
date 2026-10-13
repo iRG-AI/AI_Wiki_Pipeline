@@ -16,6 +16,10 @@ Karpathy LLM Wiki Ingest Engine
   python3 wiki_ingest.py --full | --limit=N  (종전) 전체 재분석 / 처리 상한 (둘 다 backfill 안 함)
 
 .env: WIKI_BACKFILL_DAILY_MAX(기본 30, 0 = 끔) · WIKI_BACKFILL_BATCH(기본 20)
+
+(v4.6-b) backfill 대상은 실제 영상으로 요약된 노트(프론트매터 summary_src: video)만이다 — 설명란만 보고 지어낸 옛 요약으로
+         Wiki 를 채우지 않는다. 재요약(lib/resummarize.js)이 wiki_extract 를 stale 로 돌려 두면 여기서 새 요약으로 다시 추출한다.
+         항목이 0개가 된 이름(목록 ENTITIES·CONCEPTS 안)의 기존 페이지는 안내 문구 페이지로 다시 그린다(지우지 않음 — 링크 유지).
 """
 
 import os, re, json, sys, time, unicodedata
@@ -93,6 +97,7 @@ def collect_sources():
                 'notion_id': fm.get('notion_id', ''),
                 'upload_date': fm.get('upload_date', ''),
                 'grade': fm.get('grade', ''),
+                'summary_src': fm.get('summary_src', ''),   # (v4.6-b) backfill 은 'video' 만
                 'body': body[:3000],  # API 비용 절약
             })
     # (v4.6) grade: exclude 노트(판매 주목적·일반론·AI 무관)는 추출·backfill·페이지 렌더 모두에서 뺀다. 노트 자체는 그대로
@@ -286,6 +291,11 @@ def save_fail(conn, rid, source):
 def needs_backfill(row):
     return row is None or (row['status'] != 'ok' and row['attempts'] < MAX_FAILS)
 
+def backfill_source(s, ingested, store):
+    """(v4.6-b) backfill 대상 = 예전에 처리됐고 · 실제 영상 요약 노트이고 · wiki_extract 가 없거나 ok 가 아님(seed·failed·stale)"""
+    rid = s['notion_id']
+    return bool(rid) and rid in ingested and s.get('summary_src') == 'video' and needs_backfill(store.get(rid))
+
 # ══════════════════════════════════════
 # 4. 페이지 렌더 (wiki_extract 전체 + 현재 Vault)
 # ══════════════════════════════════════
@@ -382,15 +392,36 @@ def render_index(entity_data, concept_data):
     lines += ['', '---', '', '*이 파일은 `wiki_ingest.py` 실행 시 자동 갱신됩니다 (장부 wiki_extract 전체 기준).*']
     return '\n'.join(lines)
 
+def render_empty_page(kind, name):
+    """(v4.6-b) 항목이 0개가 된 이름의 페이지 — 결정적(시각 없음)이라 할 일 없는 실행은 다시 쓰지 않는다"""
+    return '\n'.join(['---', f'type: {kind}', f'name: "{name}"', 'source_count: 0', '---', '', f'# {name}', '',
+                      '> 지금 이 항목을 다룬 영상이 없습니다 — 품질 필터로 제외됐거나, 실제 영상 재요약 뒤 다시 추출되기를 기다리는 중입니다.',
+                      '', '*이 파일은 `wiki_ingest.py` 실행 시 자동 갱신됩니다 (장부 wiki_extract 전체 기준).*', ''])
+
+def empty_pages(dir_path, names, data, kind):
+    """목록(names) 안 이름인데 이번 렌더에 항목이 없고 파일은 있는 페이지 → 안내 페이지로. 쓴 수 반환. 목록 밖 파일은 건드리지 않는다"""
+    w = 0
+    if not os.path.isdir(dir_path):
+        return 0
+    for f in sorted(os.listdir(dir_path)):
+        name = nfc(f)[:-3] if f.endswith('.md') else None
+        if not name or name in data or name not in names:
+            continue
+        w += write_if_changed(os.path.join(dir_path, f), render_empty_page(kind, name))
+    return w
+
 def render_all(conn, sources):
-    """반환: (entity_data, concept_data, 쓴 엔티티 수, 쓴 개념 수, index 를 썼는가). 항목 0개인 이름의 기존 페이지는 건드리지 않는다."""
+    """반환: (entity_data, concept_data, 쓴 엔티티 수, 쓴 개념 수, index 를 썼는가, 안내 페이지로 쓴 수).
+    (v4.6-b) 항목 0개인 이름(목록 안)의 기존 페이지는 지우지 않고 안내 문구 페이지로 다시 그린다. index 에는 안 실린다."""
     os.makedirs(ENTITIES_DIR, exist_ok=True)
     os.makedirs(CONCEPTS_DIR, exist_ok=True)
     entity_data, concept_data = build_page_data(load_store(conn), sources)
     ent_w = sum(write_if_changed(os.path.join(ENTITIES_DIR, nfc(f'{n}.md')), render_entity_page(n, es)) for n, es in entity_data.items())
     con_w = sum(write_if_changed(os.path.join(CONCEPTS_DIR, nfc(f'{n}.md')), render_concept_page(n, es)) for n, es in concept_data.items())
+    empty_w = (empty_pages(ENTITIES_DIR, set(ENTITIES), entity_data, 'entity') +
+               empty_pages(CONCEPTS_DIR, set(CONCEPTS), concept_data, 'concept'))
     idx_w = write_if_changed(os.path.join(WIKI_DIR, 'index.md'), render_index(entity_data, concept_data))
-    return entity_data, concept_data, ent_w, con_w, idx_w
+    return entity_data, concept_data, ent_w, con_w, idx_w, empty_w
 
 # ══════════════════════════════════════
 # 5. 옛 페이지 → 씨앗 (v4.5 1회)
@@ -602,7 +633,7 @@ def run(conn, state, ingested, sources, full_mode, render_only, no_backfill, lim
         if bf.get('date') != today:
             bf = {'date': today, 'calls': 0}
         store = load_store(conn)
-        targets = [s for s in sources if s['notion_id'] and s['notion_id'] in ingested and needs_backfill(store.get(s['notion_id']))]
+        targets = [s for s in sources if backfill_source(s, ingested, store)]
         log(f'\n🧩 backfill: 대상 {len(targets)}건 · 오늘 {bf["calls"]}/{cap}회 사용')
         while targets and bf['calls'] < cap:
             bs = batch_size()
@@ -632,14 +663,15 @@ def run(conn, state, ingested, sources, full_mode, render_only, no_backfill, lim
             save_state(state)
             log(f'  [{bf["calls"]}/{cap}] {len(got)}/{len(batch)}건 기록')
         store = load_store(conn)
-        bf_left = sum(1 for s in sources if s['notion_id'] and s['notion_id'] in ingested and needs_backfill(store.get(s['notion_id'])))
+        bf_left = sum(1 for s in sources if backfill_source(s, ingested, store))
         state['backfill'] = bf
         log(f'  backfill 남은 대상 {bf_left}건')
 
     # ── 페이지 재렌더 (wiki_extract 전체 기준, 내용 같으면 안 씀) ──
     log(f'\n📝 Wiki 페이지 렌더 중...')
-    entity_data, concept_data, ent_updated, con_updated, idx_w = render_all(conn, sources)
-    log(f'  엔티티 {len(entity_data)}개 중 {ent_updated}개 · 개념 {len(concept_data)}개 중 {con_updated}개 · index {"갱신" if idx_w else "그대로"}')
+    entity_data, concept_data, ent_updated, con_updated, idx_w, empty_w = render_all(conn, sources)
+    log(f'  엔티티 {len(entity_data)}개 중 {ent_updated}개 · 개념 {len(concept_data)}개 중 {con_updated}개 · index {"갱신" if idx_w else "그대로"}'
+        + (f' · 항목 0 안내 페이지 {empty_w}개' if empty_w else ''))
 
     state['ingested'] = ingested
     state['last_run'] = datetime.now().isoformat()
@@ -652,7 +684,7 @@ def run(conn, state, ingested, sources, full_mode, render_only, no_backfill, lim
     log(f'  처리: {processed}개 | 해석 실패: {failed}개 | 오류: {errors}개 | backfill: {bf_calls}회 {bf_done}건')
     log(f'  소요시간: {elapsed}초')
 
-    if processed or failed or bf_calls or ent_updated or con_updated:
+    if processed or failed or bf_calls or ent_updated or con_updated or empty_w:
         write_wiki_log('ingest', f'{processed}개 소스 처리' + (f' · backfill {bf_done}건' if bf_calls else ''), {
             '처리': f'{processed}개',
             '해석 실패': f'{failed}개',
@@ -667,7 +699,7 @@ def run(conn, state, ingested, sources, full_mode, render_only, no_backfill, lim
     print('WIKI_RESULT:' + json.dumps({
         'processed': processed, 'errors': errors, 'failed': failed,
         'entities_updated': ent_updated, 'concepts_updated': con_updated,
-        'entities': len(entity_data), 'concepts': len(concept_data),
+        'entities': len(entity_data), 'concepts': len(concept_data), 'empty_pages': empty_w,
         'backfill_calls': bf_calls, 'backfill_done': bf_done, 'backfill_left': bf_left,
         'elapsed': elapsed,
     }))
