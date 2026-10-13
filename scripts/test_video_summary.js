@@ -11,6 +11,7 @@
 //   6) 하루 분량 누계는 .video_quota.json 에 태평양시 날짜로 — 날짜가 바뀌면 0부터
 //   7) (v4.6-b) 모델 인자 — 2.x 는 thinkingBudget 0, 3.x 는 thinkingLevel minimal(thinkingBudget 은 400). 대체 없음(fallback:false)·신규 몫 예약.
 //      bad_summary 는 어느 검사에 걸렸는지 로그 1줄. promo_main 은 무료 자료 배포·구독 유도를 판매로 보지 않는다
+//   8) (v4.11) maxServerErrors — 5xx 만 세어 그 횟수면 재시도 그만(재요약용). 주지 않으면 예전대로 키 4개 × 2회
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -150,6 +151,21 @@ const cases = [
     const h = harness({ script: Array.from({ length: 8 }, () => ({ status: 429, data: {} })) });
     const r = await h.s.summarize(V());
     assert(r.src === 'app' && h.requests.length === 8 && JSON.parse(r.quality).fallback === 'video_http_429', r.quality);
+  }],
+  ['(v4.11) maxServerErrors 1: 5xx 1회면 재시도 없이 실패 · 키 회전 0 · 분량 1회 · 로그 1줄', async () => {
+    const h = harness({ script: [{ status: 503, data: {} }], extra: { fallback: false, maxServerErrors: 1 } });
+    const r = await h.s.summarize(V());
+    assert(!r.ok && r.reason === 'video_http_503' && h.requests.length === 1 && h.rotations === 0 && h.described.length === 0, JSON.stringify(r));
+    assert(h.quota().calls === 1 && h.logs.some(l => /재시도 그만 \(5xx 1\/1\)/.test(l)), h.logs.join('|'));
+  }],
+  ['(v4.11) maxServerErrors 는 5xx 만 센다 — 429·네트워크 오류는 그대로 키를 돌림 · 없으면 예전대로 8회', async () => {
+    const h = harness({ script: [{ status: 503, data: {} }, { status: 429, data: {} }, { netErr: 'ECONNRESET' }, { status: 500, data: {} }],
+                        extra: { fallback: false, maxServerErrors: 2 } });
+    const r = await h.s.summarize(V());
+    assert(r.reason === 'video_http_500' && h.requests.length === 4 && h.rotations === 3, `요청 ${h.requests.length} · 회전 ${h.rotations}`);
+    const h2 = harness({ script: Array.from({ length: 8 }, () => ({ status: 503, data: {} })) });
+    const r2 = await h2.s.summarize(V());
+    assert(r2.src === 'app' && h2.requests.length === 8 && JSON.parse(r2.quality).fallback === 'video_http_503', `기본 ${h2.requests.length}`);
   }],
   ['summarize: 400 등 그 밖의 오류는 재시도 없이 대체', async () => {
     const h = harness({ script: [{ status: 400, data: {} }] });

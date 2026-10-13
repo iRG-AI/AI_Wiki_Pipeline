@@ -1254,11 +1254,11 @@ async function runResummary() {
     const yt = require('./lib/youtube_oauth');   // todayKey (태평양시) — 새 날짜 키를 따로 만들지 않는다
     const r = await resummarize.run({
       db: libDb, fetchDetails: getBatchDetails, todayKey: yt.todayKey, env: process.env, log,
-      makeSummarizer: ({ model, reserveSeconds }) => videoSummary.makeVideoSummarizer({
+      makeSummarizer: ({ model, reserveSeconds, maxServerErrors }) => videoSummary.makeVideoSummarizer({
         request: httpsRequest, getKey: getActiveGeminiKey, rotateKey: rotateGeminiKey,
         keysCount: CONFIG.geminiApiKeys.length, describe: geminiSummarize, validateSummary,
         todayKey: yt.todayKey, log, env: process.env, quotaFile: path.join(__dirname, '.video_quota.json'),
-        model, reserveSeconds, fallback: false,
+        model, reserveSeconds, maxServerErrors, fallback: false,
       }),
     });
     log(`  ${resummarize.summaryLine(r)}`);

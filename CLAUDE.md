@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**현재 버전: v4.10** (2026-10-14) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.11** (2026-10-14) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -16,6 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > v4.8: 카톡 꿀팁 원문 제목 자동 조회 — 제목이 URL 추정인 신규 꿀팁만 `lib/title_fetch.py`(노션 공개 API · 유튜브 oEmbed · og:title)로 조회, 실패하면 추정 제목 그대로.
 > v4.9: 꿀팁 분류 보정 — 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)는 태그 판정에서 호스트를 빼고(「지식관리」 오분류), 한글 표기(「클로드」·「노션」·「제미나이」 등)도 같은 태그로(`lib/kakao_parse.classify`). 기존 꿀팁은 `scripts/recategorize_tips.py`(규칙이 매긴 행만 다시 매김 · 출처 `https://` 접두 정리 · 노트 제자리 수정)로 한 번 반영.
 > v4.10: 꿀팁 「기타」 + 태그 없음(노션 이관 때 기본값 그대로 남은 행)은 사람이 고른 값으로 보지 않고 `recategorize_tips.py` 가 다시 매긴다(`blank_default`). 꿀팁 제목 3차 25건(URL 추정 제목 → 원문 제목, `retitle_tips.py`) 뒤 재분류 — 「기타」 66 → 42.
+> v4.11: 재요약(3.5 Flash-Lite)은 5xx 를 영상 1편에 `RESUMMARY_MAX_5XX`(기본 1)회 받으면 재시도 없이 그 실행의 재요약을 멈춘다(10-14 00시 503 8회 = 약 13분). 그 영상은 `quality.resummary_5xx` +1, 3회면 건너뜀. 신규 영상 경로는 그대로 키 4개 × 2회.
 
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
@@ -72,8 +73,8 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 
 # 회귀 테스트 14종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
 /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
-/opt/homebrew/bin/node scripts/test_video_summary.js         # 23/23  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 (가짜 요청)
-/opt/homebrew/bin/node scripts/test_resummarize.js           # 9/9    (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 (임시 장부, 가짜 요약기)
+/opt/homebrew/bin/node scripts/test_video_summary.js         # 25/25  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 · (v4.11) 5xx 상한 (가짜 요청)
+/opt/homebrew/bin/node scripts/test_resummarize.js           # 11/11  (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 · (v4.11) 5xx 조기 중단·3회 건너뜀 (임시 장부, 가짜 요약기)
 /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
 /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
 /opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 64/64  Wiki 추출 누적·재렌더·backfill(v4.6-b 영상 요약 소스만·stale)·씨앗·품질 제외·항목 0 안내 페이지 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
@@ -378,7 +379,7 @@ scheduler.js main: 마스터 인제스트(신규 영상) 뒤 · 장부 연결이
 
 - **신규 영상이 먼저다.** 실행당 `RESUMMARY_PER_RUN`(5) · 하루(PT) `RESUMMARY_DAILY_MAX`(20) · 하루 영상 분량 8시간 중 `RESUMMARY_RESERVE_SECONDS`(10800)는 신규 몫으로 남긴다(PT 하루 안 실행 순서 18→00→06→12시 — 앞 실행이 다 쓰면 12시 신규가 설명란 요약으로 밀린다). 분량 누계는 신규와 같은 `.video_quota.json`.
 - 모델은 `RESUMMARY_MODEL`(기본 `gemini-3.5-flash-lite`). 무료 한도가 모델별로 따로라 본 파이프라인의 2.5 Flash 하루 한도를 먹지 않는다. **3.x 모델은 `thinkingBudget` 을 400 으로 거절한다** — `video_summary.thinkingConfigFor` 가 2.x 는 `thinkingBudget: 0`, 그 밖은 `thinkingLevel: 'minimal'`. 2.5 Flash 의 `thinkingBudget: 0` 은 그대로 둘 것.
-- **실패하면 설명란 요약으로 대체하지 않는다**(기존 요약 유지). 목록에 없음(`gone`)·공개 아님·길이 모름·영상 토큰 0 → `quality.resummary_skip`(다시 안 함). `bad_json`·`bad_signals`·`bad_summary`·`video_403`·그 밖 4xx → `resummary_fail` +1, 2회면 건너뜀. 429·5xx·네트워크·하루 분량·`video_403_repeated`·`VIDEO_SUMMARY=false` → 그 실행 재요약 중단. 건너뜀·실패 표시는 시트에 안 보이는 `quality` 만 바꾸므로 `updated_at` 을 안 건드린다.
+- **실패하면 설명란 요약으로 대체하지 않는다**(기존 요약 유지). 목록에 없음(`gone`)·공개 아님·길이 모름·영상 토큰 0 → `quality.resummary_skip`(다시 안 함). `bad_json`·`bad_signals`·`bad_summary`·`video_403`·그 밖 4xx → `resummary_fail` +1, 2회면 건너뜀. 429·5xx·네트워크·하루 분량·`video_403_repeated`·`VIDEO_SUMMARY=false` → 그 실행 재요약 중단. (v4.11) 5xx 는 영상 1편에 `RESUMMARY_MAX_5XX`(기본 1, 0 = 신규와 같은 8회)회면 재시도 없이 중단하고(3.5 Flash-Lite 503 은 1~2분 뒤에 와서 8회면 약 13분 — 10-14 00시) 그 영상 `quality.resummary_5xx` +1, 3회면 `resummary_skip = '5xx:…'`(후보 맨 앞 영상이 매번 막지 않게). 상한은 `makeVideoSummarizer` 의 `maxServerErrors`(5xx 만 셈 — 429·네트워크 오류는 그대로 키를 돌린다)로 넘긴다. 신규 영상 경로는 넘기지 않는다 — 신규 쪽 상한을 줄이지 말 것(2.5 Flash 503 은 1~2회 뒤 성공한다). 건너뜀·실패 표시는 시트에 안 보이는 `quality` 만 바꾸므로 `updated_at` 을 안 건드린다.
 - 성공(`lib/library.js:updateResummary`, 한 트랜잭션): `summary`·`summary_src='video'`·`grade`·`quality`(+`resummary:true`·`resummary_day`)·`summarized_at`·`updated_at` + 그 소스의 `wiki_extract` → `status='stale'`, `attempts=0`(`updated_at` 은 그대로 — 렌더 결정성). 이미 `video` 인 행은 건드리지 않는다. 토픽(재생목록 분류)은 다시 하지 않는다.
 - `runResummary` 는 던지지 않는다 — 재요약 단계가 실패해도 저장·Skip·오류 집계·실행 판정에 영향이 없다. 결과 줄 `🔁 재요약: N편 (제외 등급 N) · 건너뜀 N · 실패 N {사유} · 오늘 N/20 · 남은 대상 N`(1편 이상이면 그 실행의 완료 텔레그램에도 한 줄 — 텔레그램은 기존 조건대로 신규·변경이 있을 때만 나간다).
 - 노트(`sync_obsidian.py:refresh_changed_notes`): 장부 `summary_src` 가 `video` 인 행만 본다. 노트 프론트매터 `summary_src` 가 `video` 가 아니면 요약 절(`**▶ 영상 보기: **` 줄 다음 `---` 줄 뒤부터 `\n\n---\n## 🔗 관련 항목` 앞까지)을 새 요약으로 바꾸고 `grade`·`summary_src` 를 맞춘다(없으면 `notion_id` 줄 앞에 넣음). `video` 인데 `grade` 만 다르면 그 줄만. 경계를 못 찾으면 파일을 통째로 다시 쓰지 않고 그대로 둔 채 `RESULT_JSON.refresh_skipped` 로 보고. 바뀐 노트가 있으면 검색 인덱스를 갱신한다(재구성·인제스트는 안 함).
@@ -601,6 +602,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-14 (v4.11 — 재요약 5xx 조기 중단)** — 배경: 10-14 00:00 실행에서 재요약 1편(`RtGvzYeZ9gs`)이 3.5 Flash-Lite 503 을 8회(키 4개 × 2) 받았다 — 응답이 1~2분 뒤에 와서 00:03:38 → 00:16:20, 실행 16분 15초의 대부분이었다(2.5 Flash 신규 영상의 503 은 약 20초 안에 오고 1~2회 뒤 성공). 재요약은 신규보다 뒷순위이고 실패하면 기존 요약을 그대로 두므로 오래 붙잡을 이유가 없다. 수정: `lib/video_summary.js` `makeVideoSummarizer` 에 선택 인자 `maxServerErrors`(5xx 만 셈, 0 = 상한 없음 — 신규 경로는 넘기지 않아 그대로), `lib/resummarize.js` 가 `RESUMMARY_MAX_5XX`(기본 1)를 넘기고 5xx 로 멈추면 그 영상 `quality.resummary_5xx` +1(`lib/library.js:markResummary` `server`, 3회면 `resummary_skip = '5xx:…'` — 후보 맨 앞 영상이 매번 막지 않게), `scheduler.js:runResummary` 전달. 429·네트워크 오류 처리·장부 스키마·`updated_at` 규칙 무변경. 테스트: `test_video_summary.js` 25/25(+2), `test_resummarize.js` 11/11(+2). 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-14-v411-resummary-5xx-stop.md`.
 - **2026-10-14 (v4.10 — 꿀팁 빈 기본값 재분류 · 제목 3차)** — 배경: v4.9 뒤 「기타」 66건 중 사람이 고른 값 43건, 그중 태그가 빈 19건은 「클로드 코드 토큰 3배…」처럼 내용이 뻔한데 노션 기본값(기타·태그 없음)이 남아 있었다. 또 09-12~10-10 적재분 26건이 URL 추정 제목(`agent reach`·`mobilebasic`·`view` 등) — v4.8 자동 조회는 신규 행만 대상이라 남았다. 수정: `scripts/recategorize_tips.py` `decide()` 에 빈 기본값(`BLANK_DEFAULT = ('기타', [])`) — v4.8 규칙 값이 아니어도 「기타」·태그 없음이면 다시 매긴다, `RESULT_JSON.blank_default`·로그 표시. 데이터: `docs/tasks/2026-10-14-retitle-tips-3.csv` 25건(`lib/title_fetch.py` 조회 25 성공 · 비공개 노션 1건 제외, 사이트 이름 꼬리·`.pdf` 정리) → `retitle_tips.py` → `recategorize_tips.py`. 장부·스키마 무변경(값만). 사전 검증(맥 네이티브, 장부 사본 + Vault 사본): 제목 25행 · 노트 25 · 링크 59(12파일) → 재분류 28행(빈 기본값 16 · 제목 따라 12) · 기타→개발툴 9 · →프롬프트 8 · →모델/LLM 7 · 모델/LLM→개발툴 1 · 사람이 고른 값 유지 75 · 두 번째 실행 0행 · integrity ok · 「기타」 66 → 42. 테스트: `test_recategorize_tips.py` 52/52(+7). 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-14-v410-tips-blank-default.md`.
 - **2026-10-13 (v4.9 — 꿀팁 분류 보정)** — 배경: v4.8 사전 검증에서 노션 주소의 `notion` 이 태그 `Notion` → 카테고리 「지식관리」로 잡히고(지식관리 17건 중 14건이 노션에 올린 클로드·GPT 자료), 한글 「클로드」가 `Claude` 태그에 안 걸리며(27건), 노션 이관 시절 71행의 출처가 `https://…` 라 「채널별 목차」가 같은 사이트를 둘로 나눴다. 수정: `lib/kakao_parse.py` `classify()`·`is_notion_host()`·`_tag_text()`(노션 페이지 주소 호스트 제외 · 한글 별칭), `guess_meta` 가 `classify` 사용. `scripts/recategorize_tips.py` 신규(v4.8 규칙 값과 같은 행만 재분류 · 출처 호스트만 · 노트 제자리 수정 · 백업 · 재실행 0건). 장부·스키마 무변경(값만). 사전 검증(맥 네이티브, 장부 사본 + Vault 꿀팁 폴더 사본): 148건 중 87행(분류 16 · 출처 71) · 카테고리 이동 지식관리→모델/LLM 6 · →기타 4 · →개발툴 3 · →프롬프트 1 · 기타→개발툴 1 · 사람이 고른 값 유지 91 · 노트 건너뜀 0 · 두 번째 실행 0행 · integrity ok. 테스트: 신규 `test_recategorize_tips.py` 45/45. 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-13-v49-tips-recategorize.md`.
 - **2026-10-13 (v4.8 — 카톡 꿀팁 원문 제목 자동 조회)** — 배경: `kakao_ingest` 가 링크를 열지 않아 노션·유튜브·URL 조각 제목이 쌓이고(「원문 확인 필요」 46건), 10-12·10-13 두 차례 `retitle_tips.py` 로 손으로 고쳤다(2차 43건 — 노션 공개 API 44건 중 43 확인). 수정: `lib/title_fetch.py` 신규(노션 `syncRecordValuesMain` · 유튜브 oEmbed · og:title/`<title>`, 요청당 8초·재시도 없음·예외 없음, 제목 정리·일반 문구 거부), `kakao_ingest.py` `resolve_titles()`(URL 추정 제목만 · 장부 쓰기 전 · 실행당 60건/180초 · `--no-lookup`·`.env KAKAO_TITLE_*` · `RESULT_JSON.title_lookup`), `lib/kakao_parse.py` `guess_meta(fetched_title)`·`title_src`, `scheduler.js` 카톡 로그에 「제목 조회 성공/대상」. 장부·스키마 무변경. 사전 검증: 실제 꿀팁 148건 143 성공(최대 3.4초) · 장부 사본에서 9-15 이후 44건을 지우고 같은 URL 로 인제스트 → 조회 42/42(GitHub 2 제외), 24초. 테스트: 신규 `test_title_fetch.py` 43/43, `test_kakao_ingest.py` 37/37(+19). 회귀 테스트 13종. 지시서 `docs/tasks/2026-10-13-v48-kakao-title-lookup.md`.

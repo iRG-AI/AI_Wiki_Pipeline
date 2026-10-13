@@ -10,6 +10,7 @@
 //   4) 429·5xx·하루 분량·영상 입력 꺼짐은 그 실행 중단
 //   5) 실행당 상한 · 태평양시 하루 상한(장부 quality.resummary_day 로 셈) · RESUMMARY=false·VIDEO_SUMMARY=false 면 아무것도 안 함
 //   6) 모델·신규 몫 예약을 요약기에 넘긴다
+//   7) (v4.11) 5xx 는 영상 1편에 RESUMMARY_MAX_5XX(기본 1)회면 중단(요약기에 넘김) · 그 영상 resummary_5xx +1 · 3회면 건너뜀
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -118,8 +119,29 @@ const cases = [
       const h = harness({ db, details: allDetails, script: [FAIL(reason), GOOD()] });
       const r = await h.run();
       assert(r.stopped === reason && h.summarized.length === 1 && !Q(db, 'r-new').resummary_skip && !Q(db, 'r-new').resummary_fail, `${reason}: ${JSON.stringify(r)}`);
+      assert(Q(db, 'r-new').resummary_5xx === (reason === 'video_http_503' ? 1 : undefined), `${reason}: 5xx 표시 ${JSON.stringify(Q(db, 'r-new'))}`);
     }
     assert(rs.classify('video_http_400') === 'fail' && rs.classify('video_403') === 'fail' && rs.classify('privacy:private') === 'skip', '분류');
+  }],
+  ['(v4.11) 5xx: 그 실행 중단 · 그 영상 resummary_5xx +1 · 3회면 건너뜀(5xx:…) · updated_at 그대로 · 다음 후보로', async () => {
+    const db = makeDb(BASE);
+    for (let i = 1; i <= 3; i++) {
+      const h = harness({ db, details: allDetails, script: [FAIL('video_http_503')] });
+      const r = await h.run();
+      assert(r.stopped === 'video_http_503' && h.summarized.join() === 'VID_NEW____' && r.done === 0, `${i}: ${JSON.stringify(r)}`);
+      assert(Q(db, 'r-new').resummary_5xx === i && Q(db, 'r-new').resummary_last === 'video_http_503', `${i}: ${row(db, 'r-new').quality}`);
+    }
+    assert(Q(db, 'r-new').resummary_skip === '5xx:video_http_503' && row(db, 'r-new').updated_at === OLD_TS && row(db, 'r-new').summary === '옛 요약', row(db, 'r-new').quality);
+    const h = harness({ db, details: allDetails, script: [GOOD()], env: { RESUMMARY_PER_RUN: '1' } });
+    const r = await h.run();
+    assert(r.done === 1 && h.summarized.join() === 'VID_MID____' && library.resummaryRemaining(db) === 2, `${h.summarized.join()} · ${library.resummaryRemaining(db)}`);
+  }],
+  ['(v4.11) 5xx 상한을 요약기에 넘긴다: 기본 1 · RESUMMARY_MAX_5XX 로 조정(0 = 상한 없음)', async () => {
+    assert(rs.settings({}).max5xx === 1 && rs.settings({ RESUMMARY_MAX_5XX: '0' }).max5xx === 0 && rs.settings({ RESUMMARY_MAX_5XX: 'x' }).max5xx === 1, '설정');
+    const db = makeDb(BASE);
+    const h = harness({ db, details: allDetails, script: [GOOD()], env: { RESUMMARY_PER_RUN: '1', RESUMMARY_MAX_5XX: '2' } });
+    await h.run();
+    assert(h.made.length === 1 && h.made[0].maxServerErrors === 2, JSON.stringify(h.made));
   }],
   ['하루 상한: 장부 resummary_day 로 센다 · 다 찼으면 요약기 안 만듦 · 날짜 바뀌면 다시', async () => {
     const rows = BASE.concat([{ id: 'r-today', vid: 'VID_T______', date: '2026-03-01', src: 'video', quality: '{"resummary":true,"resummary_day":"2026-10-13"}' }]);
