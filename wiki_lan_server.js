@@ -199,8 +199,47 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === 'GET' && p === '/api/wiki-search') {
+    // (v4.7) all=1 — 전체 목록(필터·정렬은 화면에서). 읽기 전용, 임베딩 호출 없음
+    if (url.searchParams.get('all') === '1') {
+      try {
+        const pl = wikiSearch.listPayload();
+        if (req.headers['if-none-match'] === pl.etag) { res.writeHead(304, { ...SEC_HEADERS, 'Cache-Control': 'no-cache', ETag: pl.etag }); res.end(); return; }
+        const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...SEC_HEADERS, 'Cache-Control': 'no-cache', ETag: pl.etag,
+          Vary: 'Accept-Encoding', ...(gz ? { 'Content-Encoding': 'gzip' } : {}) });
+        res.end(gz ? pl.gz : pl.json);
+      } catch (e) {
+        console.error('[wiki-lan] list 오류:', e.message);
+        sendJson(res, 500, { error: '목록을 불러오지 못했습니다.' });
+      }
+      return;
+    }
+    // (v4.7) similar=<id> — 그 노트와 의미가 가까운 5개(저장된 벡터만, Gemini 호출 없음)
+    if (url.searchParams.has('similar')) {
+      const id = url.searchParams.get('similar') || '';
+      if (!wikiSearch.ID_RE.test(id)) { sendJson(res, 400, { error: '잘못된 id 입니다.' }); return; }
+      try {
+        const r = wikiSearch.similar(id, 5);
+        if (!r) { sendJson(res, 404, { error: '없는 노트입니다.' }); return; }
+        sendJson(res, 200, { results: r });
+      } catch (e) {
+        console.error('[wiki-lan] similar 오류:', e.message);
+        sendJson(res, 500, { error: '비슷한 항목을 찾지 못했습니다.' });
+      }
+      return;
+    }
     const q = (url.searchParams.get('q') || '').trim();
     if (!q || q.length > 500) { sendJson(res, 400, { error: '검색어(q)는 1~500자여야 합니다.' }); return; }
+    // (v4.7) scores=1 — 모든 노트의 점수만(화면이 목록에 붙여 정렬·필터)
+    if (url.searchParams.get('scores') === '1') {
+      wikiSearch.scoreAll(q)
+        .then(r => sendJson(res, 200, r))
+        .catch(e => {
+          console.error('[wiki-lan] scores 오류:', e.message);
+          sendJson(res, 500, { error: '검색 중 오류가 발생했습니다.' });
+        });
+      return;
+    }
     const topic = (url.searchParams.get('topic') || '').trim();
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10) || 10, 30);
     wikiSearch.search(q, { topic, limit })
@@ -209,6 +248,21 @@ const server = http.createServer((req, res) => {
         console.error('[wiki-lan] search 오류:', e.message);
         sendJson(res, 500, { error: '검색 중 오류가 발생했습니다.' });
       });
+    return;
+  }
+
+  // (v4.7) 노트 본문 미리보기 — 읽기 전용. id 로만 찾고(경로를 받지 않는다) Vault 밖은 readNote 가 막는다
+  if (req.method === 'GET' && p === '/api/wiki-note') {
+    const id = url.searchParams.get('id') || '';
+    if (!wikiSearch.ID_RE.test(id)) { sendJson(res, 400, { error: '잘못된 id 입니다.' }); return; }
+    try {
+      const r = wikiSearch.noteById(id);
+      if (!r) { sendJson(res, 404, { error: '없는 노트입니다.' }); return; }
+      sendJson(res, 200, r);
+    } catch (e) {
+      console.error('[wiki-lan] note 오류:', e.message);
+      sendJson(res, 404, { error: '노트를 읽지 못했습니다.' });
+    }
     return;
   }
 

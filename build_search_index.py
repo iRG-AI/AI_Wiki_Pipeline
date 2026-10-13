@@ -122,8 +122,15 @@ def collect_notes():
             if fm('grade') == 'exclude':   # (v4.6) 품질 필터 제외 노트 — Vault 에는 남고 검색에서만 빠진다
                 continue
 
-            tags_m = re.search(r'^tags:\s*\[(.*)\]$', head, re.MULTILINE)
-            tags = [t.strip().strip('"') for t in tags_m.group(1).split(',')] if tags_m and tags_m.group(1).strip() else []
+            def fm_list(key):
+                lm = re.search(rf'^{key}:\s*\[(.*)\]$', head, re.MULTILINE)
+                return [t.strip().strip('"') for t in lm.group(1).split(',')] if lm and lm.group(1).strip() else []
+
+            def fm_int(key):
+                try: return int(fm(key, '0') or 0)
+                except ValueError: return 0
+
+            tags = fm_list('tags')
 
             def section(name):
                 sm = re.search(rf'^## {name}\s*\n(.*?)(?=^## |\Z)', content, re.MULTILINE | re.DOTALL)
@@ -143,8 +150,16 @@ def collect_notes():
                 'topic': nfc(os.path.relpath(root, VAULT).split(os.sep)[0]) if root != VAULT else '기타',
                 'tags': tags,
                 'upload_date': fm('upload_date'),
-                'view_count': int(fm('view_count', '0') or 0),
+                'view_count': fm_int('view_count'),
                 'video_url': fm('video_url'),
+                # (v4.7) 검색 화면 필터용 메타 — 임베딩 hash 와 무관(재임베딩 없음)
+                'kind': 'tip' if fm('source_type') == 'tip' else 'video',
+                'subscriber_count': fm_int('subscriber_count'),
+                'summary_src': fm('summary_src'),
+                'link_url': fm('link_url'),
+                'category': fm('category'),
+                'importance': fm('importance'),
+                'keywords': fm_list('keywords'),
                 'hash': hashlib.sha1(embed_text.encode('utf-8')).hexdigest(),
                 'snippet': re.sub(r'\s+', ' ', overview)[:200],
                 '_embed_text': embed_text,

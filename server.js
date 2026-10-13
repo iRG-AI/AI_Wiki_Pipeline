@@ -235,10 +235,51 @@ const server = http.createServer((req, res) => {
 
   // ── LLM Wiki 검색 API ──
   if (parsedUrl.pathname === '/api/wiki-search' && req.method === 'GET') {
+    // (v4.7) all=1 — 전체 목록(필터·정렬은 화면에서). 임베딩 호출 없음
+    if (parsedUrl.searchParams.get('all') === '1') {
+      try {
+        const pl = require('./lib/wiki_search').listPayload();
+        if (req.headers['if-none-match'] === pl.etag) { res.writeHead(304, { ...CORS, 'Cache-Control': 'no-cache', ETag: pl.etag }); res.end(); return; }
+        const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+        res.writeHead(200, { ...CORS, 'Cache-Control': 'no-cache', ETag: pl.etag, Vary: 'Accept-Encoding', ...(gz ? { 'Content-Encoding': 'gzip' } : {}) });
+        res.end(gz ? pl.gz : pl.json);
+      } catch (e) {
+        console.error('[wiki-search] list 오류:', e.message);
+        res.writeHead(500, CORS);
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+    // (v4.7) similar=<id> — 그 노트와 의미가 가까운 5개(저장된 벡터만, Gemini 호출 없음)
+    if (parsedUrl.searchParams.has('similar')) {
+      const ws = require('./lib/wiki_search');
+      const id = parsedUrl.searchParams.get('similar') || '';
+      if (!ws.ID_RE.test(id)) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: '잘못된 id 입니다.' })); return; }
+      try {
+        const r = ws.similar(id, 5);
+        res.writeHead(r ? 200 : 404, CORS);
+        res.end(JSON.stringify(r ? { results: r } : { error: '없는 노트입니다.' }));
+      } catch (e) {
+        console.error('[wiki-search] similar 오류:', e.message);
+        res.writeHead(500, CORS); res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
     const q = (parsedUrl.searchParams.get('q') || '').trim();
     if (!q || q.length > 500) {
       res.writeHead(400, CORS);
       res.end(JSON.stringify({ error: '검색어(q)는 1~500자여야 합니다.' }));
+      return;
+    }
+    // (v4.7) scores=1 — 모든 노트의 점수만(화면이 목록에 붙여 정렬·필터)
+    if (parsedUrl.searchParams.get('scores') === '1') {
+      require('./lib/wiki_search').scoreAll(q)
+        .then(r => { res.writeHead(200, CORS); res.end(JSON.stringify(r)); })
+        .catch(e => {
+          console.error('[wiki-search] scores 오류:', e.message);
+          res.writeHead(500, CORS);
+          res.end(JSON.stringify({ error: e.message }));
+        });
       return;
     }
     const topic = (parsedUrl.searchParams.get('topic') || '').trim();
@@ -254,6 +295,22 @@ const server = http.createServer((req, res) => {
         res.writeHead(500, CORS);
         res.end(JSON.stringify({ error: e.message }));
       });
+    return;
+  }
+
+  // ── (v4.7) LLM Wiki 노트 본문 미리보기 — 읽기 전용, id 로만 찾는다 ──
+  if (parsedUrl.pathname === '/api/wiki-note' && req.method === 'GET') {
+    const ws = require('./lib/wiki_search');
+    const id = parsedUrl.searchParams.get('id') || '';
+    if (!ws.ID_RE.test(id)) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: '잘못된 id 입니다.' })); return; }
+    try {
+      const r = ws.noteById(id);
+      res.writeHead(r ? 200 : 404, CORS);
+      res.end(JSON.stringify(r || { error: '없는 노트입니다.' }));
+    } catch (e) {
+      console.error('[wiki-note] 오류:', e.message);
+      res.writeHead(404, CORS); res.end(JSON.stringify({ error: '노트를 읽지 못했습니다.' }));
+    }
     return;
   }
 

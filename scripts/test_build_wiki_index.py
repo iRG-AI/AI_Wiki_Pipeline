@@ -9,6 +9,7 @@
   2) 바뀐 노트 하나만 다시 쓴다
   3) 검색 인덱스는 맨 앞 프론트매터의 notion_id 만 노트로 센다 (본문 예시의 'notion_id: …' 는 노트가 아니다)
   4) (v4.6) 프론트매터 grade: exclude 노트는 검색 인덱스에서 빠진다 (grade: null·keep 은 그대로)
+  5) (v4.7) 검색 화면 필터용 메타(kind·subscriber_count·summary_src·link_url·category·importance·keywords)를 담고, 임베딩 hash 는 그대로
 """
 import os, shutil, sys, tempfile, time
 from contextlib import redirect_stdout
@@ -127,6 +128,21 @@ try:
     ids = sorted(n['id'] for n in bsi.collect_notes())
     check('exclude 1건만 빠지고 keep·null 은 포함', '…003c' not in ids and not any(i.endswith('3c') for i in ids)
           and any(i.endswith('4d') for i in ids) and any(i.endswith('5e') for i in ids) and len(ids) == 5, ids)
+    print('▶ 6. (v4.7) 화면 필터용 메타')
+    with open(os.path.join(V, 'AI 꿀팁/20260906_꿀팁 둘.md'), 'w', encoding='utf-8') as fh:
+        fh.write('---\ntitle: "꿀팁 둘"\nchannel: "https://github.com"\nsource_type: tip\ncategory: "개발툴"\n'
+                 'keywords: ["Claude", "MCP"]\nimportance: 상\nupload_date: 2026-09-06\nlink_url: https://github.com/x/y\n'
+                 'notion_id: tip-0002\n---\n\n메모\n')
+    with open(os.path.join(V, 'AI Claude/채널가_영상요약_20260907.md'), 'w', encoding='utf-8') as fh:
+        fh.write(note('영상요약', 'aaaaaaaa-0000-0000-0000-00000000006f', 'AI Claude').replace('status: 완료\n', 'status: 완료\nsummary_src: video\ngrade: keep\n'))
+    by = {n['id']: n for n in bsi.collect_notes()}
+    t2, v6, v1 = by.get('tip-0002', {}), by.get('aaaaaaaa-0000-0000-0000-00000000006f', {}), by.get('aaaaaaaa-0000-0000-0000-00000000001a', {})
+    check('꿀팁: kind tip · link_url · category · importance · keywords', t2.get('kind') == 'tip' and t2.get('link_url') == 'https://github.com/x/y'
+          and t2.get('category') == '개발툴' and t2.get('importance') == '상' and t2.get('keywords') == ['Claude', 'MCP'], t2)
+    check('영상: kind video · subscriber_count · summary_src', v6.get('kind') == 'video' and v6.get('subscriber_count') == 20
+          and v6.get('summary_src') == 'video' and v6.get('link_url') == '', v6)
+    check('summary_src 없는 옛 노트는 빈 값 · keywords 빈 배열', v1.get('summary_src') == '' and v1.get('keywords') == [], v1)
+    check('메타를 더해도 임베딩 hash 는 그대로 (재임베딩 없음)', v1.get('hash') == n1['hash'], [v1.get('hash'), n1['hash']])
     check('네트워크 요청 0건', not calls, calls[:2])
 finally:
     shutil.rmtree(tmp, ignore_errors=True)

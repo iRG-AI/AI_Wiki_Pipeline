@@ -1,0 +1,2016 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index d558819..0013a86 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -4,7 +4,7 @@
+ > 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
+ > (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
+ 
+-**현재 버전: v4.6** (2026-10-13) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
++**현재 버전: v4.7** (2026-10-13) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+@@ -14,6 +14,7 @@
+ > v4.5: Wiki 합성 결과 누적 — 장부 `wiki_extract`(user_version 2)에 소스별로 쌓고, `_wiki` 개념·엔티티·index 페이지는 매 실행 전체로 다시 그린다. 옛 소스는 `--backfill` 묶음 추출(하루 30회).
+ > v4.6-a: 신규 영상은 실제 영상(YouTube URL)으로 요약하고 같은 호출의 사실 신호로 코드가 등급(keep·exclude)을 매긴다. 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`). `grade: exclude` 노트는 Wiki 합성·검색에서만 뺀다. 안 되면 설명란 요약으로 대체.
+ > v4.6-b: 설명란 요약 약 3,000편을 정시 실행마다 최대 5편 · 하루 20편씩 실제 영상(Gemini 3.5 Flash-Lite)으로 다시 요약(`lib/resummarize.js`, 신규 영상 분량 3시간 예약, 실패하면 기존 요약 유지). 노트는 요약 절만 제자리 교체(`sync_obsidian.py:refresh_changed_notes`), Wiki backfill 은 실제 영상 요약 노트만, 항목 0 `_wiki` 페이지는 안내 문구로.
++> v4.7: Wiki 검색 화면 개편 — 처음 열면 전체 목록(필터·정렬은 브라우저에서), 토픽 다중 선택·종류·날짜·조회수·채널·요약 방식·꿀팁 분류 필터, 머리줄 정렬, 표/카드 보기, 비슷한 영상(저장 벡터), 지난 방문 뒤 새로 들어온 것, 엑셀 내려받기, 노트 전체 보기(`/api/wiki-note`). iRichGreen Design System 웹 계층 DS 1.1.23 을 따랐다(밝은 테마만).
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -66,7 +67,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
+ 
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+-# 회귀 테스트 11종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
++# 회귀 테스트 12종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+ /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
+ /opt/homebrew/bin/node scripts/test_video_summary.js         # 23/23  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 (가짜 요청)
+ /opt/homebrew/bin/node scripts/test_resummarize.js           # 9/9    (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 (임시 장부, 가짜 요약기)
+@@ -76,7 +77,8 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 32/32  장부 → Vault (임시 Vault) · (v4.6-b) 재요약 노트 요약 절 제자리 교체
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+-/opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 11/11  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외
++/opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 15/15  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외 · (v4.7) 화면 필터용 메타
++/opt/homebrew/bin/node scripts/test_wiki_search.js           # 34/34  (v4.7) 검색 화면 API — 전체 목록·전체 점수·비슷한 노트·노트 본문 + 집 안 서버 경로 (임시 인덱스·Vault, 가짜 Gemini)
+ /opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
+ 
+ # 대기 큐 정리 (중복 제거 + dead-letter 격리) — 기본 dry-run
+@@ -190,11 +192,12 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
+ | `backup_library.py` | (v4.1) 장부 하루 1회 백업 → `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브). 온라인 백업 API·무결성 검사·gzip·sha256 대조, 최신 7 + 주별 4 보관. 장부는 읽기 전용. `--dry-run`·`--status`·`--force`. 아래 "장부 백업" 절. |
+ | `scripts/test_backup_library.py` | (v4.1) 장부 백업 회귀 테스트. 임시 장부·임시 폴더(가짜 드라이브 경로 포함), 실제 장부·드라이브 무관. |
+-| `wiki.html` | Wiki 검색 화면. 의미 검색 + AI 답변, 토픽 필터·정렬. `server.js`와 `wiki_lan_server.js`가 같은 파일을 서빙한다. |
+-| `lib/wiki_search.js` | 검색 코어(의존성 0). `wiki_index.json`+`wiki_index.vec`(768차원) 로드, 임베딩 코사인 + 메타 부스트, 임베딩 실패 시 키워드 폴백, Gemini 401/403 래치. |
++| `wiki.html` | Wiki 검색 화면. `server.js`와 `wiki_lan_server.js`가 같은 파일을 서빙한다. (v4.7) 처음 열면 전체 목록 — 필터(종류·토픽 다중·날짜·조회수·채널·요약 방식·꿀팁 분류·새로 들어온 것)·정렬·표/카드는 브라우저에서. 의미 검색·AI 답변·비슷한 영상·노트 전체 보기 패널·엑셀 내려받기(브라우저가 .xlsx 생성). DS 1.1.23 토큰(머리 CSS 변수). 상태는 URL 해시, 보기·새로 들어온 것은 localStorage. |
++| `lib/wiki_search.js` | 검색 코어(의존성 0). `wiki_index.json`+`wiki_index.vec`(768차원) 로드, 임베딩 코사인 + 메타 부스트, 임베딩 실패 시 키워드 폴백, Gemini 401/403 래치. (v4.7) `listPayload`(전체 목록, gzip·ETag 캐시) · `scoreAll`(모든 노트 점수) · `similar`(저장 벡터끼리, Gemini 호출 없음) · `noteById`(id 로만, `readNote` 경로 검사). `WIKI_SEARCH_DIR`·`WIKI_VAULT` 는 테스트 전용. |
+ | `wiki_mcp.js` | 같은 코어를 Claude에 노출하는 stdio MCP(`search_wiki`, `read_note`). 웹 서버 없이 동작. |
+-| `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
++| `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. (v4.7) 화면 필터용 `kind`·`subscriber_count`·`summary_src`·`link_url`·`category`·`importance`·`keywords` — 매 빌드 프론트매터에서 다시 읽고 임베딩 hash 와 무관. |
+ | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
++| `scripts/test_wiki_search.js` | (v4.7) 검색 화면 API 회귀 테스트 — `lib/wiki_search.js` 네 함수 + `wiki_lan_server.js` 를 임시 포트(127.0.0.1, 대역 일부러 틀림 → fail-closed)로 띄워 경로 검사. 임시 인덱스·Vault, Gemini 는 가짜. |
+ | `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
+ | `scripts/test_wiki_ingest.py` | (v4.5) wiki_ingest 누적·재렌더·실패 처리·backfill 상한·씨앗 + `migrate_library` 회귀 테스트. 임시 Vault·장부·상태 파일, Gemini 는 가짜(네트워크 0). |
+ | `scripts/retitle_tips.py` · `scripts/test_retitle_tips.py` | (v4.4) 꿀팁 제목 보완. CSV(`record_id,old_title,new_title`) → 장부 `title`·`updated_at`(+ 카톡 자동 메모 비움) · 「AI 꿀팁」 노트 제자리 수정·파일명 변경 · Vault `[[링크]]` 치환 → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 검증 전부 통과 뒤에만 쓰고 쓰기 전 `data/retitle_backup/<시각>/` 에 장부·파일 백업. 장부 조건은 `record_id` + 옛 제목(같은 CSV 재실행은 멈춤). 종료 0 · 1 · 2(무변경). |
+@@ -218,10 +221,13 @@ YouTube "AI 영상목록" (마스터 모드)
+ | MCP `wiki-search` | `wiki_mcp.js` (stdio) | 없음 | Claude Code 대화 중 |
+ 
+ - **`server.js`를 `0.0.0.0`으로 열지 말 것.** `/api/master-ingest`(스케줄러 실행)·`/api/config`(키 노출)가 같이 열린다. (노션 쓰기 프록시·`/api/sync-obsidian` 은 v4.0 에서 제거) 집 안 공유는 `wiki_lan_server.js`가 전담한다.
+-- **`wiki_lan_server.js`에 쓰기·실행 엔드포인트를 추가하지 말 것.** 라우트는 `/`, `/wiki`, `/favicon.svg`, `/api/wiki-topics`, `/api/wiki-search`, `/api/wiki-ask` 뿐이다.
++- **`wiki_lan_server.js`에 쓰기·실행 엔드포인트를 추가하지 말 것.** 라우트는 `/`, `/wiki`, `/favicon.svg`, `/api/wiki-topics`, `/api/wiki-search`, `/api/wiki-ask`, (v4.7) `/api/wiki-note` 뿐이다.
+ - `.env`의 `WIKI_LAN_ALLOW_CIDR`(사설 대역 `/16`~`/32`, 쉼표로 여러 개)가 없거나 틀리면 **`127.0.0.1` 전용으로 떨어진다(fail-closed).** 가족이 "갑자기 안 된다"고 하면 `wiki-lan.log`의 `바인딩:` 줄부터 본다.
+ - 클라이언트 IP는 **소켓 주소만** 본다. `X-Forwarded-For`를 읽는 코드를 넣지 말 것(위조 가능).
+ - AI 답변은 scheduler·wiki-ingest와 **같은 Gemini 무료 키**를 쓴다. IP당 분당 5회 + 전체 24시간 `WIKI_LAN_ASK_DAILY_MAX`회(기본 20, 메모리 카운터 — 재기동하면 0). 한도를 올리면 영상 요약·Wiki 합성이 429를 맞는다. 일반 검색은 임베딩 모델을 쓰므로 별개이고, 한도에 걸리면 키워드 검색으로 대체된다.
++- (v4.7) 화면은 `/api/wiki-search?all=1`(전체 목록, gzip·ETag)을 한 번 받아 필터·정렬을 브라우저에서 한다. 검색어는 `?scores=1&q=`(모든 노트 점수 — 의미 검색이면 화면이 상위 200건을 관련 결과로 본다), 비슷한 영상은 `?similar=<id>`(저장 벡터끼리, Gemini 호출 없음), 노트 전체 보기는 `/api/wiki-note?id=`(경로를 받지 않고 id 로만 — `readNote` 가 Vault 밖을 막는다). 기존 `?q=&limit=` 응답은 그대로(AI 답변 503 대체 경로가 쓴다). **`/api/wiki-note` 에 경로(path) 인자를 받게 바꾸지 말 것.**
++- (v4.7) 화면은 iRichGreen Design System 웹 계층 DS 1.1.23 을 따른다 — 색·크기는 `wiki.html` 머리의 CSS 변수만(밝은 테마만, DS 에 다크 테마가 없다). 엑셀은 브라우저가 .xlsx 를 직접 만든다(외부 라이브러리 없음, 파일명 `ai-llm-wiki-YYYYMMDD.xlsx`, 시트 「목록」·「조건」). 「새로 들어온 것」은 그 브라우저 localStorage(`wiki.seen`·`wiki.new`)에만 기억한다.
++- (v4.7) 인덱스에 화면 필터용 메타가 붙은 뒤에야 종류·요약 방식·꿀팁 분류 필터가 맞게 센다 — 적용 직후 `build_search_index.py` 한 번(임베딩 호출 0).
+ - 화면의 「Obsidian에서 열기」는 `location.hostname`이 `localhost`/`127.0.0.1`일 때만 나온다(`wiki.html:IS_LOCAL`). 가족 PC에는 Vault가 없다.
+ - **맥북이 집에 켜져 있을 때만 된다.** 덮개를 닫아 잠들거나 들고 나가면 가족은 접속할 수 없다. IPv6로는 열지 않는다(대역 검사가 IPv4 전제).
+ - `<맥이름>`은 `scutil --get LocalHostName`이다. macOS가 이름 충돌 시 끝 숫자를 올려 바꾸는 일이 있다 — 주소가 안 먹으면 이름부터 확인한다. 기동 로그의 `가족 접속:` 줄도 같은 값(`scutil --get LocalHostName`)을 찍는다. `os.hostname()`은 쓰지 않는다 — 2026-10-03 실측에서 `.local`로 풀리지 않는 이름을 줬다.
+@@ -583,6 +589,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-13 (v4.7 — Wiki 검색 화면 개편)** — 대표님 요청 6건(처음 열면 전체 목록 · 건수 선택 제거 · 토픽 다중 선택 · 정렬 목록 유지 · 필터 추가 · 머리줄 정렬) + 결정(관련 결과 = 의미 점수 상위 200건 · 비슷한 영상 · 새로 들어온 것 · 엑셀 내려받기 · 노트 전체 보기 · 밝은 테마만). `wiki.html` 전면 교체(iRichGreen Design System 웹 계층 DS 1.1.23 토큰·FilterChip·SegmentedControl·표 30px 줄, 표/카드, 줄 펼침, URL 해시 상태, `/`·Esc, 휴대폰 서랍 필터). `lib/wiki_search.js` `listPayload`·`scoreAll`·`similar`·`noteById`, `server.js`·`wiki_lan_server.js` `/api/wiki-search` 에 `all=1`·`scores=1`·`similar=` 옵션 + 새 읽기 전용 경로 `/api/wiki-note`(id 로만). `build_search_index.py` 화면 필터용 메타 7개(임베딩 hash 무관 — 실 Vault 사본 실행 임베딩 0건). 장부·스키마·스케줄러 무변경. 테스트: 신규 `test_wiki_search.js` 34/34, `test_build_wiki_index.py` 15/15(+4). 회귀 테스트 12종. 지시서 `docs/tasks/2026-10-13-v47-wiki-ui.md`.
+ - **2026-10-13 (v4.6-b — 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)** — 배경: 장부의 옛 요약 약 3,000편이 설명란 추론이라 일부가 지어낸 내용이고, 그래서 Wiki backfill 을 정지해 뒀다. 10-13 비교 5건에서 `gemini-3.5-flash-lite` 가 2.5 Flash 와 등급·신호 5/5 일치(말 내용 포함, 요약은 약 65% 길이), 3.x 는 `thinkingBudget: 0` 을 400 으로 거절. 수정: `lib/resummarize.js` 신규(scheduler 매 실행 신규 처리 뒤, 실행당 5 · 하루 20 · 신규 몫 3시간 예약, 실패 시 기존 요약 유지·건너뜀/실패/중단 분류), `lib/video_summary.js` 모델 인자·`thinkingConfigFor`·`fallback:false`·`reserveSeconds`·`summaryProblem`(bad_summary 사유 로그)·promo_main 프롬프트 좁힘(무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보는 판매 아님), `lib/library.js` 재요약 헬퍼(`updateResummary` — `updated_at` + `wiki_extract` stale), `sync_obsidian.py:refresh_changed_notes`(요약 절 제자리 교체·관련 항목 보존·장부 grade 만 고쳐도 노트가 따라옴), `wiki_ingest.py` backfill 대상 = `summary_src: video` 만 · 항목 0 페이지 안내 문구. 스키마 무변경(user_version 3). `.env WIKI_BACKFILL_DAILY_MAX=0` 정지 줄 제거. 테스트: 신규 `test_resummarize.js` 9/9, `test_video_summary.js` 23/23(+6), `test_scheduler_guards.js` 33/33(+2), `test_sync_obsidian.py` 32/32(+8), `test_wiki_ingest.py` 64/64(+7). 회귀 테스트 11종. 지시서 `docs/tasks/2026-10-13-v46b-resummarize.md`.
+ - **2026-10-13 (v4.6-a — 실제 영상 요약 + 품질 필터, 신규 영상부터)** — 배경(10-12 시험): 요약이 제목·설명란만 보고 "추론해서라도 작성"이라 설명란이 빈약하면 지어낸 내용이 됐다(`mW5k5CbO4sA` 「AI 데이터 활용」 = 실제는 Python 문자열 강의). 수정: `lib/video_summary.js` 신규 — 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로(LOW, 30분 넘으면 앞 30분), JSON 으로 요약 + 사실 신호, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → exclude). 영상 토큰 0(삭제 영상)·비공개·403(연속 2회면 그 실행 끔)·429 소진·하루 8시간 분량(`.video_quota.json`)은 설명란 요약으로 대체. `getBatchDetails` 가 `contentDetails,status` 도 받음(1유닛 그대로). 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`, `migrate_library.py` 가 v1·v2 → v3 한 번에). 노트 프론트매터 `grade`·`summary_src`, `grade: exclude` 는 `wiki_ingest`·`build_search_index` 에서만 제외. `.env` 스위치 `VIDEO_SUMMARY`·`VIDEO_MAX_SECONDS`·`VIDEO_DAILY_SECONDS`. 테스트: 신규 `test_video_summary.js` 17/17, `test_scheduler_guards.js` 31/31(+2), `test_wiki_ingest.py` 57/57(+6), `test_sync_obsidian.py` 24/24(+1), `test_build_wiki_index.py` 11/11(+1). 회귀 테스트 10종. 지시서 `docs/tasks/2026-10-13-v46a-video-summary.md`.
+ - **2026-10-12 (v4.5 — Wiki 합성 결과 누적)** — 결함: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서(05-12 도입 때부터) 페이지 56개의 source_count 가 1~10, index 9행뿐이었다(합성 소스 3,619건). 추출 결과를 저장하지 않아 되살릴 원본이 없었다. 수정: 장부에 `wiki_extract` 표(user_version 1 → 2, `scripts/migrate_library.py`), 소스별 누적 + 매 실행 전체 재렌더(결정적, 내용 같으면 안 씀, 고아 제외·retitle 반영), 깨진 응답은 실패로 3회까지 재시도, 옛 페이지 항목 씨앗(`--seed-from-pages`), 옛 소스 backfill(20개 묶음, 하루 30회, launchd 경로만 — `sync_obsidian` 은 `--no-backfill`). `backup_library.py` 행 수에 `wiki_extract` 추가. 테스트: 신규 `test_wiki_ingest.py` 51/51, `test_backup_library.py` 버전 기대값을 `SCHEMA_VERSION` 으로. 회귀 테스트 9종. 지시서 `docs/tasks/2026-10-12-wiki-extract-store.md`.
+diff --git a/CLAUDE.md b/CLAUDE.md
+index d79f07e..6b875f1 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -2,7 +2,7 @@
+ 
+ This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+ 
+-**현재 버전: v4.6** (2026-10-13) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
++**현재 버전: v4.7** (2026-10-13) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+@@ -12,6 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
+ > v4.5: Wiki 합성 결과 누적 — 장부 `wiki_extract`(user_version 2)에 소스별로 쌓고, `_wiki` 개념·엔티티·index 페이지는 매 실행 전체로 다시 그린다. 옛 소스는 `--backfill` 묶음 추출(하루 30회).
+ > v4.6-a: 신규 영상은 실제 영상(YouTube URL)으로 요약하고 같은 호출의 사실 신호로 코드가 등급(keep·exclude)을 매긴다. 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`). `grade: exclude` 노트는 Wiki 합성·검색에서만 뺀다. 안 되면 설명란 요약으로 대체.
+ > v4.6-b: 설명란 요약 약 3,000편을 정시 실행마다 최대 5편 · 하루 20편씩 실제 영상(Gemini 3.5 Flash-Lite)으로 다시 요약(`lib/resummarize.js`, 신규 영상 분량 3시간 예약, 실패하면 기존 요약 유지). 노트는 요약 절만 제자리 교체(`sync_obsidian.py:refresh_changed_notes`), Wiki backfill 은 실제 영상 요약 노트만, 항목 0 `_wiki` 페이지는 안내 문구로.
++> v4.7: Wiki 검색 화면 개편 — 처음 열면 전체 목록(필터·정렬은 브라우저에서), 토픽 다중 선택·종류·날짜·조회수·채널·요약 방식·꿀팁 분류 필터, 머리줄 정렬, 표/카드 보기, 비슷한 영상(저장 벡터), 지난 방문 뒤 새로 들어온 것, 엑셀 내려받기, 노트 전체 보기(`/api/wiki-note`). iRichGreen Design System 웹 계층 DS 1.1.23 을 따랐다(밝은 테마만).
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -64,7 +65,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
+ 
+ # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
+ 
+-# 회귀 테스트 11종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
++# 회귀 테스트 12종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+ /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
+ /opt/homebrew/bin/node scripts/test_video_summary.js         # 23/23  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 (가짜 요청)
+ /opt/homebrew/bin/node scripts/test_resummarize.js           # 9/9    (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 (임시 장부, 가짜 요약기)
+@@ -74,7 +75,8 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 18/18  카톡 → 장부 tips
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 32/32  장부 → Vault (임시 Vault) · (v4.6-b) 재요약 노트 요약 절 제자리 교체
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+-/opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 11/11  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외
++/opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 15/15  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외 · (v4.7) 화면 필터용 메타
++/opt/homebrew/bin/node scripts/test_wiki_search.js           # 34/34  (v4.7) 검색 화면 API — 전체 목록·전체 점수·비슷한 노트·노트 본문 + 집 안 서버 경로 (임시 인덱스·Vault, 가짜 Gemini)
+ /opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
+ 
+ # 대기 큐 정리 (중복 제거 + dead-letter 격리) — 기본 dry-run
+@@ -188,11 +190,12 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
+ | `backup_library.py` | (v4.1) 장부 하루 1회 백업 → `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브). 온라인 백업 API·무결성 검사·gzip·sha256 대조, 최신 7 + 주별 4 보관. 장부는 읽기 전용. `--dry-run`·`--status`·`--force`. 아래 "장부 백업" 절. |
+ | `scripts/test_backup_library.py` | (v4.1) 장부 백업 회귀 테스트. 임시 장부·임시 폴더(가짜 드라이브 경로 포함), 실제 장부·드라이브 무관. |
+-| `wiki.html` | Wiki 검색 화면. 의미 검색 + AI 답변, 토픽 필터·정렬. `server.js`와 `wiki_lan_server.js`가 같은 파일을 서빙한다. |
+-| `lib/wiki_search.js` | 검색 코어(의존성 0). `wiki_index.json`+`wiki_index.vec`(768차원) 로드, 임베딩 코사인 + 메타 부스트, 임베딩 실패 시 키워드 폴백, Gemini 401/403 래치. |
++| `wiki.html` | Wiki 검색 화면. `server.js`와 `wiki_lan_server.js`가 같은 파일을 서빙한다. (v4.7) 처음 열면 전체 목록 — 필터(종류·토픽 다중·날짜·조회수·채널·요약 방식·꿀팁 분류·새로 들어온 것)·정렬·표/카드는 브라우저에서. 의미 검색·AI 답변·비슷한 영상·노트 전체 보기 패널·엑셀 내려받기(브라우저가 .xlsx 생성). DS 1.1.23 토큰(머리 CSS 변수). 상태는 URL 해시, 보기·새로 들어온 것은 localStorage. |
++| `lib/wiki_search.js` | 검색 코어(의존성 0). `wiki_index.json`+`wiki_index.vec`(768차원) 로드, 임베딩 코사인 + 메타 부스트, 임베딩 실패 시 키워드 폴백, Gemini 401/403 래치. (v4.7) `listPayload`(전체 목록, gzip·ETag 캐시) · `scoreAll`(모든 노트 점수) · `similar`(저장 벡터끼리, Gemini 호출 없음) · `noteById`(id 로만, `readNote` 경로 검사). `WIKI_SEARCH_DIR`·`WIKI_VAULT` 는 테스트 전용. |
+ | `wiki_mcp.js` | 같은 코어를 Claude에 노출하는 stdio MCP(`search_wiki`, `read_note`). 웹 서버 없이 동작. |
+-| `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. |
++| `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. (v4.7) 화면 필터용 `kind`·`subscriber_count`·`summary_src`·`link_url`·`category`·`importance`·`keywords` — 매 빌드 프론트매터에서 다시 읽고 임베딩 hash 와 무관. |
+ | `wiki_lan_server.js` | (v3.2) 집 안 전용 읽기 전용 검색 서버(포트 3100). `WIKI_LAN_ALLOW_CIDR` 대역 + 루프백만 허용. |
++| `scripts/test_wiki_search.js` | (v4.7) 검색 화면 API 회귀 테스트 — `lib/wiki_search.js` 네 함수 + `wiki_lan_server.js` 를 임시 포트(127.0.0.1, 대역 일부러 틀림 → fail-closed)로 띄워 경로 검사. 임시 인덱스·Vault, Gemini 는 가짜. |
+ | `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
+ | `scripts/test_wiki_ingest.py` | (v4.5) wiki_ingest 누적·재렌더·실패 처리·backfill 상한·씨앗 + `migrate_library` 회귀 테스트. 임시 Vault·장부·상태 파일, Gemini 는 가짜(네트워크 0). |
+ | `scripts/retitle_tips.py` · `scripts/test_retitle_tips.py` | (v4.4) 꿀팁 제목 보완. CSV(`record_id,old_title,new_title`) → 장부 `title`·`updated_at`(+ 카톡 자동 메모 비움) · 「AI 꿀팁」 노트 제자리 수정·파일명 변경 · Vault `[[링크]]` 치환 → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 검증 전부 통과 뒤에만 쓰고 쓰기 전 `data/retitle_backup/<시각>/` 에 장부·파일 백업. 장부 조건은 `record_id` + 옛 제목(같은 CSV 재실행은 멈춤). 종료 0 · 1 · 2(무변경). |
+@@ -216,10 +219,13 @@ YouTube "AI 영상목록" (마스터 모드)
+ | MCP `wiki-search` | `wiki_mcp.js` (stdio) | 없음 | Claude Code 대화 중 |
+ 
+ - **`server.js`를 `0.0.0.0`으로 열지 말 것.** `/api/master-ingest`(스케줄러 실행)·`/api/config`(키 노출)가 같이 열린다. (노션 쓰기 프록시·`/api/sync-obsidian` 은 v4.0 에서 제거) 집 안 공유는 `wiki_lan_server.js`가 전담한다.
+-- **`wiki_lan_server.js`에 쓰기·실행 엔드포인트를 추가하지 말 것.** 라우트는 `/`, `/wiki`, `/favicon.svg`, `/api/wiki-topics`, `/api/wiki-search`, `/api/wiki-ask` 뿐이다.
++- **`wiki_lan_server.js`에 쓰기·실행 엔드포인트를 추가하지 말 것.** 라우트는 `/`, `/wiki`, `/favicon.svg`, `/api/wiki-topics`, `/api/wiki-search`, `/api/wiki-ask`, (v4.7) `/api/wiki-note` 뿐이다.
+ - `.env`의 `WIKI_LAN_ALLOW_CIDR`(사설 대역 `/16`~`/32`, 쉼표로 여러 개)가 없거나 틀리면 **`127.0.0.1` 전용으로 떨어진다(fail-closed).** 가족이 "갑자기 안 된다"고 하면 `wiki-lan.log`의 `바인딩:` 줄부터 본다.
+ - 클라이언트 IP는 **소켓 주소만** 본다. `X-Forwarded-For`를 읽는 코드를 넣지 말 것(위조 가능).
+ - AI 답변은 scheduler·wiki-ingest와 **같은 Gemini 무료 키**를 쓴다. IP당 분당 5회 + 전체 24시간 `WIKI_LAN_ASK_DAILY_MAX`회(기본 20, 메모리 카운터 — 재기동하면 0). 한도를 올리면 영상 요약·Wiki 합성이 429를 맞는다. 일반 검색은 임베딩 모델을 쓰므로 별개이고, 한도에 걸리면 키워드 검색으로 대체된다.
++- (v4.7) 화면은 `/api/wiki-search?all=1`(전체 목록, gzip·ETag)을 한 번 받아 필터·정렬을 브라우저에서 한다. 검색어는 `?scores=1&q=`(모든 노트 점수 — 의미 검색이면 화면이 상위 200건을 관련 결과로 본다), 비슷한 영상은 `?similar=<id>`(저장 벡터끼리, Gemini 호출 없음), 노트 전체 보기는 `/api/wiki-note?id=`(경로를 받지 않고 id 로만 — `readNote` 가 Vault 밖을 막는다). 기존 `?q=&limit=` 응답은 그대로(AI 답변 503 대체 경로가 쓴다). **`/api/wiki-note` 에 경로(path) 인자를 받게 바꾸지 말 것.**
++- (v4.7) 화면은 iRichGreen Design System 웹 계층 DS 1.1.23 을 따른다 — 색·크기는 `wiki.html` 머리의 CSS 변수만(밝은 테마만, DS 에 다크 테마가 없다). 엑셀은 브라우저가 .xlsx 를 직접 만든다(외부 라이브러리 없음, 파일명 `ai-llm-wiki-YYYYMMDD.xlsx`, 시트 「목록」·「조건」). 「새로 들어온 것」은 그 브라우저 localStorage(`wiki.seen`·`wiki.new`)에만 기억한다.
++- (v4.7) 인덱스에 화면 필터용 메타가 붙은 뒤에야 종류·요약 방식·꿀팁 분류 필터가 맞게 센다 — 적용 직후 `build_search_index.py` 한 번(임베딩 호출 0).
+ - 화면의 「Obsidian에서 열기」는 `location.hostname`이 `localhost`/`127.0.0.1`일 때만 나온다(`wiki.html:IS_LOCAL`). 가족 PC에는 Vault가 없다.
+ - **맥북이 집에 켜져 있을 때만 된다.** 덮개를 닫아 잠들거나 들고 나가면 가족은 접속할 수 없다. IPv6로는 열지 않는다(대역 검사가 IPv4 전제).
+ - `<맥이름>`은 `scutil --get LocalHostName`이다. macOS가 이름 충돌 시 끝 숫자를 올려 바꾸는 일이 있다 — 주소가 안 먹으면 이름부터 확인한다. 기동 로그의 `가족 접속:` 줄도 같은 값(`scutil --get LocalHostName`)을 찍는다. `os.hostname()`은 쓰지 않는다 — 2026-10-03 실측에서 `.local`로 풀리지 않는 이름을 줬다.
+@@ -581,6 +587,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-13 (v4.7 — Wiki 검색 화면 개편)** — 대표님 요청 6건(처음 열면 전체 목록 · 건수 선택 제거 · 토픽 다중 선택 · 정렬 목록 유지 · 필터 추가 · 머리줄 정렬) + 결정(관련 결과 = 의미 점수 상위 200건 · 비슷한 영상 · 새로 들어온 것 · 엑셀 내려받기 · 노트 전체 보기 · 밝은 테마만). `wiki.html` 전면 교체(iRichGreen Design System 웹 계층 DS 1.1.23 토큰·FilterChip·SegmentedControl·표 30px 줄, 표/카드, 줄 펼침, URL 해시 상태, `/`·Esc, 휴대폰 서랍 필터). `lib/wiki_search.js` `listPayload`·`scoreAll`·`similar`·`noteById`, `server.js`·`wiki_lan_server.js` `/api/wiki-search` 에 `all=1`·`scores=1`·`similar=` 옵션 + 새 읽기 전용 경로 `/api/wiki-note`(id 로만). `build_search_index.py` 화면 필터용 메타 7개(임베딩 hash 무관 — 실 Vault 사본 실행 임베딩 0건). 장부·스키마·스케줄러 무변경. 테스트: 신규 `test_wiki_search.js` 34/34, `test_build_wiki_index.py` 15/15(+4). 회귀 테스트 12종. 지시서 `docs/tasks/2026-10-13-v47-wiki-ui.md`.
+ - **2026-10-13 (v4.6-b — 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)** — 배경: 장부의 옛 요약 약 3,000편이 설명란 추론이라 일부가 지어낸 내용이고, 그래서 Wiki backfill 을 정지해 뒀다. 10-13 비교 5건에서 `gemini-3.5-flash-lite` 가 2.5 Flash 와 등급·신호 5/5 일치(말 내용 포함, 요약은 약 65% 길이), 3.x 는 `thinkingBudget: 0` 을 400 으로 거절. 수정: `lib/resummarize.js` 신규(scheduler 매 실행 신규 처리 뒤, 실행당 5 · 하루 20 · 신규 몫 3시간 예약, 실패 시 기존 요약 유지·건너뜀/실패/중단 분류), `lib/video_summary.js` 모델 인자·`thinkingConfigFor`·`fallback:false`·`reserveSeconds`·`summaryProblem`(bad_summary 사유 로그)·promo_main 프롬프트 좁힘(무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보는 판매 아님), `lib/library.js` 재요약 헬퍼(`updateResummary` — `updated_at` + `wiki_extract` stale), `sync_obsidian.py:refresh_changed_notes`(요약 절 제자리 교체·관련 항목 보존·장부 grade 만 고쳐도 노트가 따라옴), `wiki_ingest.py` backfill 대상 = `summary_src: video` 만 · 항목 0 페이지 안내 문구. 스키마 무변경(user_version 3). `.env WIKI_BACKFILL_DAILY_MAX=0` 정지 줄 제거. 테스트: 신규 `test_resummarize.js` 9/9, `test_video_summary.js` 23/23(+6), `test_scheduler_guards.js` 33/33(+2), `test_sync_obsidian.py` 32/32(+8), `test_wiki_ingest.py` 64/64(+7). 회귀 테스트 11종. 지시서 `docs/tasks/2026-10-13-v46b-resummarize.md`.
+ - **2026-10-13 (v4.6-a — 실제 영상 요약 + 품질 필터, 신규 영상부터)** — 배경(10-12 시험): 요약이 제목·설명란만 보고 "추론해서라도 작성"이라 설명란이 빈약하면 지어낸 내용이 됐다(`mW5k5CbO4sA` 「AI 데이터 활용」 = 실제는 Python 문자열 강의). 수정: `lib/video_summary.js` 신규 — 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로(LOW, 30분 넘으면 앞 30분), JSON 으로 요약 + 사실 신호, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → exclude). 영상 토큰 0(삭제 영상)·비공개·403(연속 2회면 그 실행 끔)·429 소진·하루 8시간 분량(`.video_quota.json`)은 설명란 요약으로 대체. `getBatchDetails` 가 `contentDetails,status` 도 받음(1유닛 그대로). 장부 user_version 3(`videos.grade`·`quality`·`summarized_at`, `migrate_library.py` 가 v1·v2 → v3 한 번에). 노트 프론트매터 `grade`·`summary_src`, `grade: exclude` 는 `wiki_ingest`·`build_search_index` 에서만 제외. `.env` 스위치 `VIDEO_SUMMARY`·`VIDEO_MAX_SECONDS`·`VIDEO_DAILY_SECONDS`. 테스트: 신규 `test_video_summary.js` 17/17, `test_scheduler_guards.js` 31/31(+2), `test_wiki_ingest.py` 57/57(+6), `test_sync_obsidian.py` 24/24(+1), `test_build_wiki_index.py` 11/11(+1). 회귀 테스트 10종. 지시서 `docs/tasks/2026-10-13-v46a-video-summary.md`.
+ - **2026-10-12 (v4.5 — Wiki 합성 결과 누적)** — 결함: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서(05-12 도입 때부터) 페이지 56개의 source_count 가 1~10, index 9행뿐이었다(합성 소스 3,619건). 추출 결과를 저장하지 않아 되살릴 원본이 없었다. 수정: 장부에 `wiki_extract` 표(user_version 1 → 2, `scripts/migrate_library.py`), 소스별 누적 + 매 실행 전체 재렌더(결정적, 내용 같으면 안 씀, 고아 제외·retitle 반영), 깨진 응답은 실패로 3회까지 재시도, 옛 페이지 항목 씨앗(`--seed-from-pages`), 옛 소스 backfill(20개 묶음, 하루 30회, launchd 경로만 — `sync_obsidian` 은 `--no-backfill`). `backup_library.py` 행 수에 `wiki_extract` 추가. 테스트: 신규 `test_wiki_ingest.py` 51/51, `test_backup_library.py` 버전 기대값을 `SCHEMA_VERSION` 으로. 회귀 테스트 9종. 지시서 `docs/tasks/2026-10-12-wiki-extract-store.md`.
+diff --git a/README.md b/README.md
+index 32734a0..0015f8e 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
+ 
+-**현재 버전: v4.6** (2026-10-13)
++**현재 버전: v4.7** (2026-10-13)
+ 
+ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
+ 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
+@@ -14,6 +14,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카
+ > v4.5: Wiki 합성 결과(엔티티·개념)를 장부 `wiki_extract` 에 쌓고 `_wiki` 페이지를 매번 전체로 다시 그립니다.
+ > v4.6-a: 신규 영상은 **실제 영상**(YouTube URL)을 Gemini 에 넣어 요약하고, 판매가 주목적·일반론·AI 무관 영상은 등급 `exclude` 로 표시해 Wiki 합성·검색에서만 뺍니다(노트는 그대로). 영상 입력이 안 되면 예전처럼 설명란으로 요약합니다.
+ > v4.6-b: 예전에 설명란만 보고 만든 요약 약 3,000편을 **실제 영상으로 천천히 다시 요약**합니다(정시 실행마다 최대 5편, 하루 20편, Gemini 3.5 Flash-Lite — 신규 영상 몫 3시간은 남겨 둠). 노트는 요약 절만 제자리에서 바뀌고, Wiki 합성은 실제 영상 요약 노트만 다시 추출합니다.
++> v4.7: Wiki 검색 화면을 개편했습니다 — 처음 열면 전체 목록이 나오고, 토픽 여러 개·종류·날짜·조회수·채널 등으로 거르고, 머리줄을 눌러 정렬합니다. 비슷한 영상·노트 전체 보기·엑셀 내려받기도 됩니다(회사 디자인 시스템 DS 1.1.23).
+ > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
+ > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
+ 
+@@ -188,7 +189,7 @@ AI_Wiki_Pipeline/
+ ├── wiki_config.py                     # Wiki Ingest 공통 설정 및 Gemini 호출 유틸
+ ├── build_search_index.py              # 검색 인덱스(임베딩) 증분 빌드 (프론트매터의 notion_id 기준, v4.6 grade: exclude 제외)
+ ├── wiki_lan_server.js                 # (v3.2) 집 안 전용 읽기 전용 Wiki 검색 서버 (포트 3100)
+-├── wiki.html                          # Wiki 검색 화면 (server.js·wiki_lan_server.js 공용)
++├── wiki.html                          # Wiki 검색 화면 (server.js·wiki_lan_server.js 공용, v4.7 전체 목록·필터·정렬·엑셀·노트 보기)
+ ├── wiki_mcp.js                        # Wiki 검색 stdio MCP (search_wiki, read_note)
+ ├── com.irichgreen.*.plist             # launchd 원본 (server · ytsummarizer · wiki-ingest · wiki-lan) — 설치본과 같게 유지
+ ├── install-*.sh                       # launchd 설치 스크립트 (server · scheduler · wiki-ingest)
+@@ -213,7 +214,7 @@ AI_Wiki_Pipeline/
+ │   ├── migrate_library.py             # (v4.5·v4.6) 장부 스키마 이전 1·2 → 3 (dry-run 기본, 백업 먼저)
+ │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
+ │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
+-│   └── test_*.{js,py}                 # 회귀 테스트 11종 (네트워크 0회)
++│   └── test_*.{js,py}                 # 회귀 테스트 12종 (네트워크 0회)
+ ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
+ ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
+ ├── docs/cowork-project-instructions.md # (옛) Cowork 프로젝트 인수인계 사본 (2026-08-17) — 현재 원본은 Cowork 프로젝트 설정
+@@ -405,6 +406,13 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ > 제약: 맥이 집에 켜져 있고 깨어 있을 때만 접속된다. 읽기 전용(검색·AI 답변)이며, 인제스트 실행 엔드포인트는 이 서버에 없다.
+ 
++화면(v4.7):
++- 처음 열면 전체 목록(최신순). 왼쪽 필터 — 종류(영상·꿀팁) · 토픽(여러 개, 「하나라도 / 모두」) · 올라온 날짜 · 조회수 · 요약 방식(영상을 보고 만든 요약만) · 채널 · 꿀팁 분류·중요도 · 지난 방문 뒤 새로 들어온 것. 필터 옆 숫자는 다른 조건에 맞춰 바로 바뀐다.
++- 검색어를 넣으면 의미 점수 상위 200건을 관련 결과로 보고 그 안에서 거르고 정렬한다(임베딩 한도에 걸리면 글자 일치).
++- 표 머리줄(제목·채널·토픽·올라온 날·조회수·관련도)을 누르면 정렬, 한 번 더 누르면 뒤집힌다. 표/카드 보기 전환. 줄을 누르면 펼쳐지고 「전체 요약 보기」로 노트 본문과 비슷한 영상 5개를 오른쪽 패널에서 본다.
++- 「엑셀」은 지금 목록(필터·정렬 그대로)을 `ai-llm-wiki-YYYYMMDD.xlsx` 로 받는다(시트 「목록」·「조건」).
++- 지금 화면 상태(검색어·필터·정렬·열린 노트)가 주소에 남아 북마크·공유할 수 있다. `/` 로 검색 칸, `Esc` 로 지우기·닫기.
++
+ ---
+ 
+ ## 📓 Obsidian LLM Wiki
+@@ -440,6 +448,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ | 버전 | 날짜 | 주요 내용 요약 |
+ | :-- | :--- | :--- |
++| **v4.7** | 2026-10-13 | **Wiki 검색 화면 개편**: 처음 열면 전체 목록(필터·정렬은 브라우저), 건수 선택 제거, 토픽 다중 선택(하나라도·모두), 종류·날짜·조회수·채널·요약 방식·꿀팁 분류·새로 들어온 것 필터, 머리줄 정렬, 표/카드, 의미 검색은 상위 200건 안에서, 비슷한 영상(저장 벡터 — Gemini 호출 없음), 노트 전체 보기(`/api/wiki-note`, id 로만), 엑셀 내려받기. iRichGreen Design System DS 1.1.23. 인덱스에 화면 필터용 메타(임베딩 무관). 회귀 테스트 12종 |
+ | **v4.6-b** | 2026-10-13 | **기존분 재요약 + 노트 요약 절 제자리 교체 + backfill 재개**: 설명란 요약 약 3,000편(`summary_src != 'video'`)을 정시 실행마다 최대 5편 · 하루 20편씩 실제 영상으로 다시 요약(`lib/resummarize.js`, Gemini 3.5 Flash-Lite — 10-13 비교 5건 등급·신호 일치, 신규 영상 분량 3시간 예약, 실패하면 기존 요약 유지). `sync_obsidian.py` 가 재요약·등급 변경 노트의 요약 절만 교체(관련 항목 절 보존). Wiki backfill 은 실제 영상 요약 노트만(재요약 시 `wiki_extract` stale), 항목 0 `_wiki` 페이지는 안내 문구로. promo_main 에서 무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보 제외, bad_summary 사유 로그. 회귀 테스트 11종 |
+ | **v4.6-a** | 2026-10-13 | **실제 영상 요약 + 품질 필터(신규 영상부터)**: 설명란만 보고 "추론해서라도" 쓰던 요약이 빈약한 설명란에서 지어낸 내용이 되던 문제 수정. 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로 넣어(LOW, 30분 넘으면 앞 30분) 요약 + 사실 신호를 받고, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → `exclude`). 삭제·비공개·403·한도는 설명란 요약으로 대체. 장부 user_version 3(`grade`·`quality`·`summarized_at`), 노트 프론트매터 `grade`·`summary_src`, `exclude` 는 Wiki 합성·검색에서만 제외. 회귀 테스트 10종 |
+ | **v4.5** | 2026-10-12 | **Wiki 합성 결과 누적**: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서 페이지마다 1~10건만 남던 결함(05-12 도입 때부터) 수정. 추출 결과를 장부 새 표 `wiki_extract`(user_version 2, `scripts/migrate_library.py`)에 소스별로 쌓고 매 실행 전체로 다시 그림(내용 같으면 안 씀). 깨진 응답은 실패로 재시도(3회), 옛 페이지 항목 씨앗, 옛 소스 3천여 건은 20개 묶음 backfill(하루 30회, 약 6일). 회귀 테스트 9종 |
+@@ -469,6 +478,21 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ ### 📝 상세 변경 내역 (Detailed Change Log)
+ 
++#### [v4.7] — 2026-10-13 (🔎 Wiki 검색 화면 개편)
++
++**배경.** 검색 화면은 검색어를 넣어야 결과가 나오고(최대 30건), 토픽은 하나만 고를 수 있었다. 3,162건을 훑어보거나 여러 조건으로 거를 방법이 없었다.
++
++| 항목 | 내용 |
++|---|---|
++| 화면 | `wiki.html` 전면 교체 — 처음 열면 전체 목록, 건수 선택 제거, 필터(종류·토픽 다중·날짜·조회수·요약 방식·채널·꿀팁 분류·중요도·새로 들어온 것, 다른 조건에 맞춘 건수), 켜진 필터 칩, 머리줄 정렬, 표/카드, 줄 펼침, 노트 전체 보기 패널(관련 항목 링크로 이동), 비슷한 영상 5개, 엑셀 내려받기, URL 해시 상태, 휴대폰 서랍 필터 |
++| 디자인 | iRichGreen Design System 웹 계층 DS 1.1.23 — 토큰만(CSS 변수), FilterChip·SegmentedControl, 표 30px 줄, 카드 그림자 없음, 가장 작은 글자 12px, 고정폭 숫자, 1만 이상 「만」 표기, 빈 값 `-`. 밝은 테마만 |
++| 검색 | 의미 점수를 모든 노트에 매겨(`scores=1`) 상위 200건을 관련 결과로 — 그 안에서 거르고 정렬. 임베딩 실패면 글자 일치(0점 제외) |
++| API | `/api/wiki-search` 에 `all=1`(전체 목록, gzip 약 0.73MB · ETag) · `scores=1` · `similar=<id>` 옵션, 새 읽기 전용 경로 `/api/wiki-note?id=`(경로를 받지 않음). 기존 `?q=&limit=` 그대로 |
++| 인덱스 | `build_search_index.py` 가 `kind`·`subscriber_count`·`summary_src`·`link_url`·`category`·`importance`·`keywords` 를 더 담는다 — 임베딩 hash 무관(실 Vault 사본 실행 재사용 3,162 · 신규 임베딩 0) |
++| 무변경 | 장부·스키마·스케줄러·Wiki 합성·시트 미러 |
++| 테스트 | 신규 `scripts/test_wiki_search.js` 34/34, `test_build_wiki_index.py` 15/15(+4). 회귀 테스트 12종 |
++| 지시서 | `docs/tasks/2026-10-13-v47-wiki-ui.md` |
++
+ #### [v4.6-b] — 2026-10-13 (🔁 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)
+ 
+ **배경.** v4.6-a 는 신규 영상부터 실제 영상으로 요약했다. 장부의 옛 요약 약 3,000편은 여전히 설명란만 보고 만든 것이라 일부는 지어낸 내용이고, 그래서 Wiki backfill(옛 소스 재추출)을 정지해 두었다(`.env WIKI_BACKFILL_DAILY_MAX=0`). 10-13 비교에서 Gemini 3.5 Flash-Lite 는 2.5 Flash 와 등급·신호가 5/5 같았고(Python 강의 = not_ai, 컨설팅 모집 = promo_main 포함) 말 내용도 정확히 옮겼다 — 요약은 약 65% 길이. 같은 날 12:00 실행에서 무료 레퍼런스 키트를 나눠 주는 시연 영상이 promo_main 으로 제외됐다(오판).
+diff --git a/build_search_index.py b/build_search_index.py
+index d14e70a..6e2d3f9 100644
+--- a/build_search_index.py
++++ b/build_search_index.py
+@@ -122,8 +122,15 @@ def collect_notes():
+             if fm('grade') == 'exclude':   # (v4.6) 품질 필터 제외 노트 — Vault 에는 남고 검색에서만 빠진다
+                 continue
+ 
+-            tags_m = re.search(r'^tags:\s*\[(.*)\]$', head, re.MULTILINE)
+-            tags = [t.strip().strip('"') for t in tags_m.group(1).split(',')] if tags_m and tags_m.group(1).strip() else []
++            def fm_list(key):
++                lm = re.search(rf'^{key}:\s*\[(.*)\]$', head, re.MULTILINE)
++                return [t.strip().strip('"') for t in lm.group(1).split(',')] if lm and lm.group(1).strip() else []
++
++            def fm_int(key):
++                try: return int(fm(key, '0') or 0)
++                except ValueError: return 0
++
++            tags = fm_list('tags')
+ 
+             def section(name):
+                 sm = re.search(rf'^## {name}\s*\n(.*?)(?=^## |\Z)', content, re.MULTILINE | re.DOTALL)
+@@ -143,8 +150,16 @@ def collect_notes():
+                 'topic': nfc(os.path.relpath(root, VAULT).split(os.sep)[0]) if root != VAULT else '기타',
+                 'tags': tags,
+                 'upload_date': fm('upload_date'),
+-                'view_count': int(fm('view_count', '0') or 0),
++                'view_count': fm_int('view_count'),
+                 'video_url': fm('video_url'),
++                # (v4.7) 검색 화면 필터용 메타 — 임베딩 hash 와 무관(재임베딩 없음)
++                'kind': 'tip' if fm('source_type') == 'tip' else 'video',
++                'subscriber_count': fm_int('subscriber_count'),
++                'summary_src': fm('summary_src'),
++                'link_url': fm('link_url'),
++                'category': fm('category'),
++                'importance': fm('importance'),
++                'keywords': fm_list('keywords'),
+                 'hash': hashlib.sha1(embed_text.encode('utf-8')).hexdigest(),
+                 'snippet': re.sub(r'\s+', ' ', overview)[:200],
+                 '_embed_text': embed_text,
+diff --git a/lib/wiki_search.js b/lib/wiki_search.js
+index cdcf2e5..def0381 100644
+--- a/lib/wiki_search.js
++++ b/lib/wiki_search.js
+@@ -5,11 +5,14 @@
+ const fs = require('fs');
+ const path = require('path');
+ const https = require('https');
++const zlib = require('zlib');
+ 
+ const SCRIPT_DIR = path.join(__dirname, '..');
+-const VAULT = '/Users/tycoonan/Documents/Obsidian/AI LLM Wiki/AI LLM Wiki';
+-const INDEX_JSON = path.join(SCRIPT_DIR, 'wiki_index.json');
+-const INDEX_VEC = path.join(SCRIPT_DIR, 'wiki_index.vec');
++// (v4.7) WIKI_SEARCH_DIR · WIKI_VAULT 는 회귀 테스트(scripts/test_wiki_search.js)가 임시 폴더를 가리킬 때만 쓴다
++const INDEX_DIR = process.env.WIKI_SEARCH_DIR || SCRIPT_DIR;
++const VAULT = process.env.WIKI_VAULT || '/Users/tycoonan/Documents/Obsidian/AI LLM Wiki/AI LLM Wiki';
++const INDEX_JSON = path.join(INDEX_DIR, 'wiki_index.json');
++const INDEX_VEC = path.join(INDEX_DIR, 'wiki_index.vec');
+ const DIM = 768;
+ 
+ // ── .env 로드 (MCP 단독 실행 대비, 기존 값 우선) ──
+@@ -62,6 +65,8 @@ function loadIndex() {
+   }
+   cache = {
+     notes: meta.notes,
++    built: meta.built || String(stat.mtimeMs),
++    byId: new Map(meta.notes.map((n, i) => [n.id, i])),
+     vecs: new Float32Array(buf.buffer, buf.byteOffset, meta.notes.length * DIM),
+     mtime: stat.mtimeMs,
+   };
+@@ -179,6 +184,21 @@ async function search(query, { topic = '', limit = 10 } = {}) {
+   return { results: rankAndFormat(scored, notes, limit), mode: 'vector' };
+ }
+ 
++function keywordScore(n, tokens) {
++  const title = nfc(n.title).toLowerCase();
++  const tags = n.tags.map(t => nfc(t).toLowerCase()).join(' ');
++  const snippet = nfc(n.snippet).toLowerCase();
++  const channel = nfc(n.channel).toLowerCase();
++  let score = 0;
++  for (const t of tokens) {
++    if (title.includes(t)) score += 3;
++    if (tags.includes(t)) score += 2;
++    if (channel.includes(t)) score += 2;
++    if (snippet.includes(t)) score += 1;
++  }
++  return score;
++}
++
+ function keywordSearch(query, { topic = '', limit = 10 } = {}) {
+   const { notes } = loadIndex();
+   const tokens = tokenize(query);
+@@ -187,22 +207,57 @@ function keywordSearch(query, { topic = '', limit = 10 } = {}) {
+   for (let i = 0; i < notes.length; i++) {
+     const n = notes[i];
+     if (topicFilter && nfc(n.topic) !== topicFilter) continue;
+-    const title = nfc(n.title).toLowerCase();
+-    const tags = n.tags.map(t => nfc(t).toLowerCase()).join(' ');
+-    const snippet = nfc(n.snippet).toLowerCase();
+-    const channel = nfc(n.channel).toLowerCase();
+-    let score = 0;
+-    for (const t of tokens) {
+-      if (title.includes(t)) score += 3;
+-      if (tags.includes(t)) score += 2;
+-      if (channel.includes(t)) score += 2;
+-      if (snippet.includes(t)) score += 1;
+-    }
++    const score = keywordScore(n, tokens);
+     if (score > 0) scored.push({ i, score });
+   }
+   return rankAndFormat(scored, notes, limit);
+ }
+ 
++// ── (v4.7) 검색 화면용 — 전체 목록과 전체 점수 ──
++// 화면이 목록을 한 번 받아 필터·정렬을 브라우저에서 한다. 검색어가 있으면 점수만 따로 받아 붙인다.
++const LIST_FIELDS = ['id', 'title', 'channel', 'topic', 'tags', 'upload_date', 'view_count', 'video_url', 'path',
++  'snippet', 'kind', 'subscriber_count', 'summary_src', 'link_url', 'category', 'importance', 'keywords'];
++let listCache = null; // { built, json, gz, etag }
++
++function listPayload() {
++  const { notes, built } = loadIndex();
++  if (listCache && listCache.built === built) return listCache;
++  const rows = notes.map(n => {
++    const o = {};
++    for (const k of LIST_FIELDS) if (n[k] !== undefined && n[k] !== '' && !(Array.isArray(n[k]) && !n[k].length)) o[k] = n[k];
++    return o;
++  });
++  const json = Buffer.from(JSON.stringify({ built, total: rows.length, notes: rows }));
++  listCache = { built, json, gz: zlib.gzipSync(json), etag: '"' + Buffer.from(String(built)).toString('base64') + '"' };
++  return listCache;
++}
++
++// 모든 노트의 점수 { id: score }. 임베딩이 안 되면 키워드 점수(0점은 빼고).
++async function scoreAll(query) {
++  const { notes, vecs, built } = loadIndex();
++  const tokens = tokenize(query);
++  const queryLower = nfc(query).toLowerCase();
++  const wantRecent = /최신|최근|요즘|올해|이번\s*달/.test(query);
++  const scores = {};
++  let qv = null;
++  try {
++    qv = await embedQuery(query);
++  } catch (e) {
++    for (const n of notes) {
++      const s = keywordScore(n, tokens);
++      if (s > 0) scores[n.id] = s;
++    }
++    return { mode: 'keyword', built, scores };
++  }
++  for (let i = 0; i < notes.length; i++) {
++    let dot = 0;
++    const off = i * DIM;
++    for (let d = 0; d < DIM; d++) dot += vecs[off + d] * qv[d];
++    scores[notes[i].id] = Math.round((dot + metaBoost(notes[i], tokens, queryLower, wantRecent)) * 1000) / 1000;
++  }
++  return { mode: 'vector', built, scores };
++}
++
+ // ── 토픽 목록 (필터 드롭다운용) ──
+ function listTopics() {
+   const { notes } = loadIndex();
+@@ -265,4 +320,36 @@ ${contexts}`;
+   };
+ }
+ 
+-module.exports = { loadIndex, search, keywordSearch, readNote, ask, listTopics, isGeminiDisabled, VAULT };
++// (v4.7) 이 노트와 의미가 가까운 노트 k개 — 저장된 벡터끼리만 비교한다(Gemini 호출 없음)
++const ID_RE = /^[0-9A-Za-z-]{1,64}$/;
++function similar(id, k = 5) {
++  const { notes, vecs, byId } = loadIndex();
++  const src = byId.get(id);
++  if (src === undefined) return null;
++  const so = src * DIM;
++  const top = [];
++  for (let i = 0; i < notes.length; i++) {
++    if (i === src) continue;
++    let dot = 0;
++    const off = i * DIM;
++    for (let d = 0; d < DIM; d++) dot += vecs[off + d] * vecs[so + d];
++    if (top.length < k || dot > top[top.length - 1].score) {
++      top.push({ i, score: dot });
++      top.sort((a, b) => b.score - a.score);
++      if (top.length > k) top.pop();
++    }
++  }
++  return top.map(({ i, score }) => ({ id: notes[i].id, score: Math.round(score * 1000) / 1000 }));
++}
++
++// (v4.7) 화면 오른쪽 미리보기용 노트 본문 — id 로만 찾는다(경로를 받지 않는다). 프론트매터는 뗀다
++function noteById(id) {
++  const { notes, byId } = loadIndex();
++  const i = byId.get(id);
++  if (i === undefined) return null;
++  const n = notes[i];
++  const text = readNote(n.path);
++  return { id: n.id, path: n.path, body: text.replace(/^---\n[\s\S]*?\n---\n/, '').trim() };
++}
++
++module.exports = { loadIndex, search, keywordSearch, readNote, ask, listTopics, listPayload, scoreAll, similar, noteById, ID_RE, isGeminiDisabled, VAULT };
+diff --git a/scripts/test_build_wiki_index.py b/scripts/test_build_wiki_index.py
+index 6cd5be1..db027c6 100644
+--- a/scripts/test_build_wiki_index.py
++++ b/scripts/test_build_wiki_index.py
+@@ -9,6 +9,7 @@
+   2) 바뀐 노트 하나만 다시 쓴다
+   3) 검색 인덱스는 맨 앞 프론트매터의 notion_id 만 노트로 센다 (본문 예시의 'notion_id: …' 는 노트가 아니다)
+   4) (v4.6) 프론트매터 grade: exclude 노트는 검색 인덱스에서 빠진다 (grade: null·keep 은 그대로)
++  5) (v4.7) 검색 화면 필터용 메타(kind·subscriber_count·summary_src·link_url·category·importance·keywords)를 담고, 임베딩 hash 는 그대로
+ """
+ import os, shutil, sys, tempfile, time
+ from contextlib import redirect_stdout
+@@ -127,6 +128,21 @@ try:
+     ids = sorted(n['id'] for n in bsi.collect_notes())
+     check('exclude 1건만 빠지고 keep·null 은 포함', '…003c' not in ids and not any(i.endswith('3c') for i in ids)
+           and any(i.endswith('4d') for i in ids) and any(i.endswith('5e') for i in ids) and len(ids) == 5, ids)
++    print('▶ 6. (v4.7) 화면 필터용 메타')
++    with open(os.path.join(V, 'AI 꿀팁/20260906_꿀팁 둘.md'), 'w', encoding='utf-8') as fh:
++        fh.write('---\ntitle: "꿀팁 둘"\nchannel: "https://github.com"\nsource_type: tip\ncategory: "개발툴"\n'
++                 'keywords: ["Claude", "MCP"]\nimportance: 상\nupload_date: 2026-09-06\nlink_url: https://github.com/x/y\n'
++                 'notion_id: tip-0002\n---\n\n메모\n')
++    with open(os.path.join(V, 'AI Claude/채널가_영상요약_20260907.md'), 'w', encoding='utf-8') as fh:
++        fh.write(note('영상요약', 'aaaaaaaa-0000-0000-0000-00000000006f', 'AI Claude').replace('status: 완료\n', 'status: 완료\nsummary_src: video\ngrade: keep\n'))
++    by = {n['id']: n for n in bsi.collect_notes()}
++    t2, v6, v1 = by.get('tip-0002', {}), by.get('aaaaaaaa-0000-0000-0000-00000000006f', {}), by.get('aaaaaaaa-0000-0000-0000-00000000001a', {})
++    check('꿀팁: kind tip · link_url · category · importance · keywords', t2.get('kind') == 'tip' and t2.get('link_url') == 'https://github.com/x/y'
++          and t2.get('category') == '개발툴' and t2.get('importance') == '상' and t2.get('keywords') == ['Claude', 'MCP'], t2)
++    check('영상: kind video · subscriber_count · summary_src', v6.get('kind') == 'video' and v6.get('subscriber_count') == 20
++          and v6.get('summary_src') == 'video' and v6.get('link_url') == '', v6)
++    check('summary_src 없는 옛 노트는 빈 값 · keywords 빈 배열', v1.get('summary_src') == '' and v1.get('keywords') == [], v1)
++    check('메타를 더해도 임베딩 hash 는 그대로 (재임베딩 없음)', v1.get('hash') == n1['hash'], [v1.get('hash'), n1['hash']])
+     check('네트워크 요청 0건', not calls, calls[:2])
+ finally:
+     shutil.rmtree(tmp, ignore_errors=True)
+diff --git a/scripts/test_wiki_search.js b/scripts/test_wiki_search.js
+new file mode 100644
+index 0000000..eb159b8
+--- /dev/null
++++ b/scripts/test_wiki_search.js
+@@ -0,0 +1,184 @@
++#!/usr/bin/env node
++// (v4.7) Wiki 검색 화면 API 회귀 테스트 — lib/wiki_search.js 의 listPayload·scoreAll·similar·noteById
++// + wiki_lan_server.js 의 /api/wiki-search(all·similar)·/api/wiki-note 경로.
++// 임시 인덱스·임시 Vault 만 쓴다(WIKI_SEARCH_DIR · WIKI_VAULT). Gemini 요청은 가짜로 바꿔 네트워크 0회.
++//
++//   /opt/homebrew/bin/node scripts/test_wiki_search.js
++'use strict';
++const fs = require('fs');
++const os = require('os');
++const path = require('path');
++const zlib = require('zlib');
++const http = require('http');
++const https = require('https');
++const { spawn } = require('child_process');
++const { EventEmitter } = require('events');
++
++const REPO = path.join(__dirname, '..');
++const DIM = 768;
++const results = [];
++function check(name, cond, detail) {
++  results.push(!!cond);
++  console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${name}${!cond && detail !== undefined ? '  — ' + JSON.stringify(detail).slice(0, 300) : ''}`);
++}
++
++// ── 임시 인덱스 · Vault ──
++const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-search-test-'));
++const V = path.join(tmp, 'vault');
++fs.mkdirSync(path.join(V, 'AI Claude'), { recursive: true });
++fs.mkdirSync(path.join(V, 'AI 꿀팁'), { recursive: true });
++const unit = k => { const v = new Float32Array(DIM); v[k] = 1; return v; };
++const mix = (a, b, w) => { const v = new Float32Array(DIM); v[a] = Math.sqrt(1 - w * w); v[b] = w; return v; };
++const NOTES = [
++  { id: 'aaaaaaaa-0000-0000-0000-000000000001', path: 'AI Claude/채널가_클로드 코드 입문_20261001.md', title: '클로드 코드 입문', channel: '채널가', topic: 'AI Claude',
++    tags: ['AI Claude', 'AI 바이브코딩'], upload_date: '2026-10-01', view_count: 1200, video_url: 'https://www.youtube.com/watch?v=AAAAAAAAAAA', hash: 'h1',
++    snippet: '클로드 코드 기초', kind: 'video', subscriber_count: 5000, summary_src: 'video', link_url: '', category: '', importance: '', keywords: [] },
++  { id: 'aaaaaaaa-0000-0000-0000-000000000002', path: 'AI Claude/채널나_클로드 코드 심화_20261002.md', title: '클로드 코드 심화', channel: '채널나', topic: 'AI Claude',
++    tags: ['AI Claude'], upload_date: '2026-10-02', view_count: 300, video_url: 'https://www.youtube.com/watch?v=BBBBBBBBBBB', hash: 'h2',
++    snippet: '스킬과 훅', kind: 'video', subscriber_count: 0, summary_src: '', link_url: '', category: '', importance: '', keywords: [] },
++  { id: 'aaaaaaaa-0000-0000-0000-000000000003', path: 'AI Claude/채널다_제미나이 비교_20261003.md', title: '제미나이 비교', channel: '채널다', topic: 'AI Claude',
++    tags: ['AI Gemini'], upload_date: '2026-10-03', view_count: 50, video_url: 'https://www.youtube.com/watch?v=CCCCCCCCCCC', hash: 'h3',
++    snippet: '모델 비교', kind: 'video', subscriber_count: 10, summary_src: 'app', link_url: '', category: '', importance: '', keywords: [] },
++  { id: 'tip-0001', path: 'AI 꿀팁/20261004_깃허브 자료.md', title: '깃허브 자료', channel: 'https://github.com', topic: 'AI 꿀팁',
++    tags: [], upload_date: '2026-10-04', view_count: 0, video_url: '', hash: 'h4', snippet: '', kind: 'tip', subscriber_count: 0, summary_src: '',
++    link_url: 'https://github.com/a/b', category: '개발툴', importance: '상', keywords: ['Claude'] },
++  // Vault 밖을 가리키는 경로 — readNote 가 막아야 한다
++  { id: 'evil-0001', path: '../밖.md', title: '밖', channel: 'x', topic: 'AI Claude', tags: [], upload_date: '2026-10-05', view_count: 0,
++    video_url: '', hash: 'h5', snippet: '', kind: 'video', subscriber_count: 0, summary_src: '', link_url: '', category: '', importance: '', keywords: [] },
++];
++const VECS = [unit(0), mix(0, 1, 0.3), unit(2), mix(0, 3, 0.8), unit(4)];
++function writeIndex(built) {
++  fs.writeFileSync(path.join(tmp, 'wiki_index.json'), JSON.stringify({ version: 1, model: 'test', dim: DIM, built, notes: NOTES }));
++  const buf = Buffer.alloc(NOTES.length * DIM * 4);
++  VECS.forEach((v, i) => Buffer.from(v.buffer).copy(buf, i * DIM * 4));
++  fs.writeFileSync(path.join(tmp, 'wiki_index.vec'), buf);
++}
++writeIndex('2026-10-13T10:00:00+0900');
++fs.writeFileSync(path.join(V, NOTES[0].path), '---\ntitle: "클로드 코드 입문"\nnotion_id: aaaaaaaa-0000-0000-0000-000000000001\n---\n\n\n**▶ 영상 보기: **https://www.youtube.com/watch?v=AAAAAAAAAAA\n---\n## 영상 개요\n본문 첫 줄\n');
++fs.writeFileSync(path.join(tmp, '밖.md'), '비밀\n');
++
++// ── Gemini 요청을 가짜로 — 임베딩 실패(키워드 폴백) 또는 고정 벡터 ──
++let netCalls = 0, embedMode = 'fail';
++https.request = (opts, cb) => {
++  netCalls++;
++  const req = new EventEmitter();
++  req.write = () => {};
++  req.destroy = () => {};
++  req.end = () => setImmediate(() => {
++    if (embedMode === 'fail') { req.emit('error', new Error('network blocked (test)')); return; }
++    const res = new EventEmitter();
++    res.statusCode = 200;
++    cb(res);
++    const values = Array.from(unit(0));
++    res.emit('data', Buffer.from(JSON.stringify({ embedding: { values } })));
++    res.emit('end');
++  });
++  return req;
++};
++
++process.env.WIKI_SEARCH_DIR = tmp;
++process.env.GEMINI_API_KEYS = 'fake-key-for-test';   // 실제 .env 키를 쓰지 않는다 — 요청 자체가 가짜
++process.env.WIKI_VAULT = V;
++const ws = require(path.join(REPO, 'lib', 'wiki_search.js'));
++
++(async () => {
++  try {
++    console.log('▶ 1. 전체 목록 (all=1 의 바탕)');
++    const pl = ws.listPayload();
++    const body = JSON.parse(pl.json);
++    check('전체 건수 = 인덱스 노트 수', body.total === NOTES.length && body.notes.length === NOTES.length, body.total);
++    const n0 = body.notes[0];
++    check('화면용 메타가 담긴다 (kind·subscriber_count·summary_src)', n0.kind === 'video' && n0.subscriber_count === 5000 && n0.summary_src === 'video', n0);
++    check('hash 는 보내지 않는다', !('hash' in n0), Object.keys(n0));
++    check('빈 값·빈 배열은 뺀다', !('link_url' in n0) && !('keywords' in n0) && body.notes[3].keywords[0] === 'Claude', [n0, body.notes[3]]);
++    check('gzip 본문을 풀면 원문과 같다', zlib.gunzipSync(pl.gz).equals(pl.json));
++    check('같은 인덱스면 같은 묶음을 다시 쓴다(캐시)', ws.listPayload() === pl);
++    await new Promise(r => setTimeout(r, 20));
++    writeIndex('2026-10-13T11:00:00+0900');
++    const pl2 = ws.listPayload();
++    check('인덱스가 바뀌면 built·ETag 가 바뀐다', pl2.built === '2026-10-13T11:00:00+0900' && pl2.etag !== pl.etag, [pl.etag, pl2.etag]);
++
++    console.log('▶ 2. 전체 점수 (scores=1)');
++    embedMode = 'fail';
++    const kw = await ws.scoreAll('클로드 코드');
++    check('임베딩 실패 → 키워드 점수', kw.mode === 'keyword', kw.mode);
++    check('키워드: 0점은 빼고 맞는 것만', Object.keys(kw.scores).sort().join() === 'aaaaaaaa-0000-0000-0000-000000000001,aaaaaaaa-0000-0000-0000-000000000002', kw.scores);
++    embedMode = 'ok';
++    const vec = await ws.scoreAll('클로드 코드');
++    check('임베딩 성공 → 의미 점수, 모든 노트', vec.mode === 'vector' && Object.keys(vec.scores).length === NOTES.length, vec);
++    check('의미 점수 순서 (1 > 2 > 3)', vec.scores[NOTES[0].id] > vec.scores[NOTES[1].id] && vec.scores[NOTES[1].id] > vec.scores[NOTES[2].id], vec.scores);
++    check('built 가 함께 온다', vec.built === '2026-10-13T11:00:00+0900', vec.built);
++
++    console.log('▶ 3. 비슷한 노트 (similar)');
++    const sim = ws.similar(NOTES[0].id, 2);
++    check('자기 자신은 빠진다', sim.every(x => x.id !== NOTES[0].id), sim);
++    check('가까운 순 (심화 0.95 > 꿀팁 0.60)', sim.length === 2 && sim[0].id === NOTES[1].id && sim[1].id === NOTES[3].id, sim);
++    check('없는 id → null', ws.similar('zzzz-0000') === null);
++    const callsBefore = netCalls;
++    ws.similar(NOTES[1].id, 5);
++    check('similar 은 Gemini 를 부르지 않는다', netCalls === callsBefore, netCalls - callsBefore);
++
++    console.log('▶ 4. 노트 본문 (noteById)');
++    const nb = ws.noteById(NOTES[0].id);
++    check('프론트매터는 떼고 본문만', nb && !nb.body.includes('notion_id') && nb.body.includes('본문 첫 줄'), nb);
++    check('없는 id → null', ws.noteById('zzzz-0000') === null);
++    let threw = false;
++    try { ws.noteById('evil-0001'); } catch (e) { threw = /허용되지 않은 경로/.test(e.message); }
++    check('Vault 밖 경로는 읽지 않는다', threw);
++    check('id 형식 검사: ../ 거부 · uuid 허용', !ws.ID_RE.test('../../etc/passwd') && !ws.ID_RE.test('') && ws.ID_RE.test(NOTES[0].id));
++
++    console.log('▶ 5. 집 안 전용 서버 경로 (127.0.0.1, 임시 포트)');
++    const port = 31000 + Math.floor(Math.random() * 2000);
++    // WIKI_LAN_ALLOW_CIDR 를 일부러 틀리게 → fail-closed 로 127.0.0.1 에만 묶인다(실제 .env 대역과 무관)
++    const child = spawn(process.execPath, [path.join(REPO, 'wiki_lan_server.js')], {
++      env: { ...process.env, GEMINI_API_KEYS: 'fake-key-for-test', WIKI_SEARCH_DIR: tmp, WIKI_VAULT: V, WIKI_LAN_PORT: String(port), WIKI_LAN_ALLOW_CIDR: 'invalid-for-test' },
++      stdio: ['ignore', 'pipe', 'pipe'],
++    });
++    let out = '';
++    child.stdout.on('data', d => { out += d; });
++    child.stderr.on('data', d => { out += d; });
++    await new Promise((resolve, reject) => {
++      const t0 = Date.now();
++      (function wait() { if (/바인딩/.test(out)) return resolve(); if (Date.now() - t0 > 8000) return reject(new Error('서버 기동 실패: ' + out)); setTimeout(wait, 100); })();
++    });
++    const get = (p, headers = {}) => new Promise((resolve, reject) => {
++      http.get({ host: '127.0.0.1', port, path: encodeURI(p), headers: { Host: `127.0.0.1:${port}`, ...headers } }, res => {
++        const chunks = [];
++        res.on('data', c => chunks.push(c));
++        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }));
++      }).on('error', reject);
++    });
++    try {
++      check('fail-closed — 127.0.0.1 에만 묶였다', /바인딩: 127\.0\.0\.1:/.test(out), out.slice(0, 200));
++      const a = await get('/api/wiki-search?all=1', { 'Accept-Encoding': 'gzip' });
++      const al = JSON.parse(zlib.gunzipSync(a.body));
++      check('all=1 → 200 · gzip · ETag', a.status === 200 && a.headers['content-encoding'] === 'gzip' && !!a.headers.etag && al.total === NOTES.length, [a.status, a.headers]);
++      const a2 = await get('/api/wiki-search?all=1', { 'If-None-Match': a.headers.etag });
++      check('같은 ETag → 304', a2.status === 304, a2.status);
++      const s1 = await get(`/api/wiki-search?similar=${NOTES[0].id}`);
++      check('similar → 200 · 5개 이하', s1.status === 200 && JSON.parse(s1.body).results.length === NOTES.length - 1, s1.body.toString());
++      check('similar 잘못된 id → 400', (await get('/api/wiki-search?similar=../x')).status === 400);
++      check('similar 없는 id → 404', (await get('/api/wiki-search?similar=zzzz-0000')).status === 404);
++      const n1 = await get(`/api/wiki-note?id=${NOTES[0].id}`);
++      check('wiki-note → 200 · 본문', n1.status === 200 && JSON.parse(n1.body).body.includes('본문 첫 줄'), n1.body.toString());
++      check('wiki-note 잘못된 id → 400', (await get('/api/wiki-note?id=../../etc/passwd')).status === 400);
++      check('wiki-note 없는 id → 404', (await get('/api/wiki-note?id=zzzz-0000')).status === 404);
++      const ev = await get('/api/wiki-note?id=evil-0001');
++      check('wiki-note Vault 밖 → 404 (내용 없음)', ev.status === 404 && !ev.body.toString().includes('비밀'), ev.body.toString());
++      check('검색어 없는 search → 400 (기존 동작)', (await get('/api/wiki-search')).status === 400);
++      check('목록에 없는 경로 → 404', (await get('/api/master-ingest')).status === 404);
++      const pg = await get('/wiki');
++      check('/wiki 화면 → 200', pg.status === 200 && pg.body.toString().includes('AI LLM Wiki'), pg.status);
++    } finally {
++      child.kill();
++    }
++    check('Gemini 요청은 가짜로만 2회(점수 2번) — 실제 네트워크 0', netCalls === 2, netCalls);
++  } catch (e) {
++    check('예외 없이 끝남', false, e.stack);
++  } finally {
++    fs.rmSync(tmp, { recursive: true, force: true });
++  }
++  const ok = results.filter(Boolean).length;
++  console.log(`\n${ok}/${results.length} PASS`);
++  process.exit(ok === results.length ? 0 : 1);
++})();
+diff --git a/server.js b/server.js
+index 5e01cb9..335f4a6 100644
+--- a/server.js
++++ b/server.js
+@@ -235,12 +235,53 @@ const server = http.createServer((req, res) => {
+ 
+   // ── LLM Wiki 검색 API ──
+   if (parsedUrl.pathname === '/api/wiki-search' && req.method === 'GET') {
++    // (v4.7) all=1 — 전체 목록(필터·정렬은 화면에서). 임베딩 호출 없음
++    if (parsedUrl.searchParams.get('all') === '1') {
++      try {
++        const pl = require('./lib/wiki_search').listPayload();
++        if (req.headers['if-none-match'] === pl.etag) { res.writeHead(304, { ...CORS, 'Cache-Control': 'no-cache', ETag: pl.etag }); res.end(); return; }
++        const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
++        res.writeHead(200, { ...CORS, 'Cache-Control': 'no-cache', ETag: pl.etag, Vary: 'Accept-Encoding', ...(gz ? { 'Content-Encoding': 'gzip' } : {}) });
++        res.end(gz ? pl.gz : pl.json);
++      } catch (e) {
++        console.error('[wiki-search] list 오류:', e.message);
++        res.writeHead(500, CORS);
++        res.end(JSON.stringify({ error: e.message }));
++      }
++      return;
++    }
++    // (v4.7) similar=<id> — 그 노트와 의미가 가까운 5개(저장된 벡터만, Gemini 호출 없음)
++    if (parsedUrl.searchParams.has('similar')) {
++      const ws = require('./lib/wiki_search');
++      const id = parsedUrl.searchParams.get('similar') || '';
++      if (!ws.ID_RE.test(id)) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: '잘못된 id 입니다.' })); return; }
++      try {
++        const r = ws.similar(id, 5);
++        res.writeHead(r ? 200 : 404, CORS);
++        res.end(JSON.stringify(r ? { results: r } : { error: '없는 노트입니다.' }));
++      } catch (e) {
++        console.error('[wiki-search] similar 오류:', e.message);
++        res.writeHead(500, CORS); res.end(JSON.stringify({ error: e.message }));
++      }
++      return;
++    }
+     const q = (parsedUrl.searchParams.get('q') || '').trim();
+     if (!q || q.length > 500) {
+       res.writeHead(400, CORS);
+       res.end(JSON.stringify({ error: '검색어(q)는 1~500자여야 합니다.' }));
+       return;
+     }
++    // (v4.7) scores=1 — 모든 노트의 점수만(화면이 목록에 붙여 정렬·필터)
++    if (parsedUrl.searchParams.get('scores') === '1') {
++      require('./lib/wiki_search').scoreAll(q)
++        .then(r => { res.writeHead(200, CORS); res.end(JSON.stringify(r)); })
++        .catch(e => {
++          console.error('[wiki-search] scores 오류:', e.message);
++          res.writeHead(500, CORS);
++          res.end(JSON.stringify({ error: e.message }));
++        });
++      return;
++    }
+     const topic = (parsedUrl.searchParams.get('topic') || '').trim();
+     const limit = Math.min(parseInt(parsedUrl.searchParams.get('limit') || '10', 10) || 10, 30);
+     const wikiSearch = require('./lib/wiki_search');
+@@ -257,6 +298,22 @@ const server = http.createServer((req, res) => {
+     return;
+   }
+ 
++  // ── (v4.7) LLM Wiki 노트 본문 미리보기 — 읽기 전용, id 로만 찾는다 ──
++  if (parsedUrl.pathname === '/api/wiki-note' && req.method === 'GET') {
++    const ws = require('./lib/wiki_search');
++    const id = parsedUrl.searchParams.get('id') || '';
++    if (!ws.ID_RE.test(id)) { res.writeHead(400, CORS); res.end(JSON.stringify({ error: '잘못된 id 입니다.' })); return; }
++    try {
++      const r = ws.noteById(id);
++      res.writeHead(r ? 200 : 404, CORS);
++      res.end(JSON.stringify(r || { error: '없는 노트입니다.' }));
++    } catch (e) {
++      console.error('[wiki-note] 오류:', e.message);
++      res.writeHead(404, CORS); res.end(JSON.stringify({ error: '노트를 읽지 못했습니다.' }));
++    }
++    return;
++  }
++
+   // ── LLM Wiki AI 답변 API (RAG) ──
+   if (parsedUrl.pathname === '/api/wiki-ask' && req.method === 'POST') {
+     collectBody(req, (err, body) => {
+diff --git a/wiki.html b/wiki.html
+index 7a243e0..902c7ea 100644
+--- a/wiki.html
++++ b/wiki.html
+@@ -3,211 +3,1031 @@
+ <head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+-<title>🧠 AI LLM Wiki 검색</title>
++<title>AI LLM Wiki</title>
+ <link rel="icon" href="favicon.svg">
++<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+ <style>
++  /* iRichGreen Design System — 웹 계층 DS 1.1.23(FD 기준판)을 따랐다. 색·크기는 아래 토큰만 쓴다. */
+   :root {
+-    --bg: #f7f8fa; --card: #ffffff; --text: #1a1d24; --sub: #6b7280;
+-    --accent: #4f46e5; --accent-soft: #eef2ff; --border: #e5e7eb; --green: #059669;
++    --brand-primary: #2f5bd1; --brand-navy: #1e3a6e;
++    --bg-canvas: #f4f6f9; --bg-panel: #ffffff; --bg-raised: #f7f8fa;
++    --line-default: #dfe3ea; --line-soft: #eceff4;
++    --text-main: #1c1f26; --text-muted: #6b7280; --text-faint: #9aa3b2;
++    --alert-info: #2563eb; --alert-warning: #d97706; --alert-done: #16a34a; --alert-critical: #dc2626;
++    --info-10: rgba(37, 99, 235, .1); --info-30: rgba(37, 99, 235, .3);
++    --done-10: rgba(22, 163, 74, .1); --done-30: rgba(22, 163, 74, .3);
++    --warning-15: rgba(217, 119, 6, .15);
++    --row-line: rgba(223, 227, 234, .6);
++    --shadow-pop: 0 10px 32px -8px rgba(28, 25, 23, .18);
++    --scrim: rgba(0, 0, 0, .5);
++    --radius-8: 8px; --radius-10: 10px; --radius-12: 12px; --radius-card: 16px; --radius-full: 9999px;
++    --space-4: 4px; --space-6: 6px; --space-8: 8px; --space-12: 12px; --space-16: 16px; --space-24: 24px; --space-32: 32px;
++    --size-header: 48px; --size-btn-md: 32px; --size-btn-sm: 28px; --size-row: 30px; --content-max: 1600px;
++    --font-web: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+   }
+   * { box-sizing: border-box; margin: 0; padding: 0; }
+-  body { font-family: -apple-system, 'Apple SD Gothic Neo', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+-  .container { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+-  h1 { font-size: 26px; margin-bottom: 6px; }
+-  .subtitle { color: var(--sub); font-size: 14px; margin-bottom: 28px; }
+-  .search-box { display: flex; gap: 10px; margin-bottom: 10px; }
+-  .search-box input {
+-    flex: 1; padding: 14px 18px; font-size: 16px; border: 2px solid var(--border);
+-    border-radius: 12px; outline: none; background: var(--card);
+-  }
+-  .search-box input:focus { border-color: var(--accent); }
+-  button {
+-    padding: 14px 22px; font-size: 15px; font-weight: 600; border: none;
+-    border-radius: 12px; cursor: pointer; background: var(--accent); color: #fff;
+-  }
+-  button:disabled { opacity: 0.5; cursor: default; }
+-  button.secondary { background: var(--accent-soft); color: var(--accent); }
+-  .examples { font-size: 13px; color: var(--sub); margin-bottom: 24px; }
+-  .examples a { color: var(--accent); cursor: pointer; text-decoration: none; margin-right: 10px; }
+-  .status { font-size: 13px; color: var(--sub); margin: 14px 2px; }
+-  .answer {
+-    background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--green);
+-    border-radius: 12px; padding: 20px 22px; margin-bottom: 24px; line-height: 1.75;
+-    font-size: 15px; white-space: pre-wrap; display: none;
+-  }
+-  .answer .sources { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; white-space: normal; }
+-  .answer .sources a { color: var(--accent); text-decoration: none; display: block; margin-top: 5px; }
+-  .card {
+-    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+-    padding: 16px 18px; margin-bottom: 12px;
+-    display: flex; gap: 16px; align-items: flex-start;
+-  }
+-  .card .thumb { flex: 0 0 200px; }
+-  .card .thumb img { width: 200px; border-radius: 8px; display: block; }
+-  .card .card-body { flex: 1; min-width: 0; }
+-  @media (max-width: 640px) { .card .thumb { display: none; } }
+-  .card .title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+-  .card .meta { font-size: 12.5px; color: var(--sub); margin-bottom: 8px; }
+-  .card .meta .topic { color: var(--accent); font-weight: 600; }
+-  .card .snippet { font-size: 13.5px; color: #374151; line-height: 1.6; margin-bottom: 10px; }
+-  .card .links a {
+-    font-size: 12.5px; color: var(--accent); text-decoration: none; margin-right: 14px;
+-  }
+-  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
+-    border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+-  @keyframes spin { to { transform: rotate(360deg); } }
++  [hidden] { display: none !important; }
++  html { -webkit-text-size-adjust: 100%; }
++  body { font-family: var(--font-web); background: var(--bg-canvas); color: var(--text-main); font-size: 14px; line-height: 20px; font-variant-numeric: tabular-nums; }
++  button, input, select { font: inherit; color: inherit; }
++  a { color: var(--brand-primary); }
++  :focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 2px; }
++  @media (prefers-reduced-motion: no-preference) { button, .chip, .opt, tr.row td { transition: background-color 150ms, color 150ms, border-color 150ms; } }
++
++  /* ── 머리줄 48 · 검색 ── */
++  .top { position: sticky; top: 0; z-index: 10; height: var(--size-header); background: var(--bg-panel); border-bottom: 1px solid var(--line-default); }
++  .top-in { max-width: var(--content-max); height: 100%; margin: 0 auto; padding: 0 var(--space-32); display: flex; gap: var(--space-16); align-items: center; }
++  .brand { display: flex; gap: var(--space-8); align-items: baseline; white-space: nowrap; }
++  .brand b { font-size: 16px; line-height: 24px; font-weight: 800; }
++  .brand span { font-size: 12px; line-height: 16px; color: var(--text-muted); }
++  .qbox { flex: 1; max-width: 640px; height: var(--size-btn-md); display: flex; align-items: center; gap: var(--space-6);
++    background: var(--bg-panel); border: 1px solid var(--line-default); border-radius: var(--radius-10); padding: 0 var(--space-6) 0 var(--space-12); margin-left: auto; }
++  .qbox:focus-within { outline: 2px solid var(--brand-primary); outline-offset: -1px; border-color: transparent; }
++  .qbox svg { flex: none; color: var(--text-muted); }
++  .qbox input { flex: 1; border: 0; background: transparent; font-size: 14px; font-weight: 500; outline: none; min-width: 0; height: 100%; }
++  .qbox input::placeholder { color: var(--text-muted); font-weight: 400; }
++  .qbox input::-webkit-search-cancel-button { display: none; }
++  .qbox kbd { font: 700 12px/16px var(--font-web); color: var(--text-muted); border: 1px solid var(--line-default); border-radius: 4px; padding: 0 6px; }
++  .qclear { border: 0; background: none; color: var(--text-muted); cursor: pointer; width: 22px; height: 22px; border-radius: var(--radius-full); display: none; place-items: center; }
++  .qclear:hover { background: var(--bg-raised); color: var(--text-main); }
++  .actions { display: flex; gap: var(--space-8); }
++  .btn { height: var(--size-btn-md); border: 1px solid transparent; border-radius: var(--radius-10); padding: 0 var(--space-12);
++    font-size: 13px; line-height: 20px; font-weight: 700; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-6); }
++  .btn-primary { background: var(--brand-primary); color: #fff; }
++  .btn-secondary { background: var(--bg-panel); border-color: var(--line-default); color: var(--text-main); }
++  .btn-secondary:hover { background: var(--bg-raised); }
++  .btn:disabled { opacity: .5; cursor: default; }
++  .btn-filter { display: none; }
++
++  /* ── 본문 ── */
++  .wrap { max-width: var(--content-max); margin: 0 auto; padding: var(--space-24) var(--space-32) var(--space-32);
++    display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: var(--space-16); align-items: start; }
++  .card { background: var(--bg-panel); border: 1px solid var(--line-default); border-radius: var(--radius-card); }
++
++  /* 필터 카드 */
++  aside.card { position: sticky; top: calc(var(--size-header) + var(--space-24)); max-height: calc(100vh - var(--size-header) - 48px); overflow: auto; padding: var(--space-4) var(--space-16); }
++  .facet { padding: var(--space-12) 0; border-bottom: 1px solid var(--line-soft); }
++  .facet:last-child { border-bottom: 0; }
++  .facet h3 { font-size: 13px; line-height: 20px; font-weight: 700; margin-bottom: var(--space-8); display: flex; justify-content: space-between; align-items: center; }
++  .facet h3 small { font-size: 12px; line-height: 16px; font-weight: 400; color: var(--text-muted); }
++  .side-head { display: flex; justify-content: space-between; align-items: center; padding: var(--space-12) 0 var(--space-4); }
++  .side-head b { font-size: 16px; line-height: 24px; font-weight: 800; }
++  .txtbtn { border: 0; background: none; color: var(--brand-primary); font-size: 13px; font-weight: 700; cursor: pointer; padding: 0; }
++  .txtbtn:disabled { color: var(--text-faint); cursor: default; }
++  /* SegmentedControl — 하나만 고르기 */
++  .seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px; background: var(--bg-raised); border: 1px solid var(--line-default); border-radius: var(--radius-10); }
++  .seg button { height: 26px; border: 0; background: transparent; border-radius: var(--radius-8); padding: 0 var(--space-8); font-size: 13px; font-weight: 700; color: var(--text-muted); cursor: pointer; }
++  .seg button:hover { color: var(--text-main); }
++  .seg button[aria-pressed="true"] { background: var(--info-10); color: var(--alert-info); }
++  .seg button .n { font-size: 12px; font-weight: 400; margin-left: 2px; }
++  /* FilterChip — 여러 개 켜고 끄기 */
++  .fchips { display: flex; flex-wrap: wrap; gap: var(--space-6); }
++  .fchip { height: var(--size-btn-sm); border: 1px solid var(--line-default); background: var(--bg-panel); border-radius: var(--radius-full); padding: 0 var(--space-12); font-size: 13px; font-weight: 700; color: var(--text-main); cursor: pointer; }
++  .fchip[aria-pressed="true"] { background: var(--info-10); border-color: var(--info-30); color: var(--alert-info); }
++  .fchip .n { font-size: 12px; font-weight: 400; color: var(--text-muted); margin-left: 2px; }
++  .opts { display: flex; flex-direction: column; }
++  .opts.scroll { max-height: 264px; overflow: auto; margin-right: calc(-1 * var(--space-8)); padding-right: var(--space-8); }
++  .opt { display: flex; align-items: center; gap: var(--space-8); min-height: 28px; padding: 0 var(--space-4); border-radius: var(--radius-8); cursor: pointer; font-size: 13px; }
++  .opt:hover { background: var(--bg-raised); }
++  .opt input { accent-color: var(--brand-primary); width: 16px; height: 16px; flex: none; }
++  .opt .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++  .opt .n { color: var(--text-muted); font-size: 12px; }
++  .opt.zero .lbl, .opt.zero .n { color: var(--text-faint); }
++  .fsearch { width: 100%; height: var(--size-btn-md); border: 1px solid var(--line-default); background: var(--bg-panel); border-radius: var(--radius-10); padding: 0 var(--space-12); font-size: 13px; margin-bottom: var(--space-8); }
++  .fsearch:focus { outline: 2px solid var(--brand-primary); outline-offset: -1px; }
++  .more { border: 0; background: none; color: var(--brand-primary); font-size: 13px; font-weight: 700; cursor: pointer; padding: var(--space-6) var(--space-4) 0; }
++  .dates { display: flex; gap: var(--space-6); align-items: center; margin-top: var(--space-8); font-size: 12px; color: var(--text-muted); }
++  .dates input { flex: 1; min-width: 0; height: var(--size-btn-md); border: 1px solid var(--line-default); background: var(--bg-panel); border-radius: var(--radius-10); padding: 0 var(--space-6); font-size: 13px; }
++  .modeline { display: flex; gap: var(--space-8); align-items: center; justify-content: space-between; font-size: 12px; line-height: 16px; color: var(--text-muted); margin-bottom: var(--space-8); }
++
++  /* ── 결과 머리 ── */
++  .rhead { display: flex; flex-wrap: wrap; gap: var(--space-8) var(--space-16); align-items: center; margin-bottom: var(--space-12); min-height: var(--size-btn-md); }
++  .count { font-size: 14px; color: var(--text-muted); }
++  .count b { font-size: 20px; line-height: 28px; font-weight: 800; color: var(--text-main); margin-right: 2px; }
++  .mode { font-size: 12px; line-height: 16px; color: var(--text-muted); }
++  .mode.warn { color: var(--alert-warning); font-weight: 700; }
++  .rtools { margin-left: auto; display: flex; gap: var(--space-8); align-items: center; }
++  .rtools select { height: var(--size-btn-md); border: 1px solid var(--line-default); background: var(--bg-panel); border-radius: var(--radius-10); padding: 0 var(--space-8); font-size: 13px; }
++  .active { display: flex; flex-wrap: wrap; gap: var(--space-6); align-items: center; margin-bottom: var(--space-12); }
++  .active:empty { display: none; }
++  .chip { display: inline-flex; align-items: center; gap: var(--space-4); height: 24px; background: var(--info-10); border: 1px solid var(--info-30); color: var(--alert-info);
++    border-radius: var(--radius-full); padding: 0 var(--space-4) 0 var(--space-12); font-size: 12px; font-weight: 700; }
++  .chip button { border: 0; background: none; color: inherit; cursor: pointer; width: 18px; height: 18px; border-radius: var(--radius-full); display: grid; place-items: center; }
++  .chip button:hover { background: var(--info-30); }
++
++  /* ── AI 답변 ── */
++  .answer { display: none; padding: var(--space-16); margin-bottom: var(--space-16); }
++  .answer h2 { font-size: 16px; line-height: 24px; font-weight: 800; margin-bottom: var(--space-8); display: flex; justify-content: space-between; align-items: center; }
++  .answer .body { white-space: pre-wrap; line-height: 24px; max-width: 80ch; }
++  .answer .src { margin-top: var(--space-12); padding-top: var(--space-12); border-top: 1px solid var(--line-soft); font-size: 13px; display: grid; gap: var(--space-4); }
++  .answer .src b { font-size: 13px; font-weight: 700; color: var(--text-muted); }
++  .answer .src a { text-decoration: none; }
++  .answer .src a:hover { text-decoration: underline; }
++
++  /* ── 표 (홀로 놓인 표 상자 = radius-card) ── */
++  .tablebox { overflow: clip; }
++  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
++  thead th { position: sticky; top: var(--size-header); z-index: 5; background: var(--bg-raised); border-bottom: 1px solid var(--line-default);
++    text-align: left; font-size: 13px; line-height: 20px; font-weight: 900; color: var(--text-muted); padding: 0; height: var(--size-row); }
++  th button { width: 100%; height: var(--size-row); text-align: inherit; border: 0; background: none; padding: 0 var(--space-12); cursor: pointer; color: inherit; font-weight: inherit; display: flex; gap: var(--space-4); align-items: center; }
++  th.r button { justify-content: flex-end; }
++  th button:hover { color: var(--text-main); }
++  th[aria-sort="ascending"] button, th[aria-sort="descending"] button { color: var(--brand-primary); }
++  th .arr { font-size: 12px; width: 12px; }
++  td { height: var(--size-row); padding: 5px var(--space-12); border-bottom: 1px solid var(--row-line); vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
++  td.r { text-align: right; }
++  tr.row { cursor: pointer; }
++  tr.row:hover td { background: var(--bg-raised); }
++  tr.row.open td { background: var(--bg-raised); border-bottom-color: transparent; }
++  .ttl { display: flex; align-items: center; gap: var(--space-6); min-width: 0; }
++  .ttl .t { overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
++  tr.row.open .ttl .t { font-weight: 700; }
++  .st { flex: none; height: 20px; display: inline-flex; align-items: center; padding: 0 var(--space-6); border-radius: var(--radius-8); font-size: 12px; line-height: 16px; font-weight: 700; }
++  .st.done { background: var(--done-10); border: 1px solid var(--done-30); color: var(--alert-done); }
++  .st.neutral { background: var(--bg-raised); border: 1px solid var(--line-default); color: var(--text-muted); }
++  .tags { display: flex; gap: var(--space-4); overflow: hidden; }
++  .tag { flex: none; font-size: 12px; line-height: 16px; height: 20px; display: inline-flex; align-items: center; background: var(--bg-panel); border: 1px solid var(--line-default); border-radius: var(--radius-full); padding: 0 var(--space-8); color: var(--text-main); cursor: pointer; }
++  .tag:hover { border-color: var(--brand-primary); color: var(--brand-primary); }
++  .tag.on { background: var(--info-10); border-color: var(--info-30); color: var(--alert-info); font-weight: 700; }
++  .faint { color: var(--text-faint); }
++  .muted { color: var(--text-muted); }
++  .rel { display: inline-flex; align-items: center; gap: var(--space-6); justify-content: flex-end; }
++  .rel i { display: block; height: 6px; border-radius: var(--radius-full); background: var(--brand-primary); }
++  .detail td { white-space: normal; height: auto; padding: 0 var(--space-12) var(--space-16); background: var(--bg-raised); border-bottom: 1px solid var(--line-default); }
++  .dgrid { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--space-16); padding-top: var(--space-4); }
++  .thumb { width: 100%; aspect-ratio: 16/9; border-radius: var(--radius-12); background: var(--line-soft); overflow: hidden; display: grid; place-items: center; color: var(--text-faint); }
++  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
++  .snip { font-size: 14px; line-height: 24px; max-width: 80ch; }
++  .dmeta { margin-top: var(--space-8); font-size: 12px; line-height: 16px; color: var(--text-muted); }
++  .links { display: flex; gap: var(--space-16); margin-top: var(--space-12); font-size: 13px; font-weight: 700; flex-wrap: wrap; }
++  .links a { text-decoration: none; display: inline-flex; gap: var(--space-4); align-items: center; }
++  .links a:hover { text-decoration: underline; }
++  .links svg { opacity: .7; }
++  mark { background: var(--warning-15); color: inherit; border-radius: 2px; }
++  .col-chan { width: 17%; } .col-topic { width: 22%; } .col-date { width: 116px; } .col-views { width: 84px; } .col-rel { width: 112px; }
++
++  /* ── 카드 보기 ── */
++  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(264px, 1fr)); gap: var(--space-16); }
++  .vcard { overflow: hidden; display: flex; flex-direction: column; }
++  .vcard .thumb { border-radius: 0; }
++  .vcard .cb { padding: var(--space-12) var(--space-16) var(--space-16); display: flex; flex-direction: column; gap: var(--space-8); flex: 1; }
++  .vcard .title { font-weight: 700; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
++  .vcard .meta { color: var(--text-muted); font-size: 12px; line-height: 16px; }
++  .vcard .snip { font-size: 13px; line-height: 20px; color: var(--text-muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
++  .vcard .tags { flex-wrap: wrap; }
++  .vcard .links { margin-top: auto; padding-top: var(--space-4); }
++
++  .empty { padding: var(--space-24) var(--space-16); text-align: center; color: var(--text-muted); }
++  .empty b { display: block; color: var(--text-main); font-size: 16px; line-height: 24px; font-weight: 800; margin-bottom: var(--space-4); }
++  .sentinel { height: 1px; }
++  .skel td { height: var(--size-row); }
++  .skel i { display: block; height: 12px; border-radius: 4px; background: var(--line-soft); }
++  @media (prefers-reduced-motion: no-preference) { .skel i { animation: pulse 1.4s ease-in-out infinite; } }
++  @keyframes pulse { 50% { opacity: .45; } }
++
++  /* ── 좁은 화면 (DS 1.1.23 에 모바일 기준이 없어 이 화면에서만 정함) ── */
++  @media (max-width: 1100px) { .wrap { grid-template-columns: 232px minmax(0, 1fr); } }
++  @media (max-width: 860px) {
++    .top { height: auto; }
++    .top-in { flex-wrap: wrap; gap: var(--space-8); padding: var(--space-8) var(--space-16); }
++    .qbox { order: 3; max-width: none; flex-basis: 100%; margin-left: 0; }
++    .qbox kbd { display: none; }
++    .actions { margin-left: auto; }
++    .btn-filter { display: inline-flex; }
++    .wrap { grid-template-columns: 1fr; padding: var(--space-16); }
++    aside.card { position: fixed; z-index: 60; inset: 0 auto 0 0; top: 0; width: min(320px, 88vw); max-height: none; border-radius: 0 var(--radius-card) var(--radius-card) 0;
++      transform: translateX(-102%); }
++    aside.card.show { transform: none; box-shadow: var(--shadow-pop); }
++    .scrim { position: fixed; inset: 0; z-index: 59; background: var(--scrim); display: none; }
++    .scrim.show { display: block; }
++    thead th { top: 0; }
++    .dgrid { grid-template-columns: 1fr; }
++    .hide-sm { display: none; }
++  }
++  @media (prefers-reduced-motion: no-preference) and (max-width: 860px) { aside.card { transition: transform 300ms; } }
++  .st.new { background: var(--info-10); border: 1px solid var(--info-30); color: var(--alert-info); }
++  .btn-icon svg { flex: none; }
++  /* 노트 전체 보기 — 떠 있는 패널이라 그림자 web.shadow.pop 하나 */
++  .panel { position: fixed; z-index: 60; top: 0; right: 0; bottom: 0; width: min(680px, 100vw); background: var(--bg-panel); border-left: 1px solid var(--line-default);
++    box-shadow: var(--shadow-pop); display: flex; flex-direction: column; transform: translateX(100%); }
++  .panel.show { transform: none; }
++  @media (prefers-reduced-motion: no-preference) { .panel { transition: transform 200ms; } }
++  .phead { flex: none; height: var(--size-header); display: flex; align-items: center; gap: var(--space-8); padding: 0 var(--space-16); border-bottom: 1px solid var(--line-default); }
++  .phead h2 { flex: 1; min-width: 0; font-size: 16px; line-height: 24px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++  .iconbtn { flex: none; width: var(--size-btn-md); height: var(--size-btn-md); border: 1px solid var(--line-default); background: var(--bg-panel); border-radius: var(--radius-10); cursor: pointer; display: grid; place-items: center; color: var(--text-main); }
++  .iconbtn:hover { background: var(--bg-raised); }
++  .pbody { flex: 1; overflow: auto; padding: var(--space-16) var(--space-24) var(--space-32); }
++  .pthumb { display: block; max-width: 360px; margin-bottom: var(--space-12); }
++  .pmeta { font-size: 12px; line-height: 16px; color: var(--text-muted); margin-bottom: var(--space-8); }
++  .pbody .tags { flex-wrap: wrap; }
++  .md { margin-top: var(--space-16); padding-top: var(--space-16); border-top: 1px solid var(--line-soft); max-width: 72ch; }
++  .md h2, .md h3 { font-size: 16px; line-height: 24px; font-weight: 800; margin: var(--space-24) 0 var(--space-8); }
++  .md h4 { font-size: 14px; line-height: 20px; font-weight: 700; margin: var(--space-16) 0 var(--space-6); }
++  .md > :first-child { margin-top: 0; }
++  .md p { margin: 0 0 var(--space-12); line-height: 24px; }
++  .md ul, .md ol { margin: 0 0 var(--space-12); padding-left: 20px; }
++  .md li { line-height: 24px; margin-bottom: var(--space-4); }
++  .md li > ul, .md li > ol { margin: var(--space-4) 0 0; }
++  .md hr { border: 0; border-top: 1px solid var(--line-soft); margin: var(--space-16) 0; }
++  .md code { font-size: 13px; background: var(--bg-raised); border: 1px solid var(--line-soft); border-radius: 4px; padding: 0 4px; }
++  .md a { text-decoration: none; } .md a:hover { text-decoration: underline; }
++  .md .wl { color: var(--text-muted); }
++  .sim { margin-top: var(--space-24); padding-top: var(--space-16); border-top: 1px solid var(--line-soft); }
++  .sim h3 { font-size: 16px; line-height: 24px; font-weight: 800; margin-bottom: var(--space-8); }
++  .simrow { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: var(--space-12); align-items: center; padding: var(--space-8); border-radius: var(--radius-12); text-decoration: none; color: inherit; }
++  .simrow:hover { background: var(--bg-raised); }
++  .simrow b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 700; }
++  .simrow small { display: block; font-size: 12px; line-height: 16px; color: var(--text-muted); margin-top: 2px; }
++  .linkbtn { border: 0; background: none; color: var(--brand-primary); font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
++  .linkbtn:hover { text-decoration: underline; }
++  .vcard .title { cursor: pointer; }
++  .vcard .title:hover { color: var(--brand-primary); }
++  .mmeta { display: none; }
++  @media (max-width: 860px) {
++    thead, colgroup { display: none; }
++    table, tbody, tr.row, tr.detail, tr.row td:first-child, tr.detail td { display: block; width: 100%; }
++    tr.row td:not(:first-child) { display: none; }
++    tr.row td { white-space: normal; height: auto; padding: var(--space-8) var(--space-12); }
++    .ttl { align-items: flex-start; }
++    .ttl .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
++    .mmeta { display: block; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--text-muted); }
++  }
++  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+ </style>
+ </head>
+ <body>
+-<div class="container">
+-  <h1>🧠 AI LLM Wiki 검색</h1>
+-  <div class="subtitle">유튜브 AI 영상 요약 지식베이스 — 의미 기반 검색 + AI 답변</div>
+-
+-  <div class="search-box">
+-    <input id="q" type="text" placeholder="예: 힉스필드 MCP로 동영상 만드는 법" maxlength="500" autofocus>
+-    <select id="limitSel" style="padding: 0 12px; font-size: 14px; border: 2px solid var(--border); border-radius: 12px; background: var(--card); outline: none;">
+-      <option value="10">10건</option>
+-      <option value="15" selected>15건</option>
+-      <option value="30">30건</option>
+-    </select>
+-    <button id="btnSearch" onclick="doSearch()">검색</button>
+-    <button id="btnAsk" class="secondary" onclick="doAsk()">AI 답변</button>
++<header class="top">
++  <div class="top-in">
++    <div class="brand"><b>AI LLM Wiki</b><span id="brandSub">영상 요약 · 꿀팁</span></div>
++    <form class="qbox" id="qform" role="search">
++      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
++      <label for="q" class="sr">검색어</label>
++      <input id="q" type="search" placeholder="찾을 내용을 문장으로 적어 보세요 — 예: 클로드 코드로 업무 자동화" maxlength="500" autocomplete="off">
++      <button type="button" class="qclear" id="qclear" aria-label="검색어 지우기"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
++      <kbd title="어디서든 / 를 누르면 검색 칸으로">/</kbd>
++    </form>
++    <div class="actions">
++      <button class="btn btn-secondary btn-filter" id="btnFilter" type="button">필터</button>
++      <button class="btn btn-primary" id="btnSearch" type="submit" form="qform">검색</button>
++      <button class="btn btn-secondary" id="btnAsk" type="button" title="찾은 자료를 근거로 AI가 답을 정리합니다">AI 답변</button>
++    </div>
+   </div>
+-  <div class="filters" style="display: flex; gap: 8px; margin-bottom: 10px;">
+-    <select id="topicSel" style="padding: 8px 12px; font-size: 13.5px; border: 2px solid var(--border); border-radius: 10px; background: var(--card); outline: none;">
+-      <option value="">📁 전체 토픽</option>
+-    </select>
+-    <select id="sortSel" style="padding: 8px 12px; font-size: 13.5px; border: 2px solid var(--border); border-radius: 10px; background: var(--card); outline: none;">
+-      <option value="score">🎯 관련도순</option>
+-      <option value="date_desc">🕐 최신순</option>
+-      <option value="date_asc">📜 오래된순</option>
+-      <option value="views">🔥 조회수순</option>
+-    </select>
+-  </div>
+-  <div class="examples">
+-    <a onclick="fill('힉스필드 MCP로 동영상 만드는 법')">힉스필드 MCP 영상 제작</a>
+-    <a onclick="fill('AI 에이전트로 사업화하는 방법')">AI 에이전트 사업화</a>
+-    <a onclick="fill('최신 클로드 스킬과 팁')">최신 클로드 스킬</a>
++</header>
++<div class="scrim" id="scrim"></div>
++<aside class="panel" id="panel" role="dialog" aria-labelledby="pTitle" hidden>
++  <div class="phead">
++    <button class="iconbtn" id="pBack" type="button" aria-label="이전 노트" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg></button>
++    <h2 id="pTitle"></h2>
++    <button class="iconbtn" id="pClose" type="button" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+   </div>
++  <div class="pbody" id="pBody"></div>
++</aside>
++
++<div class="wrap">
++  <aside class="card" id="side" aria-label="필터">
++    <div class="side-head"><b>필터</b><button class="txtbtn" id="sideClear" type="button">모두 지우기</button></div>
++    <section class="facet"><h3>종류</h3><div class="fchips" id="fKind"></div><div class="opts" id="fNew" style="margin-top:8px"></div></section>
++    <section class="facet">
++      <h3>토픽 <small id="topicSel"></small></h3>
++      <div class="modeline"><span>여러 개 고르면</span><div class="seg" id="fTopicMode"></div></div>
++      <input class="fsearch" id="topicFind" type="search" placeholder="토픽 찾기">
++      <div class="opts scroll" id="fTopics"></div>
++    </section>
++    <section class="facet">
++      <h3>올라온 날짜</h3>
++      <div class="fchips" id="fPeriod"></div>
++      <div class="dates"><input type="date" id="dFrom" aria-label="시작일"><span>~</span><input type="date" id="dTo" aria-label="종료일"></div>
++    </section>
++    <section class="facet"><h3>조회수</h3><div class="fchips" id="fViews"></div></section>
++    <section class="facet"><h3>요약 방식</h3><div class="opts" id="fSummary"></div></section>
++    <section class="facet">
++      <h3>채널 <small id="chanSel"></small></h3>
++      <input class="fsearch" id="chanFind" type="search" placeholder="채널 찾기">
++      <div class="opts" id="fChannels"></div>
++      <button class="more" id="chanMore" type="button"></button>
++    </section>
++    <section class="facet" id="tipFacets">
++      <h3>꿀팁 분류</h3>
++      <div class="opts" id="fCategory"></div>
++      <h3 style="margin-top:12px">중요도</h3>
++      <div class="fchips" id="fImportance"></div>
++    </section>
++  </aside>
+ 
+-  <div id="status" class="status"></div>
+-  <div id="answer" class="answer"></div>
+-  <div id="results"></div>
++  <main>
++    <div class="rhead">
++      <div class="count" id="count" aria-live="polite"></div>
++      <span class="mode" id="mode"></span>
++      <div class="rtools">
++        <label class="sr" for="sortSel">정렬</label>
++        <select id="sortSel"></select>
++        <button class="btn btn-secondary btn-icon" id="btnXlsx" type="button" title="지금 목록(필터·정렬 그대로)을 엑셀 파일로 받습니다"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>엑셀</button>
++        <div class="seg" role="group" aria-label="보기 방식" id="fView"></div>
++      </div>
++    </div>
++    <div class="active" id="chips"></div>
++    <section class="card answer" id="answer" aria-live="polite"></section>
++    <div id="results"></div>
++  </main>
+ </div>
+ 
+ <script>
++'use strict';
+ const $ = id => document.getElementById(id);
+-const esc = s => (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+-// Obsidian 링크는 Vault 가 있는 이 맥에서만 의미가 있다. 가족 PC(집 안 전용 서버 접속)에서는 숨긴다.
++const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
++const nfc = s => String(s ?? '').normalize('NFC');
++// Obsidian 링크는 Vault 가 있는 이 맥에서만 의미가 있다. 가족 PC(집 안 전용 서버)에서는 숨긴다.
+ const IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
++const RELEVANT_TOP = 200;   // 의미 검색은 점수 상위 200건을 "관련 결과"로 본다
++const PAGE = 80;            // 한 번에 그리는 줄 수 (스크롤하면 이어서)
++const TOPIC_EXCLUDE = new Set(['AI 꿀팁']);
++const EXT = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
+ 
+-function fill(text) { $('q').value = text; doSearch(); }
+-$('q').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
++// ── 상태 (URL 해시와 맞춘다) ──
++const S = {
++  q: '', kind: 'all', topics: new Set(), topicMode: 'any', period: 'all', from: '', to: '',
++  views: 0, summary: 'all', channels: new Set(), cats: new Set(), imp: new Set(), onlyNew: false,
++  sort: 'date', dir: 'desc', view: 'table',
++};
++let ALL = [], BY_ID = new Map(), SCORES = null, MODE = 'list', REL = null, LIST = [], shown = 0, openId = null;
++let chanLimit = 8, REL_TOP = 1, REL_LOW = 0, searchSeq = 0, BUILT = '';
+ 
+-// ── 필터/정렬 상태 ──
+-let lastResults = [], lastMode = 'vector';
++const KIND = [['all', '전체'], ['video', '영상'], ['tip', '꿀팁']];
++const PERIOD = [['all', '전체'], ['7', '1주'], ['30', '1달'], ['90', '3달'], ['365', '1년']];
++const VIEWS = [[0, '전체'], [1000, '1천+'], [10000, '1만+'], [100000, '10만+']];
++const IMP = ['상', '중', '하'];
++const SORTS = [
++  ['rel', '관련도순', 'desc'], ['date', '최신순', 'desc'], ['date_asc', '오래된순', 'asc'], ['views', '조회수순', 'desc'],
++  ['title', '제목순', 'asc'], ['channel', '채널순', 'asc'],
++];
++const SORT_NAME = { rel: '관련도', date: '날짜', views: '조회수', title: '제목', channel: '채널', topic: '토픽' };
+ 
+-fetch('/api/wiki-topics').then(r => r.json()).then(({ topics }) => {
+-  $('topicSel').innerHTML = '<option value="">📁 전체 토픽 (' + topics.reduce((s, t) => s + t.count, 0) + ')</option>' +
+-    topics.map(t => `<option value="${esc(t.topic)}">${esc(t.topic)} (${t.count})</option>`).join('');
+-}).catch(() => {});
++// ── 숫자 표기 (DS 1.1.23: 1만 이상은 만 · 정수 + 쉼표, 빈 값은 -) ──
++const fmtNum = n => Number(n).toLocaleString('ko-KR');
++function fmtShort(n) {
++  if (!n) return '-';
++  if (n >= 100000000) return (Math.round(n / 1000000) / 100).toFixed(2) + '억';
++  if (n >= 10000) return fmtNum(Math.round(n / 10000)) + '만';
++  return fmtNum(n);
++}
++const dayMs = 86400000;
++const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
++const isoDay = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+ 
+-$('topicSel').addEventListener('change', () => { if ($('q').value.trim()) doSearch(); });
+-$('sortSel').addEventListener('change', () => renderResults(lastResults, lastMode));
++// ── 데이터 준비 ──
++function prep(n) {
++  n.title = nfc(n.title); n.channel = nfc(n.channel); n.topic = nfc(n.topic);
++  n.tags = (n.tags || []).map(nfc);
++  n.kind = n.kind || (n.video_url ? 'video' : 'tip');
++  const ts = new Set(n.tags); if (n.topic && !TOPIC_EXCLUDE.has(n.topic)) ts.add(n.topic);
++  n._topics = [...ts];
++  n._views = Number(n.view_count) || 0;
++  n._date = n.upload_date || '';
++  n._chan = n.kind === 'tip' ? (n.channel || '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '') : n.channel;
++  n._vid = n.video_url ? (n.video_url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/) || [])[1] : '';
++  return n;
++}
+ 
+-function applySort(results) {
+-  const sort = $('sortSel').value;
+-  const sorted = [...results];
+-  if (sort === 'date_desc') sorted.sort((a, b) => (b.upload_date || '').localeCompare(a.upload_date || ''));
+-  else if (sort === 'date_asc') sorted.sort((a, b) => (a.upload_date || '').localeCompare(b.upload_date || ''));
+-  else if (sort === 'views') sorted.sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
+-  return sorted; // 'score': API가 이미 관련도순
++// ── 필터 ──
++function passes(n, skip) {
++  if (skip !== 'kind' && S.kind !== 'all' && n.kind !== S.kind) return false;
++  if (skip !== 'topics' && S.topics.size) {
++    if (S.topicMode === 'all') { for (const t of S.topics) if (!n._topics.includes(t)) return false; }
++    else if (!n._topics.some(t => S.topics.has(t))) return false;
++  }
++  if (skip !== 'period') {
++    if (S.from && n._date < S.from) return false;
++    if (S.to && n._date > S.to) return false;
++  }
++  if (skip !== 'views' && S.views && n._views < S.views) return false;
++  if (skip !== 'summary' && S.summary === 'video' && n.summary_src !== 'video') return false;
++  if (skip !== 'channels' && S.channels.size && !S.channels.has(n._chan)) return false;
++  if (skip !== 'cats' && S.cats.size && !S.cats.has(n.category || '기타')) return false;
++  if (skip !== 'imp' && S.imp.size && !S.imp.has(n.importance)) return false;
++  if (skip !== 'new' && S.onlyNew && !NEWSET.has(n.id)) return false;
++  return true;
+ }
++const base = () => REL || ALL;
++const periodRange = p => p === 'all' ? ['', ''] : [isoDay(new Date(today().getTime() - Number(p) * dayMs)), ''];
+ 
+-function renderResults(results, mode) {
+-  lastResults = results || [];
+-  lastMode = mode;
+-  if (!results || results.length === 0) {
+-    $('results').innerHTML = '<div class="status">검색 결과가 없습니다.</div>';
++// ── 정렬 ──
++const cmpStr = (a, b) => (a || '').localeCompare(b || '', 'ko');
++function sorter() {
++  const d = S.dir === 'asc' ? 1 : -1;
++  switch (S.sort) {
++    case 'rel': return (a, b) => d * ((SCORES[a.id] ?? -9) - (SCORES[b.id] ?? -9)) || cmpStr(b._date, a._date);
++    case 'views': return (a, b) => d * (a._views - b._views) || cmpStr(b._date, a._date);
++    case 'title': return (a, b) => d * cmpStr(a.title, b.title);
++    case 'channel': return (a, b) => d * cmpStr(a._chan, b._chan) || cmpStr(b._date, a._date);
++    case 'topic': return (a, b) => d * cmpStr(a._topics[0] || '힣', b._topics[0] || '힣') || cmpStr(b._date, a._date);
++    default: return (a, b) => d * cmpStr(a._date, b._date) || cmpStr(a.title, b.title);
++  }
++}
++
++// ── 검색어 강조 ──
++let HL = null;
++function setHighlight(q) {
++  const toks = nfc(q).toLowerCase().split(/[\s,.?!'"()\[\]]+/).filter(t => t.length >= 2)
++    .map(t => esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
++  HL = toks.length ? new RegExp('(' + toks.join('|') + ')', 'gi') : null;
++}
++const hl = s => HL ? esc(s).replace(HL, '<mark>$1</mark>') : esc(s);
++// 요약 미리보기는 마크다운 원문이라 **굵게**·[[링크]] 표시만 정리한다
++const md = s => hl(String(s || '').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, a, b) => b || a)).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*\*/g, '');
++
++// ── 필터 패널 ──
++function countBy(skip, keyFn) {
++  const m = new Map();
++  for (const n of base()) {
++    if (!passes(n, skip)) continue;
++    for (const k of keyFn(n)) m.set(k, (m.get(k) || 0) + 1);
++  }
++  return m;
++}
++const segHtml = (items, cur, counts, cls = '') => items.map(([v, l]) =>
++  `<button type="button" class="${cls}" data-v="${esc(v)}" aria-pressed="${String(v) === String(cur)}">${esc(l)}${counts ? `<span class="n">${fmtNum(counts.get(v) || 0)}</span>` : ''}</button>`).join('');
++const optHtml = (entries, selected, name) => entries.map(([k, c]) =>
++  `<label class="opt${c ? '' : ' zero'}"><input type="checkbox" name="${name}" value="${esc(k)}" ${selected.has(k) ? 'checked' : ''}><span class="lbl" title="${esc(k)}">${esc(k)}</span><span class="n">${fmtNum(c)}</span></label>`).join('');
++const sortedEntries = (counts, selected, find) => [...new Set([...counts.keys(), ...selected])].map(k => [k, counts.get(k) || 0])
++  .filter(([k]) => !find || k.toLowerCase().includes(find))
++  .sort((a, b) => (selected.has(b[0]) - selected.has(a[0])) || b[1] - a[1] || cmpStr(a[0], b[0]));
++
++function renderFacets() {
++  $('fKind').innerHTML = segHtml(KIND, S.kind, countBy('kind', n => ['all', n.kind]), 'fchip');
++  const tf = nfc($('topicFind').value.trim()).toLowerCase();
++  $('fTopics').innerHTML = optHtml(sortedEntries(countBy('topics', n => n._topics), S.topics, tf), S.topics, 'topic') || '<div class="opt zero"><span class="lbl">맞는 토픽이 없습니다</span></div>';
++  $('topicSel').textContent = S.topics.size ? `${S.topics.size}개 선택` : '';
++  $('fTopicMode').innerHTML = segHtml([['any', '하나라도'], ['all', '모두']], S.topicMode);
++  $('fPeriod').innerHTML = segHtml(PERIOD, S.period === 'custom' ? '' : S.period, null, 'fchip');
++  $('dFrom').value = S.from; $('dTo').value = S.to;
++  $('fViews').innerHTML = segHtml(VIEWS, S.views, null, 'fchip');
++  const sc = countBy('summary', n => n.kind === 'video' && n.summary_src === 'video' ? ['video'] : []);
++  $('fSummary').innerHTML = `<label class="opt"><input type="checkbox" id="sumVideo" ${S.summary === 'video' ? 'checked' : ''}><span class="lbl">영상을 보고 만든 요약만</span><span class="n">${fmtNum(sc.get('video') || 0)}</span></label>`;
++  const cf = nfc($('chanFind').value.trim()).toLowerCase();
++  const chans = sortedEntries(countBy('channels', n => n._chan ? [n._chan] : []), S.channels, cf);
++  const lim = cf ? 40 : chanLimit;
++  $('fChannels').innerHTML = optHtml(chans.slice(0, lim), S.channels, 'chan') || '<div class="opt zero"><span class="lbl">맞는 채널이 없습니다</span></div>';
++  $('chanMore').textContent = chans.length > lim ? `${fmtNum(chans.length - lim)}개 더 보기` : (chanLimit > 8 && !cf ? '접기' : '');
++  $('chanMore').style.display = $('chanMore').textContent ? '' : 'none';
++  $('chanSel').textContent = S.channels.size ? `${S.channels.size}개 선택` : `${fmtNum(chans.length)}개`;
++  $('tipFacets').style.display = S.kind === 'video' ? 'none' : '';
++  $('fCategory').innerHTML = optHtml(sortedEntries(countBy('cats', n => n.kind === 'tip' ? [n.category || '기타'] : []), S.cats, ''), S.cats, 'cat');
++  const ic = countBy('imp', n => n.kind === 'tip' && n.importance ? [n.importance] : []);
++  $('fImportance').innerHTML = IMP.map(v => `<button type="button" class="fchip" data-v="${v}" aria-pressed="${S.imp.has(v)}">${v}<span class="n">${fmtNum(ic.get(v) || 0)}</span></button>`).join('');
++  const nc = countBy('new', n => NEWSET.has(n.id) ? ['new'] : []).get('new') || 0;
++  $('fNew').innerHTML = NEWSET.size ? `<label class="opt"><input type="checkbox" id="onlyNew" ${S.onlyNew ? 'checked' : ''}><span class="lbl">지난 방문 뒤 새로 들어온 것만</span><span class="n">${fmtNum(nc)}</span></label>` : '';
++  $('sideClear').disabled = !hasFilters();
++  $('btnFilter').textContent = hasFilters() ? `필터 ${activeChips().length}` : '필터';
++  $('fView').innerHTML = segHtml([['table', '표'], ['card', '카드']], S.view);
++}
++
++// ── 켜진 필터 칩 ──
++function activeChips() {
++  const c = [];
++  if (S.kind !== 'all') c.push(['kind', '', KIND.find(k => k[0] === S.kind)[1]]);
++  for (const t of S.topics) c.push(['topic', t, t]);
++  if (S.from || S.to) c.push(['period', '', S.period !== 'custom' ? '최근 ' + PERIOD.find(p => p[0] === S.period)[1] : `${S.from || '처음'} ~ ${S.to || '오늘'}`]);
++  if (S.views) c.push(['views', '', '조회수 ' + VIEWS.find(v => v[0] === S.views)[1]]);
++  if (S.summary === 'video') c.push(['summary', '', '영상을 보고 만든 요약']);
++  for (const ch of S.channels) c.push(['chan', ch, ch]);
++  for (const ct of S.cats) c.push(['cat', ct, '꿀팁 ' + ct]);
++  for (const im of S.imp) c.push(['imp', im, '중요도 ' + im]);
++  if (S.onlyNew) c.push(['new', '', '새로 들어온 것']);
++  return c;
++}
++function renderChips() {
++  const c = activeChips();
++  const modeTxt = S.topics.size > 1 ? `<span class="mode">토픽은 ${S.topicMode === 'all' ? '모두 포함' : '하나라도 포함'}</span>` : '';
++  $('chips').innerHTML = c.map(([k, v, l]) =>
++    `<span class="chip">${esc(l)}<button type="button" data-k="${k}" data-v="${esc(v)}" aria-label="${esc(l)} 빼기"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></span>`).join('') + modeTxt;
++}
++
++// ── 결과 ──
++function apply() {
++  LIST = base().filter(n => passes(n, null)).sort(sorter());
++  shown = 0;
++  const total = ALL.length;
++  if (MODE === 'list') {
++    $('count').innerHTML = LIST.length === total ? `<b>${fmtNum(total)}</b>건` : `<b>${fmtNum(LIST.length)}</b>건 · 전체 ${fmtNum(total)}건`;
++    $('mode').className = 'mode'; $('mode').textContent = '';
++  } else {
++    $('count').innerHTML = `<b>${fmtNum(LIST.length)}</b>건 · ‘${esc(S.q)}’ 관련`;
++    $('mode').className = MODE === 'keyword' ? 'mode warn' : 'mode';
++    $('mode').textContent = MODE === 'keyword' ? '의미 검색 한도에 걸려 글자가 맞는 것만 찾았습니다' : `관련도 상위 ${RELEVANT_TOP}건 안에서`;
++  }
++  renderFacets(); renderChips(); renderSortSel(); writeHash();
++  const box = $('results');
++  if (!LIST.length) {
++    box.innerHTML = `<div class="card empty"><b>조건에 맞는 항목이 없습니다</b>${hasFilters() ? '필터를 하나씩 빼 보세요. <button class="txtbtn" type="button" id="emptyClear">필터 모두 지우기</button>' : MODE !== 'list' ? '다른 말로 검색해 보세요.' : ''}</div>`;
+     return;
+   }
+-  $('results').innerHTML = applySort(results).map(r => {
+-    const obsUrl = 'obsidian://open?vault=' + encodeURIComponent('AI LLM Wiki') +
+-                   '&file=' + encodeURIComponent(r.path.replace(/\.md$/, ''));
+-    const hasVideo = r.video_url && r.video_url !== 'null';
+-    const vid = hasVideo ? r.video_url.match(/(?:v=|youtu\.be\/|shorts\/)([\w-]{11})/) : null;
+-    const thumbHtml = vid
+-      ? `<a class="thumb" href="${esc(r.video_url)}" target="_blank"><img src="https://i.ytimg.com/vi/${vid[1]}/mqdefault.jpg" loading="lazy" alt="" onerror="this.parentNode.style.display='none'"></a>`
+-      : '';
+-    return `<div class="card">
+-      ${thumbHtml}
+-      <div class="card-body">
+-      <div class="title">${esc(r.title)}</div>
+-      <div class="meta"><span class="topic">${esc(r.topic)}</span> · ${esc(r.channel)} · ${esc(r.upload_date)} · 조회수 ${(r.view_count || 0).toLocaleString()} · 유사도 ${r.score}</div>
+-      <div class="snippet">${esc(r.snippet)}</div>
+-      <div class="links">
+-        ${hasVideo ? `<a href="${esc(r.video_url)}" target="_blank">▶ YouTube</a>` : ''}
+-        ${IS_LOCAL ? `<a href="${obsUrl}">📓 Obsidian에서 열기</a>` : ''}
+-      </div>
+-      </div>
+-    </div>`;
+-  }).join('');
+-  if (mode === 'keyword') {
+-    $('status').innerHTML = '⚠️ 임베딩 한도 도달 — 키워드 검색으로 대체됨 (' + results.length + '건)';
++  if (S.view === 'table') {
++    const relCol = MODE !== 'list';
++    box.innerHTML = `<div class="card tablebox"><table>
++      <colgroup><col><col class="col-chan"><col class="col-topic hide-sm"><col class="col-date"><col class="col-views hide-sm">${relCol ? '<col class="col-rel">' : ''}</colgroup>
++      <thead><tr>${th('title', '제목')}${th('channel', '채널')}${th('topic', '토픽', 'hide-sm')}${th('date', '올라온 날', 'r')}${th('views', '조회수', 'r hide-sm')}${relCol ? th('rel', '관련도', 'r') : ''}</tr></thead>
++      <tbody id="tb"></tbody></table><div class="sentinel" id="sentinel"></div></div>`;
++  } else {
++    box.innerHTML = `<div class="grid" id="tb"></div><div class="sentinel" id="sentinel"></div>`;
+   }
++  more();
++  io.observe($('sentinel'));
++}
++function th(key, label, cls = '') {
++  const active = S.sort === key;
++  const sortAttr = active ? (S.dir === 'asc' ? 'ascending' : 'descending') : 'none';
++  return `<th class="${cls}" aria-sort="${sortAttr}"><button type="button" data-sort="${key}">${label}<span class="arr" aria-hidden="true">${active ? (S.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`;
++}
++function thumb(n) {
++  if (n._vid) return `<span class="thumb"><img src="https://i.ytimg.com/vi/${n._vid}/mqdefault.jpg" loading="lazy" alt="" onerror="this.remove()"></span>`;
++  return `<span class="thumb" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg></span>`;
++}
++function linksHtml(n, inPanel) {
++  const obs = 'obsidian://open?vault=' + encodeURIComponent('AI LLM Wiki') + '&file=' + encodeURIComponent((n.path || '').replace(/\.md$/, ''));
++  const out = [];
++  if (!inPanel) out.push(`<button type="button" class="linkbtn" data-note="${esc(n.id)}">전체 요약 보기</button>`);
++  if (n.video_url) out.push(`<a href="${esc(n.video_url)}" target="_blank" rel="noopener">YouTube에서 보기 ${EXT}</a>`);
++  if (n.link_url) out.push(`<a href="${esc(n.link_url)}" target="_blank" rel="noopener">원문 열기 ${EXT}</a>`);
++  if (IS_LOCAL && n.path) out.push(`<a href="${obs}">Obsidian에서 열기</a>`);
++  return `<div class="links">${out.join('')}</div>`;
++}
++function tagsHtml(n, max) {
++  const list = max ? n._topics.slice(0, max) : n._topics;
++  const ts = list.map(t => `<span class="tag${S.topics.has(t) ? ' on' : ''}" data-topic="${esc(t)}" title="${esc(t)} 토픽으로 거르기">${esc(t.replace(/^AI\s+/, ''))}</span>`).join('');
++  const extra = n.kind === 'tip' && n.category ? `<span class="tag${S.cats.has(n.category) ? ' on' : ''}" data-cat="${esc(n.category)}">${esc(n.category)}</span>` : '';
++  const rest = max ? n._topics.length - max : 0;
++  return `<div class="tags">${ts}${extra}${rest > 0 ? `<span class="muted">+${rest}</span>` : ''}</div>`;
++}
++function relHtml(n) {
++  const s = SCORES?.[n.id];
++  if (s == null) return '<span class="faint">-</span>';
++  const w = Math.max(4, Math.round(44 * (s - REL_LOW) / ((REL_TOP - REL_LOW) || 1)));
++  return `<span class="rel"><i style="width:${w}px"></i>${MODE === 'keyword' ? s : s.toFixed(2)}</span>`;
++}
++const badge = n => (NEWSET.has(n.id) ? '<span class="st new" title="지난 방문 뒤 새로 들어왔습니다">새</span>' : '') + badge0(n);
++const badge0 = n => n.kind === 'tip' ? '<span class="st neutral">꿀팁</span>'
++  : n.summary_src === 'video' ? '<span class="st done" title="영상을 직접 보고 만든 요약">영상 요약</span>' : '';
++function rowHtml(n) {
++  const open = openId === n.id;
++  return `<tr class="row${open ? ' open' : ''}" data-id="${esc(n.id)}" tabindex="0" aria-expanded="${open}">
++    <td><div class="ttl"><span class="t" title="${esc(n.title)}">${hl(n.title)}</span>${badge(n)}</div><div class="mmeta">${esc([n._chan, n._date, n._views ? '조회 ' + fmtShort(n._views) : ''].filter(Boolean).join(' · '))}</div></td>
++    <td title="${esc(n._chan)}">${n._chan ? esc(n._chan) : '<span class="faint">-</span>'}</td>
++    <td class="hide-sm">${tagsHtml(n, 2)}</td>
++    <td class="r">${esc(n._date) || '<span class="faint">-</span>'}</td>
++    <td class="r hide-sm" title="${n._views ? fmtNum(n._views) + '회' : ''}">${n._views ? fmtShort(n._views) : '<span class="faint">-</span>'}</td>
++    ${MODE !== 'list' ? `<td class="r">${relHtml(n)}</td>` : ''}
++  </tr>${open ? detailHtml(n) : ''}`;
++}
++function detailHtml(n) {
++  const cols = MODE !== 'list' ? 6 : 5;
++  const body = n.snippet ? `<p class="snip">${md(n.snippet)}…</p>`
++    : `<p class="snip muted">${n.kind === 'tip' ? '링크로 저장한 꿀팁입니다.' : '요약 미리보기가 없습니다.'}${n.keywords?.length ? ' 키워드 ' + esc(n.keywords.join(' · ')) : ''}</p>`;
++  const meta = [n._chan, n.subscriber_count ? '구독 ' + fmtShort(n.subscriber_count) : '', n._views ? '조회 ' + fmtNum(n._views) + '회' : '', n._date,
++    n.kind === 'tip' && n.importance ? '중요도 ' + n.importance : ''].filter(Boolean).map(esc).join(' · ');
++  return `<tr class="detail"><td colspan="${cols}"><div class="dgrid">${thumb(n)}<div>${body}<div class="dmeta">${meta}</div><div style="margin-top:8px">${tagsHtml(n)}</div>${linksHtml(n)}</div></div></td></tr>`;
++}
++function cardHtml(n) {
++  return `<article class="card vcard">${thumb(n)}<div class="cb"><div class="title" data-note="${esc(n.id)}" role="button" tabindex="0">${hl(n.title)}</div>
++    <div class="meta">${esc(n._chan || '')}<br>${esc(n._date)}${n._views ? ' · 조회 ' + fmtShort(n._views) : ''} ${badge(n)}</div>
++    ${n.snippet ? `<div class="snip">${md(n.snippet)}</div>` : ''}${tagsHtml(n, 3)}${linksHtml(n)}</div></article>`;
++}
++function more() {
++  const tb = $('tb'); if (!tb) return;
++  const next = LIST.slice(shown, shown + PAGE);
++  tb.insertAdjacentHTML('beforeend', next.map(S.view === 'table' ? rowHtml : cardHtml).join(''));
++  shown += next.length;
+ }
++const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting) && shown < LIST.length) more(); }, { rootMargin: '800px' });
+ 
+-async function doSearch() {
+-  const q = $('q').value.trim();
+-  if (!q) return;
++function renderSortSel() {
++  const opts = SORTS.filter(([k]) => k !== 'rel' || MODE !== 'list');
++  const cur = S.sort === 'date' && S.dir === 'asc' ? 'date_asc' : S.sort;
++  const match = opts.find(o => o[0] === cur && (o[0] === 'date_asc' || o[2] === S.dir));
++  $('sortSel').innerHTML = opts.map(([k, l]) => `<option value="${k}" ${match && k === cur ? 'selected' : ''}>${l}</option>`).join('') +
++    (match ? '' : `<option selected disabled>${SORT_NAME[S.sort] || ''} ${S.dir === 'asc' ? '오름차순' : '내림차순'}</option>`);
++}
++
++const hasFilters = () => !!(S.kind !== 'all' || S.topics.size || S.from || S.to || S.views || S.summary !== 'all' || S.channels.size || S.cats.size || S.imp.size || S.onlyNew);
++function clearFilters() {
++  Object.assign(S, { kind: 'all', topicMode: 'any', period: 'all', from: '', to: '', views: 0, summary: 'all', onlyNew: false });
++  S.topics.clear(); S.channels.clear(); S.cats.clear(); S.imp.clear();
++}
++
++// ── URL 해시 — 지금 화면을 북마크·공유할 수 있게 ──
++function writeHash() {
++  const p = new URLSearchParams();
++  if (S.q) p.set('q', S.q);
++  if (S.kind !== 'all') p.set('kind', S.kind);
++  if (S.topics.size) p.set('topics', [...S.topics].join('|'));
++  if (S.topicMode !== 'any') p.set('tm', S.topicMode);
++  if (S.period !== 'all') p.set('period', S.period);
++  if (S.period === 'custom') { if (S.from) p.set('from', S.from); if (S.to) p.set('to', S.to); }
++  if (S.views) p.set('views', S.views);
++  if (S.summary !== 'all') p.set('sum', S.summary);
++  if (S.channels.size) p.set('ch', [...S.channels].join('|'));
++  if (S.cats.size) p.set('cat', [...S.cats].join('|'));
++  if (S.imp.size) p.set('imp', [...S.imp].join('|'));
++  if (!(S.sort === 'date' && S.dir === 'desc' && !S.q) && !(S.sort === 'rel' && S.q)) p.set('sort', S.sort + ':' + S.dir);
++  if (S.view !== 'table') p.set('view', S.view);
++  if (S.onlyNew) p.set('new', '1');
++  if (PANEL_ID) p.set('note', PANEL_ID);
++  const h = p.toString() ? '#' + p.toString() : location.pathname;
++  if ((location.hash || location.pathname) !== h) history.replaceState(null, '', h);
++}
++function readHash() {
++  const p = new URLSearchParams(location.hash.slice(1));
++  const list = k => new Set((p.get(k) || '').split('|').filter(Boolean).map(nfc));
++  S.q = p.get('q') || '';
++  S.kind = ['video', 'tip'].includes(p.get('kind')) ? p.get('kind') : 'all';
++  S.topics = list('topics'); S.topicMode = p.get('tm') === 'all' ? 'all' : 'any';
++  S.period = p.get('period') || 'all';
++  if (S.period === 'custom') { S.from = p.get('from') || ''; S.to = p.get('to') || ''; }
++  else if (PERIOD.some(x => x[0] === S.period)) [S.from, S.to] = periodRange(S.period);
++  else { S.period = 'all'; S.from = S.to = ''; }
++  S.views = Number(p.get('views')) || 0;
++  S.summary = p.get('sum') === 'video' ? 'video' : 'all';
++  S.channels = list('ch'); S.cats = list('cat'); S.imp = list('imp'); S.onlyNew = p.get('new') === '1';
++  const [sk, sd] = (p.get('sort') || '').split(':');
++  if (sk && SORT_NAME[sk]) { S.sort = sk; S.dir = sd === 'asc' ? 'asc' : 'desc'; }
++  else if (S.q) { S.sort = 'rel'; S.dir = 'desc'; } else { S.sort = 'date'; S.dir = 'desc'; }
++  S.view = p.get('view') === 'card' ? 'card' : (loadPref('view') === 'card' && !p.has('view') ? 'card' : 'table');
++}
++function loadPref(k) { try { return localStorage.getItem('wiki.' + k); } catch { return null; } }
++function savePref(k, v) { try { localStorage.setItem('wiki.' + k, v); } catch { /* 저장을 막은 브라우저 */ } }
++
++// ── 검색 ──
++async function runSearch(q) {
++  q = (q || '').trim();
++  S.q = q; $('q').value = q; $('qclear').style.display = q ? 'grid' : 'none';
++  setHighlight(q); openId = null;
++  if (!q) {
++    MODE = 'list'; SCORES = null; REL = null;
++    if (S.sort === 'rel') { S.sort = 'date'; S.dir = 'desc'; }
++    apply(); return;
++  }
++  const seq = ++searchSeq;
+   $('btnSearch').disabled = true;
+-  $('answer').style.display = 'none';
+-  $('status').innerHTML = '<span class="spinner"></span>검색 중...';
++  $('count').innerHTML = '찾는 중입니다'; $('mode').textContent = '';
+   try {
+-    const res = await fetch('/api/wiki-search?q=' + encodeURIComponent(q) + '&limit=' + $('limitSel').value +
+-      ($('topicSel').value ? '&topic=' + encodeURIComponent($('topicSel').value) : ''));
+-    const data = await res.json();
+-    if (!res.ok) throw new Error(data.error || res.status);
+-    $('status').textContent = `${data.results.length}건 (${data.mode === 'vector' ? '의미 검색' : '키워드 검색'})`;
+-    renderResults(data.results, data.mode);
++    const r = await fetch('/api/wiki-search?scores=1&q=' + encodeURIComponent(q));
++    const data = await r.json();
++    if (!r.ok) throw new Error(data.error || r.status);
++    if (seq !== searchSeq) return;
++    if (data.built && data.built !== BUILT) await loadAll(true);
++    SCORES = data.scores; MODE = data.mode;
++    const ranked = ALL.filter(n => SCORES[n.id] != null).sort((a, b) => SCORES[b.id] - SCORES[a.id]);
++    REL = MODE === 'vector' ? ranked.slice(0, RELEVANT_TOP) : ranked;
++    REL_TOP = REL.length ? SCORES[REL[0].id] : 1;
++    REL_LOW = REL.length ? SCORES[REL[REL.length - 1].id] : 0;
++    S.sort = 'rel'; S.dir = 'desc';
++    apply();
+   } catch (e) {
+-    $('status').textContent = '❌ 검색 오류: ' + e.message;
++    $('count').textContent = '검색하지 못했습니다';
++    $('mode').className = 'mode warn'; $('mode').textContent = String(e.message || e) + ' — 잠시 뒤 다시 시도하세요';
+   } finally {
+     $('btnSearch').disabled = false;
+   }
+ }
+ 
+-async function doAsk() {
++async function ask() {
+   const q = $('q').value.trim();
+-  if (!q) return;
++  if (!q) { $('q').focus(); return; }
++  if (q !== S.q) runSearch(q);
++  const box = $('answer');
+   $('btnAsk').disabled = true;
+-  $('status').innerHTML = '<span class="spinner"></span>관련 영상 검색 후 AI 답변 생성 중... (10~20초)';
+-  $('answer').style.display = 'none';
++  box.style.display = 'block';
++  box.innerHTML = '<h2>AI 답변</h2><div class="body muted">관련 자료를 읽고 답을 정리하고 있습니다. 10~20초 걸립니다.</div>';
+   try {
+-    const res = await fetch('/api/wiki-ask', {
+-      method: 'POST',
+-      headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ question: q }),
+-    });
+-    const data = await res.json();
+-    if (res.status === 503) {
+-      $('status').textContent = '⚠️ ' + data.error + ' — 검색 결과만 표시합니다.';
+-      renderResults(data.results, 'vector');
+-      return;
+-    }
+-    if (!res.ok) throw new Error(data.error || res.status);
+-    $('status').textContent = '';
+-    const srcHtml = (data.sources || []).map(s =>
+-      `<a href="${esc(s.video_url)}" target="_blank">[${s.n}] ${esc(s.title)} — ${esc(s.channel)} (${esc(s.upload_date)})</a>`
+-    ).join('');
+-    $('answer').innerHTML = esc(data.answer) + `<div class="sources"><strong>📚 출처</strong>${srcHtml}</div>`;
+-    $('answer').style.display = 'block';
++    const r = await fetch('/api/wiki-ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q }) });
++    const data = await r.json();
++    if (!r.ok) throw new Error(data.error || r.status);
++    const src = (data.sources || []).map(s => `<a href="${esc(s.video_url || '#')}" target="_blank" rel="noopener">[${s.n}] ${esc(s.title)} · ${esc(s.channel)} · ${esc(s.upload_date)}</a>`).join('');
++    box.innerHTML = `<h2>AI 답변 <button class="txtbtn" type="button" id="ansClose">닫기</button></h2><div class="body">${esc(data.answer)}</div>${src ? `<div class="src"><b>근거 자료</b>${src}</div>` : ''}`;
+   } catch (e) {
+-    $('status').textContent = '❌ AI 답변 오류: ' + e.message;
++    box.innerHTML = `<h2>AI 답변 <button class="txtbtn" type="button" id="ansClose">닫기</button></h2><div class="body">답변을 만들지 못했습니다(${esc(e.message)}). 아래 검색 결과를 참고하세요.</div>`;
+   } finally {
+     $('btnAsk').disabled = false;
+   }
+ }
++
++// ── 전체 목록 ──
++async function loadAll(silent) {
++  if (!silent) $('results').innerHTML = `<div class="card tablebox"><table><tbody>${'<tr class="skel"><td><i style="width:56%"></i></td><td><i style="width:70%"></i></td><td><i style="width:50%"></i></td></tr>'.repeat(12)}</tbody></table></div>`;
++  const r = await fetch('/api/wiki-search?all=1');
++  if (!r.ok) throw new Error('목록 응답 ' + r.status);
++  const data = await r.json();
++  BUILT = data.built;
++  ALL = data.notes.map(prep);
++  BY_ID = new Map(ALL.map(n => [n.id, n]));
++  BY_BASE = new Map(ALL.map(n => [nfc((n.path || '').split('/').pop().replace(/\.md$/, '')), n.id]));
++  computeNew();
++  const tips = ALL.filter(n => n.kind === 'tip').length;
++  $('brandSub').textContent = `영상 ${fmtNum(ALL.length - tips)}건 · 꿀팁 ${fmtNum(tips)}건`;
++}
++
++
++// ── (다) 엑셀 내려받기 — 브라우저에서 .xlsx 를 만든다(외부 라이브러리 없음, 압축 없는 zip) ──
++const Xlsx = (() => {
++  const T = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
++  const crc = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = T[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
++  const enc = new TextEncoder();
++  function zip(files) {
++    const parts = [], central = []; let off = 0;
++    for (const [name, text] of files) {
++      const nm = enc.encode(name), d = enc.encode(text), c = crc(d);
++      const h = new DataView(new ArrayBuffer(30));
++      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(12, 0x21, true);
++      h.setUint32(14, c, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true); h.setUint16(26, nm.length, true);
++      parts.push(new Uint8Array(h.buffer), nm, d);
++      const ch = new DataView(new ArrayBuffer(46));
++      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(14, 0x21, true);
++      ch.setUint32(16, c, true); ch.setUint32(20, d.length, true); ch.setUint32(24, d.length, true); ch.setUint16(28, nm.length, true); ch.setUint32(42, off, true);
++      central.push(new Uint8Array(ch.buffer), nm);
++      off += 30 + nm.length + d.length;
++    }
++    const size = central.reduce((s, p) => s + p.length, 0);
++    const e = new DataView(new ArrayBuffer(22));
++    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, size, true); e.setUint32(16, off, true);
++    return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
++  }
++  const x = s => String(s ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
++  const col = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = (i - m - 1) / 26; } return s; };
++  // cols: [{h, w, t: 's'|'n'|'link'}], rows: [[값…]] (link 는 [url, 보일 글자])
++  function sheet(cols, rows, { freeze = true, filter = true } = {}) {
++    const cell = (v, t, r, c) => {
++      const ref = col(c) + r;
++      if (v == null || v === '') return '';
++      if (t === 'n') return `<c r="${ref}" s="2"><v>${Number(v)}</v></c>`;
++      if (t === 'link') {
++        const [url, label] = v; if (!url) return '';
++        const q = s => String(s).replace(/"/g, '""');
++        return url.length < 250 ? `<c r="${ref}" s="3" t="str"><f>${x(`HYPERLINK("${q(url)}","${q(label)}")`)}</f><v>${x(label)}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t>${x(url)}</t></is></c>`;
++      }
++      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${x(v)}</t></is></c>`;
++    };
++    const head = `<row r="1">${cols.map((c, i) => `<c r="${col(i)}1" s="1" t="inlineStr"><is><t>${x(c.h)}</t></is></c>`).join('')}</row>`;
++    const body = rows.map((r, ri) => `<row r="${ri + 2}">${r.map((v, ci) => cell(v, cols[ci].t, ri + 2, ci)).join('')}</row>`).join('');
++    const last = col(cols.length - 1) + (rows.length + 1);
++    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
++      (freeze ? `<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>` : '') +
++      `<cols>${cols.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${c.w || 12}" customWidth="1"/>`).join('')}</cols><sheetData>${head}${body}</sheetData>` +
++      (filter && rows.length ? `<autoFilter ref="A1:${last}"/>` : '') + `</worksheet>`;
++  }
++  function book(sheets) { // [{name, xml}]
++    const ct = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`;
++    const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
++    const wb = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((s, i) => `<sheet name="${x(s.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>` +
++      (sheets[0].filterRef ? `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${x(sheets[0].name)}'!${sheets[0].filterRef}</definedName></definedNames>` : '') + `</workbook>`;
++    const wbr = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
++    const st = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="3"><font><sz val="11"/><name val="맑은 고딕"/></font><font><b/><sz val="11"/><name val="맑은 고딕"/></font><font><u/><sz val="11"/><color rgb="FF2F5BD1"/><name val="맑은 고딕"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF7F8FA"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FFDFE3EA"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/><xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
++    return zip([['[Content_Types].xml', ct], ['_rels/.rels', rels], ['xl/workbook.xml', wb], ['xl/_rels/workbook.xml.rels', wbr], ['xl/styles.xml', st],
++      ...sheets.map((s, i) => [`xl/worksheets/sheet${i + 1}.xml`, s.xml])]);
++  }
++  return { sheet, book, col };
++})();
++
++function exportXlsx() {
++  if (!LIST.length) return;
++  const rel = MODE !== 'list';
++  const cols = [
++    { h: '제목', w: 60 }, { h: '종류', w: 8 }, { h: '채널', w: 24 }, { h: '구독자', w: 10, t: 'n' }, { h: '토픽', w: 36 },
++    { h: '올라온 날', w: 12 }, { h: '조회수', w: 11, t: 'n' }, { h: '요약 방식', w: 11 }, { h: '꿀팁 분류', w: 12 }, { h: '중요도', w: 8 },
++    { h: '링크', w: 14, t: 'link' }, ...(rel ? [{ h: '관련도', w: 9, t: 'n' }] : []),
++  ];
++  const rows = LIST.map(n => [
++    n.title, n.kind === 'tip' ? '꿀팁' : '영상', n._chan, n.subscriber_count || '', n._topics.join(', '),
++    n._date, n._views || '', n.kind === 'tip' ? '' : (n.summary_src === 'video' ? '영상' : '설명란'), n.kind === 'tip' ? (n.category || '기타') : '', n.importance || '',
++    [n.video_url || n.link_url || '', n.video_url ? 'YouTube' : '원문'], ...(rel ? [SCORES[n.id]] : []),
++  ]);
++  const now = new Date();
++  const cond = [['내려받은 시각', now.toLocaleString('ko-KR')], ['건수', `${fmtNum(LIST.length)}건 / 전체 ${fmtNum(ALL.length)}건`],
++    ['검색어', S.q || '-'], ['정렬', ($('sortSel').selectedOptions[0] || {}).textContent || '-'],
++    ...activeChips().map(([, , l]) => ['필터', l]), ...(S.topics.size > 1 ? [['토픽 조건', S.topicMode === 'all' ? '모두 포함' : '하나라도 포함']] : [])];
++  const main = Xlsx.sheet(cols, rows);
++  const blob = Xlsx.book([
++    { name: '목록', xml: main, filterRef: `$A$1:$${Xlsx.col(cols.length - 1)}$${rows.length + 1}` },
++    { name: '조건', xml: Xlsx.sheet([{ h: '항목', w: 16 }, { h: '값', w: 60 }], cond, { freeze: false, filter: false }) },
++  ]);
++  const a = document.createElement('a');
++  a.href = URL.createObjectURL(blob);
++  a.download = `ai-llm-wiki-${isoDay(now).replace(/-/g, '')}.xlsx`;
++  document.body.appendChild(a); a.click(); a.remove();
++  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
++}
++
++// ── (나) 지난 방문 뒤 새로 들어온 것 — 이 브라우저에만 기억한다 ──
++let NEWSET = new Set();
++function loadJson(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } }
++function saveJson(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 저장을 막은 브라우저 */ } }
++function computeNew() {
++  const ids = ALL.map(n => n.id), now = Date.now();
++  const seen = loadJson('wiki.seen'), prev = loadJson('wiki.new');
++  let fresh = [];
++  if (seen && Array.isArray(seen.ids)) { const s = new Set(seen.ids); fresh = ids.filter(i => !s.has(i)); }
++  if (fresh.length) { NEWSET = new Set(fresh); saveJson('wiki.new', { ids: fresh, at: now }); }
++  else if (prev && Array.isArray(prev.ids) && now - prev.at < 3 * dayMs) NEWSET = new Set(prev.ids.filter(i => BY_ID.has(i)));
++  else NEWSET = new Set();
++  saveJson('wiki.seen', { ids, at: now });
++}
++
++// ── (라) 노트 전체 보기 패널 + (가) 비슷한 영상 ──
++let PANEL_ID = null, panelStack = [], BY_BASE = new Map();
++function inl(s) {
++  // 줄 안 표기: **굵게** · `코드` · [글](url) · [[노트|별칭]] · 맨 URL
++  let t = esc(s);
++  t = t.replace(/\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g, (m, a, b) => {
++    const key = nfc(a.split('/').pop().replace(/\.md$/, '').replace(/&amp;/g, '&'));
++    const id = BY_BASE.get(key);
++    return id ? `<a href="#" data-note="${esc(id)}">${b || a.split('/').pop()}</a>` : `<span class="wl">${b || a.split('/').pop()}</span>`;
++  });
++  t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
++  t = t.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>');
++  t = t.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*\*/g, '');
++  return t;
++}
++function mdRender(src) {
++  const lines = String(src || '').replace(/\r/g, '').split('\n').filter(l => !/^\*\*▶ 영상 보기/.test(l));
++  let html = '', list = [], para = [];
++  const flushPara = () => { if (para.length) { html += `<p>${para.map(inl).join('<br>')}</p>`; para = []; } };
++  const closeLists = (depth = 0) => { while (list.length > depth) html += `</${list.pop()}>`; };
++  for (const raw of lines) {
++    const line = raw.replace(/\s+$/, '');
++    let m;
++    if (!line.trim()) { flushPara(); closeLists(); continue; }
++    if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { flushPara(); closeLists(); const lv = Math.min(m[1].length + 1, 4); html += `<h${lv}>${inl(m[2])}</h${lv}>`; continue; }
++    if (/^-{3,}$/.test(line.trim())) { flushPara(); closeLists(); html += '<hr>'; continue; }
++    if ((m = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/))) {
++      flushPara();
++      const depth = Math.floor(m[1].replace(/\t/g, '  ').length / 2) + 1, tag = /\d/.test(m[2]) ? 'ol' : 'ul';
++      if (list.length > depth) closeLists(depth);
++      if (list.length === depth && list[depth - 1] !== tag) closeLists(depth - 1);
++      while (list.length < depth) { html += `<${tag}>`; list.push(tag); }
++      html += `<li>${inl(m[3])}</li>`; continue;
++    }
++    closeLists(); para.push(line.trim());
++  }
++  flushPara(); closeLists();
++  return html;
++}
++async function openPanel(id, push = true) {
++  const n = BY_ID.get(id); if (!n) return;
++  if (push === true && PANEL_ID && PANEL_ID !== id) panelStack.push(PANEL_ID);
++  if (push === false) panelStack = [];
++  PANEL_ID = id;
++  const p = $('panel');
++  p.hidden = false; requestAnimationFrame(() => p.classList.add('show'));
++  $('pBack').hidden = !panelStack.length;
++  $('pTitle').innerHTML = esc(n.title);
++  const meta = [n._chan, n.subscriber_count ? '구독 ' + fmtShort(n.subscriber_count) : '', n._views ? '조회 ' + fmtNum(n._views) + '회' : '', n._date].filter(Boolean).map(esc).join(' · ');
++  $('pBody').innerHTML = `${n._vid ? `<a class="pthumb" href="${esc(n.video_url)}" target="_blank" rel="noopener">${thumb(n)}</a>` : ''}
++    <div class="pmeta">${meta} ${badge(n)}${NEWSET.has(n.id) ? ' <span class="st new">새</span>' : ''}</div>${tagsHtml(n)}${linksHtml(n, true)}
++    <div class="md" id="pMd"><p class="muted">불러오는 중입니다</p></div>
++    <section class="sim"><h3>비슷한 영상</h3><div id="pSim" class="muted">찾는 중입니다</div></section>`;
++  $('pBody').scrollTop = 0;
++  writeHash();
++  try {
++    const r = await fetch('/api/wiki-note?id=' + encodeURIComponent(id));
++    const d = await r.json();
++    if (PANEL_ID !== id) return;
++    $('pMd').innerHTML = r.ok ? mdRender(d.body) : `<p class="muted">${esc(d.error || '본문을 불러오지 못했습니다')}</p>`;
++  } catch (e) { if (PANEL_ID === id) $('pMd').innerHTML = '<p class="muted">본문을 불러오지 못했습니다. 서버가 켜져 있는지 확인하세요.</p>'; }
++  try {
++    const r = await fetch('/api/wiki-search?similar=' + encodeURIComponent(id));
++    const d = await r.json();
++    if (PANEL_ID !== id) return;
++    const items = (d.results || []).map(x => BY_ID.get(x.id)).filter(Boolean);
++    $('pSim').className = '';
++    $('pSim').innerHTML = items.length ? items.map(s => `<a href="#" class="simrow" data-note="${esc(s.id)}">${thumb(s)}<span><b>${esc(s.title)}</b><small>${esc([s._chan, s._date].filter(Boolean).join(' · '))}</small></span></a>`).join('') : '<span class="muted">찾지 못했습니다</span>';
++  } catch (e) { if (PANEL_ID === id) $('pSim').textContent = '찾지 못했습니다'; }
++}
++function closePanel() {
++  const p = $('panel'); if (p.hidden) return;
++  p.classList.remove('show'); PANEL_ID = null; panelStack = [];
++  setTimeout(() => { if (!PANEL_ID) p.hidden = true; }, 200);
++  writeHash();
++}
++
++// ── 이벤트 ──
++const on = (id, ev, fn) => $(id).addEventListener(ev, fn);
++on('qform', 'submit', e => { e.preventDefault(); runSearch($('q').value); });
++on('q', 'input', () => { $('qclear').style.display = $('q').value ? 'grid' : 'none'; });
++on('qclear', 'click', () => { $('q').value = ''; runSearch(''); $('q').focus(); });
++on('btnAsk', 'click', ask);
++on('btnXlsx', 'click', exportXlsx);
++on('pClose', 'click', closePanel);
++on('pBack', 'click', () => { const prev = panelStack.pop(); if (prev) openPanel(prev, 'back'); });
++on('fNew', 'change', e => { S.onlyNew = e.target.checked; apply(); });
++document.addEventListener('click', e => {
++  const a = e.target.closest('[data-note]');
++  if (!a) return;
++  e.preventDefault(); e.stopPropagation();
++  openPanel(a.dataset.note, true);
++}, true);
++document.addEventListener('keydown', e => {
++  const t = e.target.closest?.('.vcard .title[data-note]');
++  if (t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openPanel(t.dataset.note, true); }
++});
++const sideOpen = v => { $('side').classList.toggle('show', v); $('scrim').classList.toggle('show', v); };
++on('btnFilter', 'click', () => sideOpen(true));
++on('scrim', 'click', () => sideOpen(false));
++on('sideClear', 'click', () => { clearFilters(); apply(); });
++document.addEventListener('keydown', e => {
++  const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName);
++  if (e.key === '/' && !typing) { e.preventDefault(); $('q').focus(); $('q').select(); }
++  if (e.key === 'Escape') {
++    if (!$('panel').hidden) closePanel();
++    else if ($('side').classList.contains('show')) sideOpen(false);
++    else if (document.activeElement === $('q') && $('q').value) { $('q').value = ''; runSearch(''); }
++  }
++});
++function segClick(id, fn) {
++  on(id, 'click', e => { const b = e.target.closest('button[data-v]'); if (b) { fn(b.dataset.v); apply(); } });
++}
++segClick('fKind', v => { S.kind = v; });
++segClick('fTopicMode', v => { S.topicMode = v; });
++segClick('fPeriod', v => { S.period = v; [S.from, S.to] = periodRange(v); });
++segClick('fViews', v => { S.views = Number(v); });
++segClick('fImportance', v => { S.imp.has(v) ? S.imp.delete(v) : S.imp.add(v); });
++segClick('fView', v => { S.view = v; savePref('view', v); });
++for (const [id, set] of [['fTopics', () => S.topics], ['fChannels', () => S.channels], ['fCategory', () => S.cats]]) {
++  on(id, 'change', e => { const cb = e.target; if (cb.type !== 'checkbox') return; cb.checked ? set().add(cb.value) : set().delete(cb.value); apply(); });
++}
++on('fSummary', 'change', e => { S.summary = e.target.checked ? 'video' : 'all'; apply(); });
++for (const id of ['dFrom', 'dTo']) on(id, 'change', () => {
++  S.period = 'custom'; S.from = $('dFrom').value; S.to = $('dTo').value;
++  if (!S.from && !S.to) S.period = 'all';
++  apply();
++});
++on('topicFind', 'input', renderFacets);
++on('chanFind', 'input', renderFacets);
++on('chanMore', 'click', () => { chanLimit = chanLimit > 8 ? 8 : 60; renderFacets(); });
++on('sortSel', 'change', e => {
++  const k = e.target.value;
++  if (k === 'date_asc') { S.sort = 'date'; S.dir = 'asc'; } else { S.sort = k; S.dir = (SORTS.find(s => s[0] === k) || [])[2] || 'desc'; }
++  apply();
++});
++on('chips', 'click', e => {
++  const b = e.target.closest('button[data-k]'); if (!b) return;
++  const { k, v } = b.dataset;
++  if (k === 'kind') S.kind = 'all';
++  else if (k === 'topic') S.topics.delete(v);
++  else if (k === 'period') { S.period = 'all'; S.from = S.to = ''; }
++  else if (k === 'views') S.views = 0;
++  else if (k === 'summary') S.summary = 'all';
++  else if (k === 'chan') S.channels.delete(v);
++  else if (k === 'cat') S.cats.delete(v);
++  else if (k === 'imp') S.imp.delete(v);
++  else if (k === 'new') S.onlyNew = false;
++  apply();
++});
++on('answer', 'click', e => { if (e.target.id === 'ansClose') $('answer').style.display = 'none'; });
++on('results', 'click', e => {
++  if (e.target.id === 'emptyClear') { clearFilters(); apply(); return; }
++  const sb = e.target.closest('button[data-sort]');
++  if (sb) {
++    const k = sb.dataset.sort;
++    if (S.sort === k) S.dir = S.dir === 'asc' ? 'desc' : 'asc';
++    else { S.sort = k; S.dir = ['title', 'channel', 'topic'].includes(k) ? 'asc' : 'desc'; }
++    apply(); return;
++  }
++  const tg = e.target.closest('.tag[data-topic]');
++  if (tg) { const t = tg.dataset.topic; S.topics.has(t) ? S.topics.delete(t) : S.topics.add(t); apply(); return; }
++  const tc = e.target.closest('.tag[data-cat]');
++  if (tc) { const c = tc.dataset.cat; S.cats.has(c) ? S.cats.delete(c) : S.cats.add(c); apply(); return; }
++  if (e.target.closest('a')) return;
++  const row = e.target.closest('tr.row');
++  if (row) toggleRow(row);
++});
++on('results', 'keydown', e => {
++  const row = e.target.closest('tr.row');
++  if (row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleRow(row); }
++});
++function toggleRow(row) {
++  const id = row.dataset.id;
++  const prev = $('tb').querySelector('tr.row.open');
++  if (prev) {
++    prev.classList.remove('open'); prev.setAttribute('aria-expanded', 'false');
++    if (prev.nextElementSibling?.classList.contains('detail')) prev.nextElementSibling.remove();
++  }
++  if (openId === id) { openId = null; return; }
++  openId = id;
++  row.classList.add('open'); row.setAttribute('aria-expanded', 'true');
++  row.insertAdjacentHTML('afterend', detailHtml(BY_ID.get(id)));
++}
++window.addEventListener('hashchange', () => { const before = S.q; readHash(); if (S.q !== before) runSearch(S.q); else apply(); });
++
++// ── 시작 ──
++(async () => {
++  readHash();
++  try {
++    await loadAll();
++    if (S.q) await runSearch(S.q); else apply();
++    const nid = new URLSearchParams(location.hash.slice(1)).get('note');
++    if (nid && BY_ID.has(nid)) openPanel(nid, false);
++  } catch (e) {
++    $('results').innerHTML = `<div class="card empty"><b>목록을 불러오지 못했습니다</b>${esc(e.message)}. 서버가 켜져 있는지 확인한 뒤 새로고침하세요.</div>`;
++  }
++})();
+ </script>
+ </body>
+ </html>
+diff --git a/wiki_lan_server.js b/wiki_lan_server.js
+index 3bc2150..d6c1e38 100644
+--- a/wiki_lan_server.js
++++ b/wiki_lan_server.js
+@@ -199,8 +199,47 @@ const server = http.createServer((req, res) => {
+   }
+ 
+   if (req.method === 'GET' && p === '/api/wiki-search') {
++    // (v4.7) all=1 — 전체 목록(필터·정렬은 화면에서). 읽기 전용, 임베딩 호출 없음
++    if (url.searchParams.get('all') === '1') {
++      try {
++        const pl = wikiSearch.listPayload();
++        if (req.headers['if-none-match'] === pl.etag) { res.writeHead(304, { ...SEC_HEADERS, 'Cache-Control': 'no-cache', ETag: pl.etag }); res.end(); return; }
++        const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
++        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', ...SEC_HEADERS, 'Cache-Control': 'no-cache', ETag: pl.etag,
++          Vary: 'Accept-Encoding', ...(gz ? { 'Content-Encoding': 'gzip' } : {}) });
++        res.end(gz ? pl.gz : pl.json);
++      } catch (e) {
++        console.error('[wiki-lan] list 오류:', e.message);
++        sendJson(res, 500, { error: '목록을 불러오지 못했습니다.' });
++      }
++      return;
++    }
++    // (v4.7) similar=<id> — 그 노트와 의미가 가까운 5개(저장된 벡터만, Gemini 호출 없음)
++    if (url.searchParams.has('similar')) {
++      const id = url.searchParams.get('similar') || '';
++      if (!wikiSearch.ID_RE.test(id)) { sendJson(res, 400, { error: '잘못된 id 입니다.' }); return; }
++      try {
++        const r = wikiSearch.similar(id, 5);
++        if (!r) { sendJson(res, 404, { error: '없는 노트입니다.' }); return; }
++        sendJson(res, 200, { results: r });
++      } catch (e) {
++        console.error('[wiki-lan] similar 오류:', e.message);
++        sendJson(res, 500, { error: '비슷한 항목을 찾지 못했습니다.' });
++      }
++      return;
++    }
+     const q = (url.searchParams.get('q') || '').trim();
+     if (!q || q.length > 500) { sendJson(res, 400, { error: '검색어(q)는 1~500자여야 합니다.' }); return; }
++    // (v4.7) scores=1 — 모든 노트의 점수만(화면이 목록에 붙여 정렬·필터)
++    if (url.searchParams.get('scores') === '1') {
++      wikiSearch.scoreAll(q)
++        .then(r => sendJson(res, 200, r))
++        .catch(e => {
++          console.error('[wiki-lan] scores 오류:', e.message);
++          sendJson(res, 500, { error: '검색 중 오류가 발생했습니다.' });
++        });
++      return;
++    }
+     const topic = (url.searchParams.get('topic') || '').trim();
+     const limit = Math.min(parseInt(url.searchParams.get('limit') || '10', 10) || 10, 30);
+     wikiSearch.search(q, { topic, limit })
+@@ -212,6 +251,21 @@ const server = http.createServer((req, res) => {
+     return;
+   }
+ 
++  // (v4.7) 노트 본문 미리보기 — 읽기 전용. id 로만 찾고(경로를 받지 않는다) Vault 밖은 readNote 가 막는다
++  if (req.method === 'GET' && p === '/api/wiki-note') {
++    const id = url.searchParams.get('id') || '';
++    if (!wikiSearch.ID_RE.test(id)) { sendJson(res, 400, { error: '잘못된 id 입니다.' }); return; }
++    try {
++      const r = wikiSearch.noteById(id);
++      if (!r) { sendJson(res, 404, { error: '없는 노트입니다.' }); return; }
++      sendJson(res, 200, r);
++    } catch (e) {
++      console.error('[wiki-lan] note 오류:', e.message);
++      sendJson(res, 404, { error: '노트를 읽지 못했습니다.' });
++    }
++    return;
++  }
++
+   if (req.method === 'POST' && p === '/api/wiki-ask') {
+     // 다른 사이트가 가족 브라우저를 시켜 보내는 요청 차단 (Origin 이 있으면 Host 와 같아야 한다)
+     const origin = req.headers.origin;
