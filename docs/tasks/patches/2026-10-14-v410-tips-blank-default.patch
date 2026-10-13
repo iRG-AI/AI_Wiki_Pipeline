@@ -1,0 +1,315 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index fdd0542..5ab3860 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -4,7 +4,7 @@
+ > 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
+ > (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
+ 
+-**현재 버전: v4.9** (2026-10-13) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
++**현재 버전: v4.10** (2026-10-14) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+@@ -17,6 +17,7 @@
+ > v4.7: Wiki 검색 화면 개편 — 처음 열면 전체 목록(필터·정렬은 브라우저에서), 토픽 다중 선택·종류·날짜·조회수·채널·요약 방식·꿀팁 분류 필터, 머리줄 정렬, 표/카드 보기, 비슷한 영상(저장 벡터), 지난 방문 뒤 새로 들어온 것, 엑셀 내려받기, 노트 전체 보기(`/api/wiki-note`). iRichGreen Design System 웹 계층 DS 1.1.23 을 따랐다(밝은 테마만).
+ > v4.8: 카톡 꿀팁 원문 제목 자동 조회 — 제목이 URL 추정인 신규 꿀팁만 `lib/title_fetch.py`(노션 공개 API · 유튜브 oEmbed · og:title)로 조회, 실패하면 추정 제목 그대로.
+ > v4.9: 꿀팁 분류 보정 — 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)는 태그 판정에서 호스트를 빼고(「지식관리」 오분류), 한글 표기(「클로드」·「노션」·「제미나이」 등)도 같은 태그로(`lib/kakao_parse.classify`). 기존 꿀팁은 `scripts/recategorize_tips.py`(규칙이 매긴 행만 다시 매김 · 출처 `https://` 접두 정리 · 노트 제자리 수정)로 한 번 반영.
++> v4.10: 꿀팁 「기타」 + 태그 없음(노션 이관 때 기본값 그대로 남은 행)은 사람이 고른 값으로 보지 않고 `recategorize_tips.py` 가 다시 매긴다(`blank_default`). 꿀팁 제목 3차 25건(URL 추정 제목 → 원문 제목, `retitle_tips.py`) 뒤 재분류 — 「기타」 66 → 42.
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -80,7 +81,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
+ /opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 64/64  Wiki 추출 누적·재렌더·backfill(v4.6-b 영상 요약 소스만·stale)·씨앗·품질 제외·항목 0 안내 페이지 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 37/37  카톡 → 장부 tips · (v4.8) 원문 제목 조회 대상·교체·실패 무해·끄기·상한 (가짜 조회)
+ /opt/homebrew/bin/python3 scripts/test_title_fetch.py        # 43/43  (v4.8) 링크 제목 조회 — 노션 id·API·oEmbed·og:title·실패 사유·제목 정리 (가짜 응답)
+-/opt/homebrew/bin/python3 scripts/test_recategorize_tips.py  # 45/45  (v4.9) 꿀팁 분류 규칙(노션 주소·한글 표기) + 기존 꿀팁 재분류·출처 정리 (임시 장부·Vault·백업 폴더)
++/opt/homebrew/bin/python3 scripts/test_recategorize_tips.py  # 52/52  (v4.9·v4.10) 꿀팁 분류 규칙(노션 주소·한글 표기) + 기존 꿀팁 재분류·출처 정리 + 빈 기본값 (임시 장부·Vault·백업 폴더)
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 32/32  장부 → Vault (임시 Vault) · (v4.6-b) 재요약 노트 요약 절 제자리 교체
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+ /opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 15/15  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외 · (v4.7) 화면 필터용 메타
+@@ -98,7 +99,7 @@ node scripts/clean_pending_queue.js --apply
+ /opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV>
+ /opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV> --apply
+ 
+-# 꿀팁 분류 보정 (v4.9) — 규칙이 매긴 카테고리·태그를 지금 규칙으로 · 출처 https:// 접두 정리. 기본 dry-run, --apply 는 정시 실행 창 밖에서
++# 꿀팁 분류 보정 (v4.9) — 규칙이 매긴 카테고리·태그(+ v4.10 빈 기본값 「기타」·태그 없음)를 지금 규칙으로 · 출처 https:// 접두 정리. 기본 dry-run, --apply 는 정시 실행 창 밖에서
+ /opt/homebrew/bin/python3 scripts/recategorize_tips.py
+ /opt/homebrew/bin/python3 scripts/recategorize_tips.py --apply
+ 
+@@ -211,7 +212,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `scripts/test_wiki_search.js` | (v4.7) 검색 화면 API 회귀 테스트 — `lib/wiki_search.js` 네 함수 + `wiki_lan_server.js` 를 임시 포트(127.0.0.1, 대역 일부러 틀림 → fail-closed)로 띄워 경로 검사. 임시 인덱스·Vault, Gemini 는 가짜. |
+ | `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
+ | `scripts/test_wiki_ingest.py` | (v4.5) wiki_ingest 누적·재렌더·실패 처리·backfill 상한·씨앗 + `migrate_library` 회귀 테스트. 임시 Vault·장부·상태 파일, Gemini 는 가짜(네트워크 0). |
+-| `scripts/recategorize_tips.py` · `scripts/test_recategorize_tips.py` | (v4.9) 기존 꿀팁 분류 보정. 카테고리·태그가 「v4.8 규칙이 매긴 값」(URL+제목 또는 URL 만)과 같은 행만 `kakao_parse.classify` 로 다시 매기고(사람이 고른 값은 그대로), 출처가 `http(s)://` 로 시작하면 호스트만(URL 호스트와 다르면 보고만). 장부 `category`·`tags`·`source`·`updated_at` + 「AI 꿀팁」 노트의 해당 줄만 제자리 수정(손으로 고친 노트는 행째 건너뜀) → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 쓰기 전 `data/recategorize_backup/<시각>/`. 장부 조건은 `record_id` + 옛 세 값, 다시 돌리면 0건. 종료 0 · 1 · 2(무변경). |
++| `scripts/recategorize_tips.py` · `scripts/test_recategorize_tips.py` | (v4.9) 기존 꿀팁 분류 보정. 카테고리·태그가 「v4.8 규칙이 매긴 값」(URL+제목 또는 URL 만)과 같은 행만 `kakao_parse.classify` 로 다시 매기고(사람이 고른 값은 그대로), 출처가 `http(s)://` 로 시작하면 호스트만(URL 호스트와 다르면 보고만). 장부 `category`·`tags`·`source`·`updated_at` + 「AI 꿀팁」 노트의 해당 줄만 제자리 수정(손으로 고친 노트는 행째 건너뜀) → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 쓰기 전 `data/recategorize_backup/<시각>/`. 장부 조건은 `record_id` + 옛 세 값, 다시 돌리면 0건. 종료 0 · 1 · 2(무변경). (v4.10) 카테고리 「기타」 + 태그 없음은 빈 기본값으로 보고 같이 다시 매긴다 — `RESULT_JSON.blank_default`·로그 「(빈 기본값)」. |
+ | `scripts/retitle_tips.py` · `scripts/test_retitle_tips.py` | (v4.4) 꿀팁 제목 보완. CSV(`record_id,old_title,new_title`) → 장부 `title`·`updated_at`(+ 카톡 자동 메모 비움) · 「AI 꿀팁」 노트 제자리 수정·파일명 변경 · Vault `[[링크]]` 치환 → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 검증 전부 통과 뒤에만 쓰고 쓰기 전 `data/retitle_backup/<시각>/` 에 장부·파일 백업. 장부 조건은 `record_id` + 옛 제목(같은 CSV 재실행은 멈춤). 종료 0 · 1 · 2(무변경). |
+ | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐 · v4.6 `summarySrc`·`grade`·`quality`·`summarized_at`)·`addTopic`·`updateStats`. |
+@@ -258,7 +259,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ 
+ - `.env`: `KAKAO_EXPORT_DIR`(읽기는 `lib/env_util.py`). 노션을 부르지 않는다(v4.8 제목 조회의 노션 공개 페이지 API 는 계정·토큰 없는 읽기다). (선택, v4.8) `KAKAO_TITLE_LOOKUP`(없으면 켜짐, `false` 면 끔) · `KAKAO_TITLE_MAX`(실행당 조회 상한, 기본 60) · `KAKAO_TITLE_BUDGET`(조회 전체 시간 상한초, 기본 180).
+ - 꿀팁 기본값(노션 시절과 같음): 제목이 비면 URL, 카테고리 `기타`, 상태 `미확인`, 중요도 `중`. 카테고리 값 목록은 `lib/kakao_parse.py` 상단. `tags` 는 JSON 배열, `source` 는 **호스트만**(`github.com`). (v4.9) 노션 이관 시절 행의 `https://…` 출처는 `recategorize_tips.py` 로 호스트만 남겼다 — 「채널별 목차」가 출처로 묶는다.
+-- **(v4.9) 카테고리·태그는 `lib/kakao_parse.classify` 한 곳에서 매긴다.** 판정 글자 = URL + 사용자가 붙인 글 + 조회한 원문 제목(URL 추정 제목은 넣지 않는다 — 「노션 자료」의 「노션」이 태그가 되지 않게). 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)는 **호스트를 빼고** 판정한다 — 노션에 올린 자료일 뿐 노션 이야기가 아니다(v4.8 까지 노션 주소 꿀팁이 모두 `Notion` → 「지식관리」였다). `notion.com`(노션 회사 사이트)은 그대로 `Notion`. 한글 표기 별칭: 클로드(코드)·제미나이/제미니·지피티/오픈AI·노션·옵시디언·안티그래비티·올라마·허깅페이스. 「커서」는 일반 명사라 넣지 않는다. **태그 이름·순서·카테고리 값 목록은 바꾸지 않는다**(장부·노트 `keywords`·검색 필터가 쓴다). 사람이 고른 분류(노션 시절 행 · 9-03~9-06 정리분)는 규칙으로 덮지 않는다 — `recategorize_tips.py` 는 v4.8 규칙 값과 같은 행만 고친다.
++- **(v4.9) 카테고리·태그는 `lib/kakao_parse.classify` 한 곳에서 매긴다.** 판정 글자 = URL + 사용자가 붙인 글 + 조회한 원문 제목(URL 추정 제목은 넣지 않는다 — 「노션 자료」의 「노션」이 태그가 되지 않게). 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)는 **호스트를 빼고** 판정한다 — 노션에 올린 자료일 뿐 노션 이야기가 아니다(v4.8 까지 노션 주소 꿀팁이 모두 `Notion` → 「지식관리」였다). `notion.com`(노션 회사 사이트)은 그대로 `Notion`. 한글 표기 별칭: 클로드(코드)·제미나이/제미니·지피티/오픈AI·노션·옵시디언·안티그래비티·올라마·허깅페이스. 「커서」는 일반 명사라 넣지 않는다. **태그 이름·순서·카테고리 값 목록은 바꾸지 않는다**(장부·노트 `keywords`·검색 필터가 쓴다). 사람이 고른 분류(노션 시절 행 · 9-03~9-06 정리분)는 규칙으로 덮지 않는다 — `recategorize_tips.py` 는 v4.8 규칙 값과 같은 행만 고친다. **(v4.10) 단 카테고리 「기타」 + 태그 없음은 사람이 고른 값이 아니라 빈 기본값**(노션 이관 때 기본값 그대로 — 08-14·09-03·09-06 의 19건이 그랬다)으로 보고 다시 매긴다. 태그가 하나라도 있거나 「기타」가 아니면 지금처럼 보존.
+ - `kakao_ingest.py`의 `--since` 기본값은 `2026-03-01`. 그 이전 카톡 링크 103건은 쇼핑·개인 링크라 AI 자료가 아니다.
+ - **꿀팁 노트는 YouTube 로직과 격리된다.** `get_existing_vault_info()`가 `AI 꿀팁/` 폴더를 걷지 않으므로 고아 격리 분모·tags 동기화에 섞이지 않는다. 노트 프론트매터는 `link_url`이며 **`video_url`을 절대 쓰지 않는다** — 쓰는 순간 고아 격리 대상이 된다. `tags` 키도 쓰지 않는다(`keywords`) — `build_obsidian_wiki`가 tags 없는 파일을 폴더명 MOC(`_MOC/AI 꿀팁 MOC.md`)로 묶는다.
+ - 폴더는 **평면 구조**다. `wiki_ingest`·`build_obsidian_wiki`가 최상위 폴더 바로 아래 파일만 읽으므로 카테고리 하위 폴더를 만들면 위키에서 사라진다. 카테고리는 프론트매터 `category`로만 둔다.
+@@ -602,6 +603,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-14 (v4.10 — 꿀팁 빈 기본값 재분류 · 제목 3차)** — 배경: v4.9 뒤 「기타」 66건 중 사람이 고른 값 43건, 그중 태그가 빈 19건은 「클로드 코드 토큰 3배…」처럼 내용이 뻔한데 노션 기본값(기타·태그 없음)이 남아 있었다. 또 09-12~10-10 적재분 26건이 URL 추정 제목(`agent reach`·`mobilebasic`·`view` 등) — v4.8 자동 조회는 신규 행만 대상이라 남았다. 수정: `scripts/recategorize_tips.py` `decide()` 에 빈 기본값(`BLANK_DEFAULT = ('기타', [])`) — v4.8 규칙 값이 아니어도 「기타」·태그 없음이면 다시 매긴다, `RESULT_JSON.blank_default`·로그 표시. 데이터: `docs/tasks/2026-10-14-retitle-tips-3.csv` 25건(`lib/title_fetch.py` 조회 25 성공 · 비공개 노션 1건 제외, 사이트 이름 꼬리·`.pdf` 정리) → `retitle_tips.py` → `recategorize_tips.py`. 장부·스키마 무변경(값만). 사전 검증(맥 네이티브, 장부 사본 + Vault 사본): 제목 25행 · 노트 25 · 링크 59(12파일) → 재분류 28행(빈 기본값 16 · 제목 따라 12) · 기타→개발툴 9 · →프롬프트 8 · →모델/LLM 7 · 모델/LLM→개발툴 1 · 사람이 고른 값 유지 75 · 두 번째 실행 0행 · integrity ok · 「기타」 66 → 42. 테스트: `test_recategorize_tips.py` 52/52(+7). 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-14-v410-tips-blank-default.md`.
+ - **2026-10-13 (v4.9 — 꿀팁 분류 보정)** — 배경: v4.8 사전 검증에서 노션 주소의 `notion` 이 태그 `Notion` → 카테고리 「지식관리」로 잡히고(지식관리 17건 중 14건이 노션에 올린 클로드·GPT 자료), 한글 「클로드」가 `Claude` 태그에 안 걸리며(27건), 노션 이관 시절 71행의 출처가 `https://…` 라 「채널별 목차」가 같은 사이트를 둘로 나눴다. 수정: `lib/kakao_parse.py` `classify()`·`is_notion_host()`·`_tag_text()`(노션 페이지 주소 호스트 제외 · 한글 별칭), `guess_meta` 가 `classify` 사용. `scripts/recategorize_tips.py` 신규(v4.8 규칙 값과 같은 행만 재분류 · 출처 호스트만 · 노트 제자리 수정 · 백업 · 재실행 0건). 장부·스키마 무변경(값만). 사전 검증(맥 네이티브, 장부 사본 + Vault 꿀팁 폴더 사본): 148건 중 87행(분류 16 · 출처 71) · 카테고리 이동 지식관리→모델/LLM 6 · →기타 4 · →개발툴 3 · →프롬프트 1 · 기타→개발툴 1 · 사람이 고른 값 유지 91 · 노트 건너뜀 0 · 두 번째 실행 0행 · integrity ok. 테스트: 신규 `test_recategorize_tips.py` 45/45. 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-13-v49-tips-recategorize.md`.
+ - **2026-10-13 (v4.8 — 카톡 꿀팁 원문 제목 자동 조회)** — 배경: `kakao_ingest` 가 링크를 열지 않아 노션·유튜브·URL 조각 제목이 쌓이고(「원문 확인 필요」 46건), 10-12·10-13 두 차례 `retitle_tips.py` 로 손으로 고쳤다(2차 43건 — 노션 공개 API 44건 중 43 확인). 수정: `lib/title_fetch.py` 신규(노션 `syncRecordValuesMain` · 유튜브 oEmbed · og:title/`<title>`, 요청당 8초·재시도 없음·예외 없음, 제목 정리·일반 문구 거부), `kakao_ingest.py` `resolve_titles()`(URL 추정 제목만 · 장부 쓰기 전 · 실행당 60건/180초 · `--no-lookup`·`.env KAKAO_TITLE_*` · `RESULT_JSON.title_lookup`), `lib/kakao_parse.py` `guess_meta(fetched_title)`·`title_src`, `scheduler.js` 카톡 로그에 「제목 조회 성공/대상」. 장부·스키마 무변경. 사전 검증: 실제 꿀팁 148건 143 성공(최대 3.4초) · 장부 사본에서 9-15 이후 44건을 지우고 같은 URL 로 인제스트 → 조회 42/42(GitHub 2 제외), 24초. 테스트: 신규 `test_title_fetch.py` 43/43, `test_kakao_ingest.py` 37/37(+19). 회귀 테스트 13종. 지시서 `docs/tasks/2026-10-13-v48-kakao-title-lookup.md`.
+ - **2026-10-13 (v4.7 — Wiki 검색 화면 개편)** — 대표님 요청 6건(처음 열면 전체 목록 · 건수 선택 제거 · 토픽 다중 선택 · 정렬 목록 유지 · 필터 추가 · 머리줄 정렬) + 결정(관련 결과 = 의미 점수 상위 200건 · 비슷한 영상 · 새로 들어온 것 · 엑셀 내려받기 · 노트 전체 보기 · 밝은 테마만). `wiki.html` 전면 교체(iRichGreen Design System 웹 계층 DS 1.1.23 토큰·FilterChip·SegmentedControl·표 30px 줄, 표/카드, 줄 펼침, URL 해시 상태, `/`·Esc, 휴대폰 서랍 필터). `lib/wiki_search.js` `listPayload`·`scoreAll`·`similar`·`noteById`, `server.js`·`wiki_lan_server.js` `/api/wiki-search` 에 `all=1`·`scores=1`·`similar=` 옵션 + 새 읽기 전용 경로 `/api/wiki-note`(id 로만). `build_search_index.py` 화면 필터용 메타 7개(임베딩 hash 무관 — 실 Vault 사본 실행 임베딩 0건). 장부·스키마·스케줄러 무변경. 테스트: 신규 `test_wiki_search.js` 34/34, `test_build_wiki_index.py` 15/15(+4). 회귀 테스트 12종. 지시서 `docs/tasks/2026-10-13-v47-wiki-ui.md`.
+diff --git a/CLAUDE.md b/CLAUDE.md
+index ef0db1c..a3b3f09 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -2,7 +2,7 @@
+ 
+ This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+ 
+-**현재 버전: v4.9** (2026-10-13) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
++**현재 버전: v4.10** (2026-10-14) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+ 
+ > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
+ > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
+@@ -15,6 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
+ > v4.7: Wiki 검색 화면 개편 — 처음 열면 전체 목록(필터·정렬은 브라우저에서), 토픽 다중 선택·종류·날짜·조회수·채널·요약 방식·꿀팁 분류 필터, 머리줄 정렬, 표/카드 보기, 비슷한 영상(저장 벡터), 지난 방문 뒤 새로 들어온 것, 엑셀 내려받기, 노트 전체 보기(`/api/wiki-note`). iRichGreen Design System 웹 계층 DS 1.1.23 을 따랐다(밝은 테마만).
+ > v4.8: 카톡 꿀팁 원문 제목 자동 조회 — 제목이 URL 추정인 신규 꿀팁만 `lib/title_fetch.py`(노션 공개 API · 유튜브 oEmbed · og:title)로 조회, 실패하면 추정 제목 그대로.
+ > v4.9: 꿀팁 분류 보정 — 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)는 태그 판정에서 호스트를 빼고(「지식관리」 오분류), 한글 표기(「클로드」·「노션」·「제미나이」 등)도 같은 태그로(`lib/kakao_parse.classify`). 기존 꿀팁은 `scripts/recategorize_tips.py`(규칙이 매긴 행만 다시 매김 · 출처 `https://` 접두 정리 · 노트 제자리 수정)로 한 번 반영.
++> v4.10: 꿀팁 「기타」 + 태그 없음(노션 이관 때 기본값 그대로 남은 행)은 사람이 고른 값으로 보지 않고 `recategorize_tips.py` 가 다시 매긴다(`blank_default`). 꿀팁 제목 3차 25건(URL 추정 제목 → 원문 제목, `retitle_tips.py`) 뒤 재분류 — 「기타」 66 → 42.
+ 
+ > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
+ > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
+@@ -78,7 +79,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
+ /opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 64/64  Wiki 추출 누적·재렌더·backfill(v4.6-b 영상 요약 소스만·stale)·씨앗·품질 제외·항목 0 안내 페이지 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
+ /opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 37/37  카톡 → 장부 tips · (v4.8) 원문 제목 조회 대상·교체·실패 무해·끄기·상한 (가짜 조회)
+ /opt/homebrew/bin/python3 scripts/test_title_fetch.py        # 43/43  (v4.8) 링크 제목 조회 — 노션 id·API·oEmbed·og:title·실패 사유·제목 정리 (가짜 응답)
+-/opt/homebrew/bin/python3 scripts/test_recategorize_tips.py  # 45/45  (v4.9) 꿀팁 분류 규칙(노션 주소·한글 표기) + 기존 꿀팁 재분류·출처 정리 (임시 장부·Vault·백업 폴더)
++/opt/homebrew/bin/python3 scripts/test_recategorize_tips.py  # 52/52  (v4.9·v4.10) 꿀팁 분류 규칙(노션 주소·한글 표기) + 기존 꿀팁 재분류·출처 정리 + 빈 기본값 (임시 장부·Vault·백업 폴더)
+ /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 32/32  장부 → Vault (임시 Vault) · (v4.6-b) 재요약 노트 요약 절 제자리 교체
+ /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
+ /opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 15/15  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외 · (v4.7) 화면 필터용 메타
+@@ -96,7 +97,7 @@ node scripts/clean_pending_queue.js --apply
+ /opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV>
+ /opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV> --apply
+ 
+-# 꿀팁 분류 보정 (v4.9) — 규칙이 매긴 카테고리·태그를 지금 규칙으로 · 출처 https:// 접두 정리. 기본 dry-run, --apply 는 정시 실행 창 밖에서
++# 꿀팁 분류 보정 (v4.9) — 규칙이 매긴 카테고리·태그(+ v4.10 빈 기본값 「기타」·태그 없음)를 지금 규칙으로 · 출처 https:// 접두 정리. 기본 dry-run, --apply 는 정시 실행 창 밖에서
+ /opt/homebrew/bin/python3 scripts/recategorize_tips.py
+ /opt/homebrew/bin/python3 scripts/recategorize_tips.py --apply
+ 
+@@ -209,7 +210,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ | `scripts/test_wiki_search.js` | (v4.7) 검색 화면 API 회귀 테스트 — `lib/wiki_search.js` 네 함수 + `wiki_lan_server.js` 를 임시 포트(127.0.0.1, 대역 일부러 틀림 → fail-closed)로 띄워 경로 검사. 임시 인덱스·Vault, Gemini 는 가짜. |
+ | `scripts/verify_library.py` · `scripts/test_verify_library.py` | (v4.3) 장부 ↔ Vault 대조, 읽기 전용·네트워크 없음. Vault 영상·꿀팁 노트의 `notion_id`(프론트매터 안의 것만)가 전부 장부(`videos`·`videos_dup`·`tips`)에 있는지, `user_version`·`integrity_check`·video_id 중복·videos ≥ 1 을 본다. `RESULT_JSON` 한 줄, 통과 0 · 실패 1. 노션 해지 때 지운 `notion_to_sqlite.py --verify` 를 떼어 온 것. |
+ | `scripts/test_wiki_ingest.py` | (v4.5) wiki_ingest 누적·재렌더·실패 처리·backfill 상한·씨앗 + `migrate_library` 회귀 테스트. 임시 Vault·장부·상태 파일, Gemini 는 가짜(네트워크 0). |
+-| `scripts/recategorize_tips.py` · `scripts/test_recategorize_tips.py` | (v4.9) 기존 꿀팁 분류 보정. 카테고리·태그가 「v4.8 규칙이 매긴 값」(URL+제목 또는 URL 만)과 같은 행만 `kakao_parse.classify` 로 다시 매기고(사람이 고른 값은 그대로), 출처가 `http(s)://` 로 시작하면 호스트만(URL 호스트와 다르면 보고만). 장부 `category`·`tags`·`source`·`updated_at` + 「AI 꿀팁」 노트의 해당 줄만 제자리 수정(손으로 고친 노트는 행째 건너뜀) → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 쓰기 전 `data/recategorize_backup/<시각>/`. 장부 조건은 `record_id` + 옛 세 값, 다시 돌리면 0건. 종료 0 · 1 · 2(무변경). |
++| `scripts/recategorize_tips.py` · `scripts/test_recategorize_tips.py` | (v4.9) 기존 꿀팁 분류 보정. 카테고리·태그가 「v4.8 규칙이 매긴 값」(URL+제목 또는 URL 만)과 같은 행만 `kakao_parse.classify` 로 다시 매기고(사람이 고른 값은 그대로), 출처가 `http(s)://` 로 시작하면 호스트만(URL 호스트와 다르면 보고만). 장부 `category`·`tags`·`source`·`updated_at` + 「AI 꿀팁」 노트의 해당 줄만 제자리 수정(손으로 고친 노트는 행째 건너뜀) → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 쓰기 전 `data/recategorize_backup/<시각>/`. 장부 조건은 `record_id` + 옛 세 값, 다시 돌리면 0건. 종료 0 · 1 · 2(무변경). (v4.10) 카테고리 「기타」 + 태그 없음은 빈 기본값으로 보고 같이 다시 매긴다 — `RESULT_JSON.blank_default`·로그 「(빈 기본값)」. |
+ | `scripts/retitle_tips.py` · `scripts/test_retitle_tips.py` | (v4.4) 꿀팁 제목 보완. CSV(`record_id,old_title,new_title`) → 장부 `title`·`updated_at`(+ 카톡 자동 메모 비움) · 「AI 꿀팁」 노트 제자리 수정·파일명 변경 · Vault `[[링크]]` 치환 → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 검증 전부 통과 뒤에만 쓰고 쓰기 전 `data/retitle_backup/<시각>/` 에 장부·파일 백업. 장부 조건은 `record_id` + 옛 제목(같은 CSV 재실행은 멈춤). 종료 0 · 1 · 2(무변경). |
+ | `lib/library_schema.sql` · `lib/library_db.py` | (v4.0) 로컬 원본 장부 스키마(원본은 `.sql` 하나) · Python 헬퍼(`open_existing()` = 있는 장부만 연다, 없으면 만들지 않고 던진다). |
+ | `lib/library.js` | (v4.0 2단계) Node 쪽 장부 헬퍼(`node:sqlite`). `openLibrary`(없으면 던짐·user_version 대조)·`allVideos`·`insertVideo`(같은 video_id 면 UNIQUE 로 던짐 · v4.6 `summarySrc`·`grade`·`quality`·`summarized_at`)·`addTopic`·`updateStats`. |
+@@ -256,7 +257,7 @@ YouTube "AI 영상목록" (마스터 모드)
+ 
+ - `.env`: `KAKAO_EXPORT_DIR`(읽기는 `lib/env_util.py`). 노션을 부르지 않는다(v4.8 제목 조회의 노션 공개 페이지 API 는 계정·토큰 없는 읽기다). (선택, v4.8) `KAKAO_TITLE_LOOKUP`(없으면 켜짐, `false` 면 끔) · `KAKAO_TITLE_MAX`(실행당 조회 상한, 기본 60) · `KAKAO_TITLE_BUDGET`(조회 전체 시간 상한초, 기본 180).
+ - 꿀팁 기본값(노션 시절과 같음): 제목이 비면 URL, 카테고리 `기타`, 상태 `미확인`, 중요도 `중`. 카테고리 값 목록은 `lib/kakao_parse.py` 상단. `tags` 는 JSON 배열, `source` 는 **호스트만**(`github.com`). (v4.9) 노션 이관 시절 행의 `https://…` 출처는 `recategorize_tips.py` 로 호스트만 남겼다 — 「채널별 목차」가 출처로 묶는다.
+-- **(v4.9) 카테고리·태그는 `lib/kakao_parse.classify` 한 곳에서 매긴다.** 판정 글자 = URL + 사용자가 붙인 글 + 조회한 원문 제목(URL 추정 제목은 넣지 않는다 — 「노션 자료」의 「노션」이 태그가 되지 않게). 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)는 **호스트를 빼고** 판정한다 — 노션에 올린 자료일 뿐 노션 이야기가 아니다(v4.8 까지 노션 주소 꿀팁이 모두 `Notion` → 「지식관리」였다). `notion.com`(노션 회사 사이트)은 그대로 `Notion`. 한글 표기 별칭: 클로드(코드)·제미나이/제미니·지피티/오픈AI·노션·옵시디언·안티그래비티·올라마·허깅페이스. 「커서」는 일반 명사라 넣지 않는다. **태그 이름·순서·카테고리 값 목록은 바꾸지 않는다**(장부·노트 `keywords`·검색 필터가 쓴다). 사람이 고른 분류(노션 시절 행 · 9-03~9-06 정리분)는 규칙으로 덮지 않는다 — `recategorize_tips.py` 는 v4.8 규칙 값과 같은 행만 고친다.
++- **(v4.9) 카테고리·태그는 `lib/kakao_parse.classify` 한 곳에서 매긴다.** 판정 글자 = URL + 사용자가 붙인 글 + 조회한 원문 제목(URL 추정 제목은 넣지 않는다 — 「노션 자료」의 「노션」이 태그가 되지 않게). 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)는 **호스트를 빼고** 판정한다 — 노션에 올린 자료일 뿐 노션 이야기가 아니다(v4.8 까지 노션 주소 꿀팁이 모두 `Notion` → 「지식관리」였다). `notion.com`(노션 회사 사이트)은 그대로 `Notion`. 한글 표기 별칭: 클로드(코드)·제미나이/제미니·지피티/오픈AI·노션·옵시디언·안티그래비티·올라마·허깅페이스. 「커서」는 일반 명사라 넣지 않는다. **태그 이름·순서·카테고리 값 목록은 바꾸지 않는다**(장부·노트 `keywords`·검색 필터가 쓴다). 사람이 고른 분류(노션 시절 행 · 9-03~9-06 정리분)는 규칙으로 덮지 않는다 — `recategorize_tips.py` 는 v4.8 규칙 값과 같은 행만 고친다. **(v4.10) 단 카테고리 「기타」 + 태그 없음은 사람이 고른 값이 아니라 빈 기본값**(노션 이관 때 기본값 그대로 — 08-14·09-03·09-06 의 19건이 그랬다)으로 보고 다시 매긴다. 태그가 하나라도 있거나 「기타」가 아니면 지금처럼 보존.
+ - `kakao_ingest.py`의 `--since` 기본값은 `2026-03-01`. 그 이전 카톡 링크 103건은 쇼핑·개인 링크라 AI 자료가 아니다.
+ - **꿀팁 노트는 YouTube 로직과 격리된다.** `get_existing_vault_info()`가 `AI 꿀팁/` 폴더를 걷지 않으므로 고아 격리 분모·tags 동기화에 섞이지 않는다. 노트 프론트매터는 `link_url`이며 **`video_url`을 절대 쓰지 않는다** — 쓰는 순간 고아 격리 대상이 된다. `tags` 키도 쓰지 않는다(`keywords`) — `build_obsidian_wiki`가 tags 없는 파일을 폴더명 MOC(`_MOC/AI 꿀팁 MOC.md`)로 묶는다.
+ - 폴더는 **평면 구조**다. `wiki_ingest`·`build_obsidian_wiki`가 최상위 폴더 바로 아래 파일만 읽으므로 카테고리 하위 폴더를 만들면 위키에서 사라진다. 카테고리는 프론트매터 `category`로만 둔다.
+@@ -600,6 +601,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후
+ 
+ ## 변경 이력
+ 
++- **2026-10-14 (v4.10 — 꿀팁 빈 기본값 재분류 · 제목 3차)** — 배경: v4.9 뒤 「기타」 66건 중 사람이 고른 값 43건, 그중 태그가 빈 19건은 「클로드 코드 토큰 3배…」처럼 내용이 뻔한데 노션 기본값(기타·태그 없음)이 남아 있었다. 또 09-12~10-10 적재분 26건이 URL 추정 제목(`agent reach`·`mobilebasic`·`view` 등) — v4.8 자동 조회는 신규 행만 대상이라 남았다. 수정: `scripts/recategorize_tips.py` `decide()` 에 빈 기본값(`BLANK_DEFAULT = ('기타', [])`) — v4.8 규칙 값이 아니어도 「기타」·태그 없음이면 다시 매긴다, `RESULT_JSON.blank_default`·로그 표시. 데이터: `docs/tasks/2026-10-14-retitle-tips-3.csv` 25건(`lib/title_fetch.py` 조회 25 성공 · 비공개 노션 1건 제외, 사이트 이름 꼬리·`.pdf` 정리) → `retitle_tips.py` → `recategorize_tips.py`. 장부·스키마 무변경(값만). 사전 검증(맥 네이티브, 장부 사본 + Vault 사본): 제목 25행 · 노트 25 · 링크 59(12파일) → 재분류 28행(빈 기본값 16 · 제목 따라 12) · 기타→개발툴 9 · →프롬프트 8 · →모델/LLM 7 · 모델/LLM→개발툴 1 · 사람이 고른 값 유지 75 · 두 번째 실행 0행 · integrity ok · 「기타」 66 → 42. 테스트: `test_recategorize_tips.py` 52/52(+7). 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-14-v410-tips-blank-default.md`.
+ - **2026-10-13 (v4.9 — 꿀팁 분류 보정)** — 배경: v4.8 사전 검증에서 노션 주소의 `notion` 이 태그 `Notion` → 카테고리 「지식관리」로 잡히고(지식관리 17건 중 14건이 노션에 올린 클로드·GPT 자료), 한글 「클로드」가 `Claude` 태그에 안 걸리며(27건), 노션 이관 시절 71행의 출처가 `https://…` 라 「채널별 목차」가 같은 사이트를 둘로 나눴다. 수정: `lib/kakao_parse.py` `classify()`·`is_notion_host()`·`_tag_text()`(노션 페이지 주소 호스트 제외 · 한글 별칭), `guess_meta` 가 `classify` 사용. `scripts/recategorize_tips.py` 신규(v4.8 규칙 값과 같은 행만 재분류 · 출처 호스트만 · 노트 제자리 수정 · 백업 · 재실행 0건). 장부·스키마 무변경(값만). 사전 검증(맥 네이티브, 장부 사본 + Vault 꿀팁 폴더 사본): 148건 중 87행(분류 16 · 출처 71) · 카테고리 이동 지식관리→모델/LLM 6 · →기타 4 · →개발툴 3 · →프롬프트 1 · 기타→개발툴 1 · 사람이 고른 값 유지 91 · 노트 건너뜀 0 · 두 번째 실행 0행 · integrity ok. 테스트: 신규 `test_recategorize_tips.py` 45/45. 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-13-v49-tips-recategorize.md`.
+ - **2026-10-13 (v4.8 — 카톡 꿀팁 원문 제목 자동 조회)** — 배경: `kakao_ingest` 가 링크를 열지 않아 노션·유튜브·URL 조각 제목이 쌓이고(「원문 확인 필요」 46건), 10-12·10-13 두 차례 `retitle_tips.py` 로 손으로 고쳤다(2차 43건 — 노션 공개 API 44건 중 43 확인). 수정: `lib/title_fetch.py` 신규(노션 `syncRecordValuesMain` · 유튜브 oEmbed · og:title/`<title>`, 요청당 8초·재시도 없음·예외 없음, 제목 정리·일반 문구 거부), `kakao_ingest.py` `resolve_titles()`(URL 추정 제목만 · 장부 쓰기 전 · 실행당 60건/180초 · `--no-lookup`·`.env KAKAO_TITLE_*` · `RESULT_JSON.title_lookup`), `lib/kakao_parse.py` `guess_meta(fetched_title)`·`title_src`, `scheduler.js` 카톡 로그에 「제목 조회 성공/대상」. 장부·스키마 무변경. 사전 검증: 실제 꿀팁 148건 143 성공(최대 3.4초) · 장부 사본에서 9-15 이후 44건을 지우고 같은 URL 로 인제스트 → 조회 42/42(GitHub 2 제외), 24초. 테스트: 신규 `test_title_fetch.py` 43/43, `test_kakao_ingest.py` 37/37(+19). 회귀 테스트 13종. 지시서 `docs/tasks/2026-10-13-v48-kakao-title-lookup.md`.
+ - **2026-10-13 (v4.7 — Wiki 검색 화면 개편)** — 대표님 요청 6건(처음 열면 전체 목록 · 건수 선택 제거 · 토픽 다중 선택 · 정렬 목록 유지 · 필터 추가 · 머리줄 정렬) + 결정(관련 결과 = 의미 점수 상위 200건 · 비슷한 영상 · 새로 들어온 것 · 엑셀 내려받기 · 노트 전체 보기 · 밝은 테마만). `wiki.html` 전면 교체(iRichGreen Design System 웹 계층 DS 1.1.23 토큰·FilterChip·SegmentedControl·표 30px 줄, 표/카드, 줄 펼침, URL 해시 상태, `/`·Esc, 휴대폰 서랍 필터). `lib/wiki_search.js` `listPayload`·`scoreAll`·`similar`·`noteById`, `server.js`·`wiki_lan_server.js` `/api/wiki-search` 에 `all=1`·`scores=1`·`similar=` 옵션 + 새 읽기 전용 경로 `/api/wiki-note`(id 로만). `build_search_index.py` 화면 필터용 메타 7개(임베딩 hash 무관 — 실 Vault 사본 실행 임베딩 0건). 장부·스키마·스케줄러 무변경. 테스트: 신규 `test_wiki_search.js` 34/34, `test_build_wiki_index.py` 15/15(+4). 회귀 테스트 12종. 지시서 `docs/tasks/2026-10-13-v47-wiki-ui.md`.
+diff --git a/README.md b/README.md
+index c484a76..dca4b76 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
+ 
+-**현재 버전: v4.9** (2026-10-13)
++**현재 버전: v4.10** (2026-10-14)
+ 
+ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
+ 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
+@@ -17,6 +17,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카
+ > v4.7: Wiki 검색 화면을 개편했습니다 — 처음 열면 전체 목록이 나오고, 토픽 여러 개·종류·날짜·조회수·채널 등으로 거르고, 머리줄을 눌러 정렬합니다. 비슷한 영상·노트 전체 보기·엑셀 내려받기도 됩니다(회사 디자인 시스템 DS 1.1.23).
+ > v4.8: 카톡 꿀팁을 넣을 때 링크의 **원문 제목**을 자동으로 가져옵니다(노션 공개 페이지·유튜브·일반 웹페이지). 못 가져오면 예전처럼 URL 로 추정한 제목과 「원문 확인 필요」 메모가 들어갑니다.
+ > v4.9: 꿀팁 분류를 바로잡았습니다 — 노션에 올린 자료가 전부 「지식관리」로 잡히던 문제와 한글 「클로드」·「노션」 등이 태그로 안 잡히던 문제를 고치고, 이미 들어간 꿀팁도 규칙이 매긴 것만 다시 분류했습니다(사람이 고른 분류는 그대로). 옛 꿀팁의 출처 `https://…` 도 호스트만 남겼습니다.
++> v4.10: 노션에서 넘어올 때 기본값(「기타」·태그 없음)이 그대로 남은 꿀팁도 규칙으로 다시 분류하고, URL 로 추정한 제목이 남아 있던 꿀팁 25건에 원문 제목을 넣었습니다 — 「기타」 66 → 42건.
+ > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
+ > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
+ 
+@@ -214,7 +215,7 @@ AI_Wiki_Pipeline/
+ ├── scripts/
+ │   ├── verify_library.py              # (v4.3) 장부 ↔ Vault 대조 (읽기 전용, 네트워크 없음)
+ │   ├── retitle_tips.py                # (v4.4) 꿀팁 제목 보완 — 장부·노트 파일명·링크 일괄 (dry-run 기본)
+-│   ├── recategorize_tips.py           # (v4.9) 꿀팁 분류 보정 — 규칙이 매긴 카테고리·태그 다시 매김 · 출처 호스트만 (dry-run 기본)
++│   ├── recategorize_tips.py           # (v4.9) 꿀팁 분류 보정 — 규칙이 매긴 카테고리·태그(+ v4.10 「기타」·태그 없음) 다시 매김 · 출처 호스트만 (dry-run 기본)
+ │   ├── migrate_library.py             # (v4.5·v4.6) 장부 스키마 이전 1·2 → 3 (dry-run 기본, 백업 먼저)
+ │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
+ │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
+@@ -353,7 +354,7 @@ launchd 데몬 4개 (설치본 = `~/Library/LaunchAgents/`, 원본 = 레포 루
+ /opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV>          # dry-run — 바뀔 제목·파일명·링크 수
+ /opt/homebrew/bin/python3 scripts/retitle_tips.py <CSV> --apply  # 장부·노트·링크 + Wiki 재구성·검색 인덱스
+ 
+-# (v4.9) 규칙이 매긴 꿀팁 카테고리·태그를 지금 규칙으로 · 옛 출처 https:// 접두 정리 (사람이 고른 분류는 그대로)
++# (v4.9) 규칙이 매긴 꿀팁 카테고리·태그를 지금 규칙으로 · 옛 출처 https:// 접두 정리 (사람이 고른 분류는 그대로, v4.10 「기타」·태그 없음은 기본값이라 다시 매김)
+ /opt/homebrew/bin/python3 scripts/recategorize_tips.py          # dry-run — 바뀔 행·카테고리 이동 표
+ /opt/homebrew/bin/python3 scripts/recategorize_tips.py --apply  # 정시 실행 창(매시 50분~다음 시 20분) 밖에서
+ ```
+@@ -462,6 +463,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ | 버전 | 날짜 | 주요 내용 요약 |
+ | :-- | :--- | :--- |
++| **v4.10** | 2026-10-14 | **꿀팁 빈 기본값 재분류 · 제목 3차**: `recategorize_tips.py` 가 카테고리 「기타」 + 태그 없음(노션 이관 때 기본값 그대로)을 사람이 고른 값으로 보지 않고 다시 매긴다(`blank_default`, 19건 중 16건 이동). URL 추정 제목 25건 → 원문 제목(`retitle_tips.py`, 비공개 노션 1건 제외) 뒤 재분류. 재분류 28행 · 「기타」 66 → 42. 회귀 테스트 14종 |
+ | **v4.9** | 2026-10-13 | **꿀팁 분류 보정**: 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)의 `notion` 이 태그 `Notion` → 「지식관리」로 잡히던 문제(지식관리 17건 중 14건)와 한글 「클로드」·「노션」·「제미나이」 등이 태그로 안 잡히던 문제 수정 — 분류 규칙을 `lib/kakao_parse.classify` 한 곳으로. 기존 꿀팁은 `scripts/recategorize_tips.py` 로 v4.8 규칙이 매긴 행만 다시 분류(사람이 고른 분류 91건 유지), 노션 이관 시절 71행 출처 `https://…` → 호스트만, 노트는 해당 줄만 제자리 수정. 회귀 테스트 14종 |
+ | **v4.8** | 2026-10-13 | **카톡 꿀팁 원문 제목 자동 조회**: `kakao_ingest.py` 가 URL 로만 제목을 추정해 「노션 자료 (제목 미확인)」·「유튜브 영상 (제목 미확인)」·URL 조각 제목이 쌓이던 문제 수정. 사용자 글이 없고 GitHub 레포가 아닌 링크는 `lib/title_fetch.py` 로 원문 제목을 조회(노션 공개 페이지 API · 유튜브 oEmbed · og:title) — 장부 쓰기 전, 요청당 8초·재시도 없음, 실패하면 예전 추정 제목. 실행당 60건·180초, `--no-lookup`·`.env KAKAO_TITLE_*`. 실제 꿀팁 148건 사전 조회 143 성공. 회귀 테스트 13종 |
+ | **v4.7** | 2026-10-13 | **Wiki 검색 화면 개편**: 처음 열면 전체 목록(필터·정렬은 브라우저), 건수 선택 제거, 토픽 다중 선택(하나라도·모두), 종류·날짜·조회수·채널·요약 방식·꿀팁 분류·새로 들어온 것 필터, 머리줄 정렬, 표/카드, 의미 검색은 상위 200건 안에서, 비슷한 영상(저장 벡터 — Gemini 호출 없음), 노트 전체 보기(`/api/wiki-note`, id 로만), 엑셀 내려받기. iRichGreen Design System DS 1.1.23. 인덱스에 화면 필터용 메타(임베딩 무관). 회귀 테스트 12종 |
+@@ -494,6 +496,21 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
+ 
+ ### 📝 상세 변경 내역 (Detailed Change Log)
+ 
++#### [v4.10] — 2026-10-14 (🗂️ 꿀팁 빈 기본값 재분류 · 제목 3차)
++
++**배경.** v4.9 뒤 「기타」가 66건이었다. 그중 사람이 고른 값 43건 — 태그가 빈 19건은 「클로드 코드 토큰 3배로 오래 쓰는 무료 도구 3개」처럼 내용이 뻔한데 노션 시절 기본값(기타·태그 없음)이 그대로 남은 것이었다. 또 09-12~10-10 에 들어온 26건은 제목이 URL 추정(`agent reach`·`mobilebasic`·`view` 등)이었다 — v4.8 자동 조회는 새로 들어오는 행만 대상이다.
++
++| 항목 | 내용 |
++|---|---|
++| 빈 기본값 | `scripts/recategorize_tips.py` `decide()` — 카테고리 「기타」 + 태그 없음은 v4.8 규칙 값이 아니어도 다시 매긴다(`BLANK_DEFAULT`). 태그가 하나라도 있거나 「기타」가 아니면 지금처럼 사람이 고른 값. `RESULT_JSON.blank_default`(분류가 바뀐 빈 기본값 행 수) · 로그 「(빈 기본값)」 |
++| 제목 3차 | `docs/tasks/2026-10-14-retitle-tips-3.csv` 25건 — `lib/title_fetch.py` 로 조회한 원문 제목. 사이트 이름 꼬리(「— REBORN LABS」 등)·`.pdf` 는 뺐다. 비공개 노션 1건은 그대로(「원문 확인 필요」) |
++| 순서 | `retitle_tips.py` → `recategorize_tips.py` — 제목이 바뀐 행은 새 제목으로 다시 분류된다(URL 추정 제목은 판정 글자에서 빠졌었다) |
++| 사전 검증 | 장부 사본 + Vault 사본: 제목 25행 · 노트 25 · 링크 59(12파일) → 재분류 28행(빈 기본값 16 · 제목 따라 12) — 기타→개발툴 9 · →프롬프트 8 · →모델/LLM 7 · 모델/LLM→개발툴 1, 사람이 고른 값 유지 75, 노트 건너뜀 0, 두 번째 실행 0행. 카테고리 개발툴 51 · 기타 42 · 모델/LLM 25 · 프롬프트 14 · 뉴스/트렌드 10 · 지식관리 3 · 사업/마케팅 3 |
++| 무변경 | 분류 규칙(`kakao_parse.classify`) · 장부 스키마 · 시트 머리글 · 카톡 인제스트 흐름 |
++| 테스트 | `scripts/test_recategorize_tips.py` 52/52(+7). 회귀 테스트 14종 |
++| 지시서 | `docs/tasks/2026-10-14-v410-tips-blank-default.md` |
++
++
+ #### [v4.9] — 2026-10-13 (🗂️ 꿀팁 분류 보정)
+ 
+ **배경.** v4.8 사전 검증에서 세 가지가 보였다. ① 노션에 올린 자료는 주소에 `notion` 이 들어 있어 태그 `Notion` → 카테고리 「지식관리」가 됐다(지식관리 17건 중 14건이 클로드·GPT 자료). ② 규칙이 영문만 봐서 한글 「클로드」가 `Claude` 태그에 안 걸렸다(제목에 「클로드」가 있는데 `Claude` 태그가 없는 꿀팁 27건) — v4.8 부터 원문 제목(대개 한글)이 들어오므로 더 중요해졌다. ③ 노션 이관 시절 71행의 출처가 `https://…` 라 「채널별 목차」에서 같은 사이트가 둘로 갈렸다(규칙은 호스트만).
+diff --git a/scripts/recategorize_tips.py b/scripts/recategorize_tips.py
+index cfc8de8..88084ea 100644
+--- a/scripts/recategorize_tips.py
++++ b/scripts/recategorize_tips.py
+@@ -12,6 +12,8 @@
+   1. 카테고리·태그 — 지금 값이 「v4.8 규칙이 매긴 값」과 같을 때만 v4.9 규칙(lib/kakao_parse.classify)으로 다시 매긴다.
+      v4.8 규칙 값 = (URL + 제목) 또는 (URL 만) 으로 매긴 결과. 둘 다 아니면 사람이 고른 값(노션 시절 등)으로 보고 그대로 둔다(manual_kept).
+      제목이 URL 추정 제목(「노션 자료 (제목 미확인)」 등)이면 제목은 판정 글자에 넣지 않는다 — 추정 문구의 「노션」이 태그가 되지 않게.
++     (v4.10) 카테고리 「기타」 + 태그 없음은 빈 기본값(노션 이관 때 기본값 그대로 남은 행)으로 보고 규칙 값처럼 다시 매긴다(blank_default).
++     태그가 하나라도 있거나 카테고리가 「기타」가 아니면 지금처럼 사람이 고른 값이다.
+   2. 출처 — 장부 source 가 'http://'·'https://' 로 시작하면(노션 이관 시절 행) 호스트만 남긴다(kakao_parse.host_of, www. 제거).
+      그 호스트가 URL 의 호스트와 다르면 고치지 않고 보고만 한다(source_mismatch).
+   바뀌는 행마다:
+@@ -100,11 +102,16 @@ def title_text(url, title):
+     return '' if nfc(title) == kp.guess_meta(url, '')['title'] else nfc(title)
+ 
+ 
++BLANK_DEFAULT = ('기타', [])   # (v4.10) 카테고리 기타 + 태그 없음 = 빈 기본값 — 사람이 고른 값으로 보지 않는다
++
++
+ def decide(row):
+-    """장부 행 → {'category','tags','source','rule_made','source_mismatch'} (새 값)."""
++    """장부 행 → {'category','tags','source','rule_made','blank_default','source_mismatch'} (새 값)."""
+     url, cat, tags, src = row['url'], nfc(row['category']), [nfc(t) for t in row['tags']], nfc(row['source'])
+     t = title_text(url, row['title'])
+-    rule_made = (cat, tags) in (classify_v48(url, t), classify_v48(url))
++    v48 = (cat, tags) in (classify_v48(url, t), classify_v48(url))
++    blank = not v48 and (cat, tags) == BLANK_DEFAULT
++    rule_made = v48 or blank
+     new_cat, new_tags = kp.classify(url, t) if rule_made else (cat, tags)
+     new_src, mismatch = src, False
+     if re.match(r'https?://', src, re.I):
+@@ -113,7 +120,8 @@ def decide(row):
+             new_src = h
+         else:
+             mismatch = True
+-    return {'category': new_cat, 'tags': new_tags, 'source': new_src, 'rule_made': rule_made, 'source_mismatch': mismatch}
++    return {'category': new_cat, 'tags': new_tags, 'source': new_src, 'rule_made': rule_made, 'blank_default': blank,
++            'source_mismatch': mismatch}
+ 
+ 
+ # ── 노트 편집 ──
+@@ -197,7 +205,7 @@ def build_plan(conn, vault):
+             manual += 1
+         if new == old:
+             continue
+-        item = {'record_id': row['record_id'], 'title': nfc(row['title']), 'old': old, 'new': new,
++        item = {'record_id': row['record_id'], 'title': nfc(row['title']), 'old': old, 'new': new, 'blank_default': d['blank_default'],
+                 'raw': {'category': r['category'], 'tags': r['tags'], 'source': r['source']}, 'file': None, 'note_text': None}
+         files = notes.get(row['record_id'], [])
+         try:
+@@ -288,6 +296,7 @@ def summarize(plan, skipped, mismatch, manual, total):
+         category_changed=sum(1 for p in plan if p['old']['category'] != p['new']['category']),
+         tags_changed=sum(1 for p in plan if p['old']['tags'] != p['new']['tags']),
+         source_changed=sum(1 for p in plan if p['old']['source'] != p['new']['source']),
++        blank_default=sum(1 for p in plan if p.get('blank_default') and (p['old']['category'], p['old']['tags']) != (p['new']['category'], p['new']['tags'])),
+         notes=sum(1 for p in plan if p['file']), skipped_note=len(skipped), source_mismatch=len(mismatch),
+         manual_kept=manual, moves=dict(sorted(moves.items(), key=lambda x: -x[1])))
+ 
+@@ -330,7 +339,7 @@ def main(argv=None):
+         log(f'🏷  꿀팁 분류 보정 {len(plan)}건 / 장부 {total}건 {"(apply)" if apply_ else "(dry-run)"}\n')
+         for p in plan:
+             o, n = p['old'], p['new']
+-            log(f'  {p["record_id"][:8]} | {p["title"][:44]}')
++            log(f'  {p["record_id"][:8]} | {p["title"][:44]}' + ('  (빈 기본값)' if p.get('blank_default') else ''))
+             if o['category'] != n['category']:
+                 log(f'           카테고리 {o["category"]} → {n["category"]}')
+             if o['tags'] != n['tags']:
+@@ -343,7 +352,7 @@ def main(argv=None):
+         for s in mismatch:
+             log(f'  ⚠️  출처·URL 호스트 다름(그대로 둠) {s["record_id"][:8]} source={s["source"]} url={s["url_host"]}')
+         summary = summarize(plan, skipped, mismatch, manual, total)
+-        log(f'\n  카테고리 이동: {summary["moves"] or "없음"} · 사람이 고른 값 유지 {manual}건')
++        log(f'\n  카테고리 이동: {summary["moves"] or "없음"} · 빈 기본값 다시 매김 {summary["blank_default"]}건 · 사람이 고른 값 유지 {manual}건')
+         if not apply_:
+             log('\n👀 dry-run — 장부·Vault 무변경. 반영은 --apply')
+             return emit(0, ok=True, dry_run=True, **summary)
+diff --git a/scripts/test_recategorize_tips.py b/scripts/test_recategorize_tips.py
+index 848bdc4..462cf9c 100644
+--- a/scripts/test_recategorize_tips.py
++++ b/scripts/test_recategorize_tips.py
+@@ -1,6 +1,6 @@
+ #!/usr/bin/env python3
+ """
+-scripts/recategorize_tips.py + lib/kakao_parse.classify 회귀 테스트 — 네트워크 0회, 실제 Vault·data/ 무변경 (v4.9)
++scripts/recategorize_tips.py + lib/kakao_parse.classify 회귀 테스트 — 네트워크 0회, 실제 Vault·data/ 무변경 (v4.9 · v4.10 빈 기본값)
+ 
+   /opt/homebrew/bin/python3 scripts/test_recategorize_tips.py
+ 
+@@ -75,6 +75,27 @@ check('출처 호스트가 URL 과 다르면 그대로 + 보고', d['source'] ==
+ d = m.decide(row('https://b.com/a', 'x', '기타', [], 'b.com'))
+ check('이미 호스트면 그대로', d['source'] == 'b.com' and not d['source_mismatch'])
+ 
++# (v4.10) 빈 기본값 — 카테고리 기타 + 태그 없음
++d = m.decide(row('https://app.notion.com/p/abc', '클로드 코드 토큰 3배로 오래 쓰는 무료 도구 3개', '기타', [], 'app.notion.com'))
++check('(v4.10) 기타·태그 없음 → 빈 기본값으로 다시 매김',
++      d['rule_made'] and d['blank_default'] and (d['category'], d['tags']) == ('개발툴', ['ClaudeCode', 'Claude']), str(d))
++d = m.decide(row(f'https://a.notion.site/x-{HEX}', '클로드 시크릿코드 — 프롬프트 단축 명령어 100개', '기타', []))
++check('(v4.10) 빈 기본값 → 프롬프트', d['blank_default'] and (d['category'], d['tags']) == ('프롬프트', ['Claude', '프롬프트']), str(d))
++d = m.decide(row(f'https://a.notion.site/x-{HEX}', '애플 디자인 스킬 — 설치부터 검토까지', '기타', []))
++check('(v4.10) 빈 기본값이어도 규칙이 기타면 그대로', d['blank_default'] and (d['category'], d['tags']) == ('기타', []), str(d))
++d = m.decide(row(f'https://a.notion.site/x-{HEX}', '클로드 큐레이션', '기타', ['큐레이션']))
++check('(v4.10) 기타 + 손 태그 → 사람이 고른 값 그대로', not d['rule_made'] and not d['blank_default'] and (d['category'], d['tags']) == ('기타', ['큐레이션']))
++d = m.decide(row(f'https://a.notion.site/x-{HEX}', '클로드 코드 정리', '지식관리', []))
++check('(v4.10) 기타가 아닌 카테고리 + 태그 없음 → 그대로', not d['rule_made'] and (d['category'], d['tags']) == ('지식관리', []))
++d = m.decide(row('https://x.com/a', '그대로', '기타', []))
++check('(v4.10) v4.8 규칙 값이 이미 기타·태그 없음이면 blank_default 아님', d['rule_made'] and not d['blank_default'])
++sm = m.summarize([
++    {'old': {'category': '기타', 'tags': [], 'source': 's'}, 'new': {'category': '개발툴', 'tags': ['Claude'], 'source': 's'}, 'file': 'a.md', 'blank_default': True},
++    {'old': {'category': '기타', 'tags': [], 'source': 'https://s'}, 'new': {'category': '기타', 'tags': [], 'source': 's'}, 'file': None, 'blank_default': True},
++    {'old': {'category': '지식관리', 'tags': ['Notion'], 'source': 's'}, 'new': {'category': '개발툴', 'tags': [], 'source': 's'}, 'file': 'b.md', 'blank_default': False},
++], [], [], 0, 3)
++check('(v4.10) summarize: blank_default = 분류가 바뀐 빈 기본값 행만', sm['blank_default'] == 1 and sm['rows'] == 3 and sm['category_changed'] == 2, str(sm))
++
+ # ── 3. 임시 장부·Vault 로 전체 흐름 ──
+ TIPS = [
+     # record_id, url, title, source, tags, category, extra_note

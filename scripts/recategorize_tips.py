@@ -12,6 +12,8 @@
   1. 카테고리·태그 — 지금 값이 「v4.8 규칙이 매긴 값」과 같을 때만 v4.9 규칙(lib/kakao_parse.classify)으로 다시 매긴다.
      v4.8 규칙 값 = (URL + 제목) 또는 (URL 만) 으로 매긴 결과. 둘 다 아니면 사람이 고른 값(노션 시절 등)으로 보고 그대로 둔다(manual_kept).
      제목이 URL 추정 제목(「노션 자료 (제목 미확인)」 등)이면 제목은 판정 글자에 넣지 않는다 — 추정 문구의 「노션」이 태그가 되지 않게.
+     (v4.10) 카테고리 「기타」 + 태그 없음은 빈 기본값(노션 이관 때 기본값 그대로 남은 행)으로 보고 규칙 값처럼 다시 매긴다(blank_default).
+     태그가 하나라도 있거나 카테고리가 「기타」가 아니면 지금처럼 사람이 고른 값이다.
   2. 출처 — 장부 source 가 'http://'·'https://' 로 시작하면(노션 이관 시절 행) 호스트만 남긴다(kakao_parse.host_of, www. 제거).
      그 호스트가 URL 의 호스트와 다르면 고치지 않고 보고만 한다(source_mismatch).
   바뀌는 행마다:
@@ -100,11 +102,16 @@ def title_text(url, title):
     return '' if nfc(title) == kp.guess_meta(url, '')['title'] else nfc(title)
 
 
+BLANK_DEFAULT = ('기타', [])   # (v4.10) 카테고리 기타 + 태그 없음 = 빈 기본값 — 사람이 고른 값으로 보지 않는다
+
+
 def decide(row):
-    """장부 행 → {'category','tags','source','rule_made','source_mismatch'} (새 값)."""
+    """장부 행 → {'category','tags','source','rule_made','blank_default','source_mismatch'} (새 값)."""
     url, cat, tags, src = row['url'], nfc(row['category']), [nfc(t) for t in row['tags']], nfc(row['source'])
     t = title_text(url, row['title'])
-    rule_made = (cat, tags) in (classify_v48(url, t), classify_v48(url))
+    v48 = (cat, tags) in (classify_v48(url, t), classify_v48(url))
+    blank = not v48 and (cat, tags) == BLANK_DEFAULT
+    rule_made = v48 or blank
     new_cat, new_tags = kp.classify(url, t) if rule_made else (cat, tags)
     new_src, mismatch = src, False
     if re.match(r'https?://', src, re.I):
@@ -113,7 +120,8 @@ def decide(row):
             new_src = h
         else:
             mismatch = True
-    return {'category': new_cat, 'tags': new_tags, 'source': new_src, 'rule_made': rule_made, 'source_mismatch': mismatch}
+    return {'category': new_cat, 'tags': new_tags, 'source': new_src, 'rule_made': rule_made, 'blank_default': blank,
+            'source_mismatch': mismatch}
 
 
 # ── 노트 편집 ──
@@ -197,7 +205,7 @@ def build_plan(conn, vault):
             manual += 1
         if new == old:
             continue
-        item = {'record_id': row['record_id'], 'title': nfc(row['title']), 'old': old, 'new': new,
+        item = {'record_id': row['record_id'], 'title': nfc(row['title']), 'old': old, 'new': new, 'blank_default': d['blank_default'],
                 'raw': {'category': r['category'], 'tags': r['tags'], 'source': r['source']}, 'file': None, 'note_text': None}
         files = notes.get(row['record_id'], [])
         try:
@@ -288,6 +296,7 @@ def summarize(plan, skipped, mismatch, manual, total):
         category_changed=sum(1 for p in plan if p['old']['category'] != p['new']['category']),
         tags_changed=sum(1 for p in plan if p['old']['tags'] != p['new']['tags']),
         source_changed=sum(1 for p in plan if p['old']['source'] != p['new']['source']),
+        blank_default=sum(1 for p in plan if p.get('blank_default') and (p['old']['category'], p['old']['tags']) != (p['new']['category'], p['new']['tags'])),
         notes=sum(1 for p in plan if p['file']), skipped_note=len(skipped), source_mismatch=len(mismatch),
         manual_kept=manual, moves=dict(sorted(moves.items(), key=lambda x: -x[1])))
 
@@ -330,7 +339,7 @@ def main(argv=None):
         log(f'🏷  꿀팁 분류 보정 {len(plan)}건 / 장부 {total}건 {"(apply)" if apply_ else "(dry-run)"}\n')
         for p in plan:
             o, n = p['old'], p['new']
-            log(f'  {p["record_id"][:8]} | {p["title"][:44]}')
+            log(f'  {p["record_id"][:8]} | {p["title"][:44]}' + ('  (빈 기본값)' if p.get('blank_default') else ''))
             if o['category'] != n['category']:
                 log(f'           카테고리 {o["category"]} → {n["category"]}')
             if o['tags'] != n['tags']:
@@ -343,7 +352,7 @@ def main(argv=None):
         for s in mismatch:
             log(f'  ⚠️  출처·URL 호스트 다름(그대로 둠) {s["record_id"][:8]} source={s["source"]} url={s["url_host"]}')
         summary = summarize(plan, skipped, mismatch, manual, total)
-        log(f'\n  카테고리 이동: {summary["moves"] or "없음"} · 사람이 고른 값 유지 {manual}건')
+        log(f'\n  카테고리 이동: {summary["moves"] or "없음"} · 빈 기본값 다시 매김 {summary["blank_default"]}건 · 사람이 고른 값 유지 {manual}건')
         if not apply_:
             log('\n👀 dry-run — 장부·Vault 무변경. 반영은 --apply')
             return emit(0, ok=True, dry_run=True, **summary)

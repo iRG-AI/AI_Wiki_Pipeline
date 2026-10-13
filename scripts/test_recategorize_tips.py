@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/recategorize_tips.py + lib/kakao_parse.classify 회귀 테스트 — 네트워크 0회, 실제 Vault·data/ 무변경 (v4.9)
+scripts/recategorize_tips.py + lib/kakao_parse.classify 회귀 테스트 — 네트워크 0회, 실제 Vault·data/ 무변경 (v4.9 · v4.10 빈 기본값)
 
   /opt/homebrew/bin/python3 scripts/test_recategorize_tips.py
 
@@ -74,6 +74,27 @@ d = m.decide(row('https://b.com/a', 'x', '기타', [], 'https://c.com'))
 check('출처 호스트가 URL 과 다르면 그대로 + 보고', d['source'] == 'https://c.com' and d['source_mismatch'])
 d = m.decide(row('https://b.com/a', 'x', '기타', [], 'b.com'))
 check('이미 호스트면 그대로', d['source'] == 'b.com' and not d['source_mismatch'])
+
+# (v4.10) 빈 기본값 — 카테고리 기타 + 태그 없음
+d = m.decide(row('https://app.notion.com/p/abc', '클로드 코드 토큰 3배로 오래 쓰는 무료 도구 3개', '기타', [], 'app.notion.com'))
+check('(v4.10) 기타·태그 없음 → 빈 기본값으로 다시 매김',
+      d['rule_made'] and d['blank_default'] and (d['category'], d['tags']) == ('개발툴', ['ClaudeCode', 'Claude']), str(d))
+d = m.decide(row(f'https://a.notion.site/x-{HEX}', '클로드 시크릿코드 — 프롬프트 단축 명령어 100개', '기타', []))
+check('(v4.10) 빈 기본값 → 프롬프트', d['blank_default'] and (d['category'], d['tags']) == ('프롬프트', ['Claude', '프롬프트']), str(d))
+d = m.decide(row(f'https://a.notion.site/x-{HEX}', '애플 디자인 스킬 — 설치부터 검토까지', '기타', []))
+check('(v4.10) 빈 기본값이어도 규칙이 기타면 그대로', d['blank_default'] and (d['category'], d['tags']) == ('기타', []), str(d))
+d = m.decide(row(f'https://a.notion.site/x-{HEX}', '클로드 큐레이션', '기타', ['큐레이션']))
+check('(v4.10) 기타 + 손 태그 → 사람이 고른 값 그대로', not d['rule_made'] and not d['blank_default'] and (d['category'], d['tags']) == ('기타', ['큐레이션']))
+d = m.decide(row(f'https://a.notion.site/x-{HEX}', '클로드 코드 정리', '지식관리', []))
+check('(v4.10) 기타가 아닌 카테고리 + 태그 없음 → 그대로', not d['rule_made'] and (d['category'], d['tags']) == ('지식관리', []))
+d = m.decide(row('https://x.com/a', '그대로', '기타', []))
+check('(v4.10) v4.8 규칙 값이 이미 기타·태그 없음이면 blank_default 아님', d['rule_made'] and not d['blank_default'])
+sm = m.summarize([
+    {'old': {'category': '기타', 'tags': [], 'source': 's'}, 'new': {'category': '개발툴', 'tags': ['Claude'], 'source': 's'}, 'file': 'a.md', 'blank_default': True},
+    {'old': {'category': '기타', 'tags': [], 'source': 'https://s'}, 'new': {'category': '기타', 'tags': [], 'source': 's'}, 'file': None, 'blank_default': True},
+    {'old': {'category': '지식관리', 'tags': ['Notion'], 'source': 's'}, 'new': {'category': '개발툴', 'tags': [], 'source': 's'}, 'file': 'b.md', 'blank_default': False},
+], [], [], 0, 3)
+check('(v4.10) summarize: blank_default = 분류가 바뀐 빈 기본값 행만', sm['blank_default'] == 1 and sm['rows'] == 3 and sm['category_changed'] == 2, str(sm))
 
 # ── 3. 임시 장부·Vault 로 전체 흐름 ──
 TIPS = [
