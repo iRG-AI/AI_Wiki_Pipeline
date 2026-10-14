@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI LLM Wiki</title>
+<title>🧠 AI LLM Wiki</title>
 <link rel="icon" href="favicon.svg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
@@ -37,11 +37,12 @@
   /* ── 머리줄 48 · 검색 ── */
   .top { position: sticky; top: 0; z-index: 10; height: var(--size-header); background: var(--bg-panel); border-bottom: 1px solid var(--line-default); }
   .top-in { max-width: var(--content-max); height: 100%; margin: 0 auto; padding: 0 var(--space-32); display: flex; gap: var(--space-16); align-items: center; }
-  .brand { display: flex; gap: var(--space-8); align-items: baseline; white-space: nowrap; }
+  .brand { display: flex; gap: var(--space-8); align-items: baseline; white-space: nowrap; padding-left: calc(var(--space-16) + 1px); }  /* 필터 카드 안쪽 글자선(테두리 1 + 안쪽 16)에 맞춤 */
   .brand b { font-size: 16px; line-height: 24px; font-weight: 800; }
+  .brand .logo { font-size: 18px; line-height: 24px; margin-right: -2px; }
   .brand span { font-size: 12px; line-height: 16px; color: var(--text-muted); }
-  .qbox { flex: 1; max-width: 640px; height: var(--size-btn-md); display: flex; align-items: center; gap: var(--space-6);
-    background: var(--bg-panel); border: 1px solid var(--line-default); border-radius: var(--radius-10); padding: 0 var(--space-6) 0 var(--space-12); margin-left: auto; }
+  .qbox { flex: 0 1 480px; min-width: 220px; height: var(--size-btn-md); display: flex; align-items: center; gap: var(--space-6);
+    background: var(--bg-panel); border: 1px solid var(--line-default); border-radius: var(--radius-10); padding: 0 var(--space-6) 0 var(--space-12); }
   .qbox:focus-within { outline: 2px solid var(--brand-primary); outline-offset: -1px; border-color: transparent; }
   .qbox svg { flex: none; color: var(--text-muted); }
   .qbox input { flex: 1; border: 0; background: transparent; font-size: 14px; font-weight: 500; outline: none; min-width: 0; height: 100%; }
@@ -50,7 +51,7 @@
   .qbox kbd { font: 700 12px/16px var(--font-web); color: var(--text-muted); border: 1px solid var(--line-default); border-radius: 4px; padding: 0 6px; }
   .qclear { border: 0; background: none; color: var(--text-muted); cursor: pointer; width: 22px; height: 22px; border-radius: var(--radius-full); display: none; place-items: center; }
   .qclear:hover { background: var(--bg-raised); color: var(--text-main); }
-  .actions { display: flex; gap: var(--space-8); }
+  .actions { display: flex; gap: var(--space-8); margin-left: auto; }
   .btn { height: var(--size-btn-md); border: 1px solid transparent; border-radius: var(--radius-10); padding: 0 var(--space-12);
     font-size: 13px; line-height: 20px; font-weight: 700; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-6); }
   .btn-primary { background: var(--brand-primary); color: #fff; }
@@ -61,7 +62,7 @@
 
   /* ── 본문 ── */
   .wrap { max-width: var(--content-max); margin: 0 auto; padding: var(--space-24) var(--space-32) var(--space-32);
-    display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: var(--space-16); align-items: start; }
+    display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: var(--space-16); align-items: start; }  /* 320 = 종류·날짜·조회수 칩이 한 줄 (10-14) */
   .card { background: var(--bg-panel); border: 1px solid var(--line-default); border-radius: var(--radius-card); }
 
   /* 필터 카드 */
@@ -102,11 +103,13 @@
 
   /* ── 결과 머리 ── */
   .rhead { display: flex; flex-wrap: wrap; gap: var(--space-8) var(--space-16); align-items: center; margin-bottom: var(--space-12); min-height: var(--size-btn-md); }
-  .count { font-size: 14px; color: var(--text-muted); }
+  .count { font-size: 14px; color: var(--text-muted); white-space: nowrap; }
   .count b { font-size: 20px; line-height: 28px; font-weight: 800; color: var(--text-main); margin-right: 2px; }
   .mode { font-size: 12px; line-height: 16px; color: var(--text-muted); }
   .mode.warn { color: var(--alert-warning); font-weight: 700; }
-  .rtools { margin-left: auto; display: flex; gap: var(--space-8); align-items: center; }
+  .rtools { flex: 1 1 0; display: flex; justify-content: flex-end; gap: var(--space-8); align-items: center; }
+  .rtools > :not(.qbox) { flex: none; }   /* 좁아지면 검색 칸만 줄어든다(최소 220) */  /* 검색 묶음 · 정렬 · 엑셀 · 보기 (10-14 머리줄에서 옮김) */
+  .tsep { width: 1px; height: 20px; background: var(--line-default); margin: 0 var(--space-4); }
   .rtools select { height: var(--size-btn-md); border: 1px solid var(--line-default); background: var(--bg-panel); border-radius: var(--radius-10); padding: 0 var(--space-8); font-size: 13px; }
   .active { display: flex; flex-wrap: wrap; gap: var(--space-6); align-items: center; margin-bottom: var(--space-12); }
   .active:empty { display: none; }
@@ -186,13 +189,14 @@
   @keyframes pulse { 50% { opacity: .45; } }
 
   /* ── 좁은 화면 (DS 1.1.23 에 모바일 기준이 없어 이 화면에서만 정함) ── */
-  @media (max-width: 1100px) { .wrap { grid-template-columns: 232px minmax(0, 1fr); } }
   @media (max-width: 860px) {
     .top { height: auto; }
     .top-in { flex-wrap: wrap; gap: var(--space-8); padding: var(--space-8) var(--space-16); }
-    .qbox { order: 3; max-width: none; flex-basis: 100%; margin-left: 0; }
+    .rtools { flex-basis: 100%; flex-wrap: wrap; justify-content: flex-start; }
+    .rtools .qbox { flex: 1 1 100%; }
+    .tsep { display: none; }
     .qbox kbd { display: none; }
-    .actions { margin-left: auto; }
+    .brand { padding-left: 0; }
     .btn-filter { display: inline-flex; }
     .wrap { grid-template-columns: 1fr; padding: var(--space-16); }
     aside.card { position: fixed; z-index: 60; inset: 0 auto 0 0; top: 0; width: min(320px, 88vw); max-height: none; border-radius: 0 var(--radius-card) var(--radius-card) 0;
@@ -258,18 +262,9 @@
 <body>
 <header class="top">
   <div class="top-in">
-    <div class="brand"><b>AI LLM Wiki</b><span id="brandSub">영상 요약 · 꿀팁</span></div>
-    <form class="qbox" id="qform" role="search">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <label for="q" class="sr">검색어</label>
-      <input id="q" type="search" placeholder="찾을 내용을 문장으로 적어 보세요 — 예: 클로드 코드로 업무 자동화" maxlength="500" autocomplete="off">
-      <button type="button" class="qclear" id="qclear" aria-label="검색어 지우기"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-      <kbd title="어디서든 / 를 누르면 검색 칸으로">/</kbd>
-    </form>
+    <div class="brand"><span class="logo" aria-hidden="true">🧠</span><b>AI LLM Wiki</b><span id="brandSub">영상 요약 · 꿀팁</span></div>
     <div class="actions">
       <button class="btn btn-secondary btn-filter" id="btnFilter" type="button">필터</button>
-      <button class="btn btn-primary" id="btnSearch" type="submit" form="qform">검색</button>
-      <button class="btn btn-secondary" id="btnAsk" type="button" title="찾은 자료를 근거로 AI가 답을 정리합니다">AI 답변</button>
     </div>
   </div>
 </header>
@@ -319,6 +314,16 @@
       <div class="count" id="count" aria-live="polite"></div>
       <span class="mode" id="mode"></span>
       <div class="rtools">
+        <form class="qbox" id="qform" role="search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <label for="q" class="sr">검색어</label>
+          <input id="q" type="search" placeholder="찾을 내용을 문장으로 적어 보세요 — 예: 클로드 코드로 업무 자동화" maxlength="500" autocomplete="off">
+          <button type="button" class="qclear" id="qclear" aria-label="검색어 지우기"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <kbd title="어디서든 / 를 누르면 검색 칸으로">/</kbd>
+        </form>
+        <button class="btn btn-primary" id="btnSearch" type="submit" form="qform">검색</button>
+        <button class="btn btn-secondary" id="btnAsk" type="button" title="찾은 자료를 근거로 AI가 답을 정리합니다">AI 답변</button>
+        <span class="tsep" aria-hidden="true"></span>
         <label class="sr" for="sortSel">정렬</label>
         <select id="sortSel"></select>
         <button class="btn btn-secondary btn-icon" id="btnXlsx" type="button" title="지금 목록(필터·정렬 그대로)을 엑셀 파일로 받습니다"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>엑셀</button>
