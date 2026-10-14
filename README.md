@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.11** (2026-10-14)
+**현재 버전: v4.12** (2026-10-14)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -19,6 +19,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.9: 꿀팁 분류를 바로잡았습니다 — 노션에 올린 자료가 전부 「지식관리」로 잡히던 문제와 한글 「클로드」·「노션」 등이 태그로 안 잡히던 문제를 고치고, 이미 들어간 꿀팁도 규칙이 매긴 것만 다시 분류했습니다(사람이 고른 분류는 그대로). 옛 꿀팁의 출처 `https://…` 도 호스트만 남겼습니다.
 > v4.10: 노션에서 넘어올 때 기본값(「기타」·태그 없음)이 그대로 남은 꿀팁도 규칙으로 다시 분류하고, URL 로 추정한 제목이 남아 있던 꿀팁 25건에 원문 제목을 넣었습니다 — 「기타」 66 → 42건.
 > v4.11: 기존분 재요약이 Gemini 서버 오류(503)를 받으면 오래 재시도하지 않고 그 실행의 재요약을 바로 멈춥니다(1편에 약 13분 → 1~2분). 같은 영상이 3번 막히면 그 영상은 건너뜁니다.
+> v4.12: 영상 끝에 자기 강의·전자책을 잠깐 알리기만 한 영상이 「판매가 주목적」으로 제외되던 오판을 줄였습니다. 판매 멘트가 영상 절반 이상이거나 영상 본론 자체가 자기 상품(소개·고객 사례)일 때만 판매로 제외합니다.
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
@@ -465,6 +466,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.12** | 2026-10-14 | **promo_main 오판 줄이기 — 판매 비중·본론 신호**: 영상 요약 신호에 `promo_share`(판매·모집 멘트가 차지하는 비중 0~1)·`promo_subject`(본론 자체가 제작자 자신의 유료 상품 — 소개·후기·고객 사례)를 더하고, 판매 제외를 `promo_main AND (promo_share ≥ 0.5 OR promo_subject)` 로 좁혔다(오판 3건 = 끝에 자기 상품 잠깐 안내 · 두 모델 모두 promo_main 을 true 로 냄). promo_main 이 true 인데 제외되지 않으면 로그 `(promo_minor …)`. 지금보다 좁기만 하고 장부·스키마 무변경. 회귀 테스트 14종 |
 | **v4.11** | 2026-10-14 | **재요약 5xx 조기 중단**: 재요약(3.5 Flash-Lite)이 503 을 받으면 신규와 같은 8회(키 4개 × 2) 재시도 — 503 이 1~2분 뒤에 와서 1편에 약 13분(10-14 00시). 이제 영상 1편에 5xx `RESUMMARY_MAX_5XX`(기본 1)회면 재시도 없이 그 실행의 재요약을 멈추고, 그 영상은 `quality.resummary_5xx` +1(3회면 건너뜀). 신규 영상 경로·429·네트워크 처리는 그대로. 회귀 테스트 14종 |
 | **v4.10** | 2026-10-14 | **꿀팁 빈 기본값 재분류 · 제목 3차**: `recategorize_tips.py` 가 카테고리 「기타」 + 태그 없음(노션 이관 때 기본값 그대로)을 사람이 고른 값으로 보지 않고 다시 매긴다(`blank_default`, 19건 중 16건 이동). URL 추정 제목 25건 → 원문 제목(`retitle_tips.py`, 비공개 노션 1건 제외) 뒤 재분류. 재분류 28행 · 「기타」 66 → 42. 회귀 테스트 14종 |
 | **v4.9** | 2026-10-13 | **꿀팁 분류 보정**: 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)의 `notion` 이 태그 `Notion` → 「지식관리」로 잡히던 문제(지식관리 17건 중 14건)와 한글 「클로드」·「노션」·「제미나이」 등이 태그로 안 잡히던 문제 수정 — 분류 규칙을 `lib/kakao_parse.classify` 한 곳으로. 기존 꿀팁은 `scripts/recategorize_tips.py` 로 v4.8 규칙이 매긴 행만 다시 분류(사람이 고른 분류 91건 유지), 노션 이관 시절 71행 출처 `https://…` → 호스트만, 노트는 해당 줄만 제자리 수정. 회귀 테스트 14종 |
@@ -498,6 +500,25 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.12] — 2026-10-14 (🏷️ promo_main 오판 줄이기 — 판매 비중·본론 신호)
+
+**배경.** 장부의 실제 영상 요약 46편 중 `promo_main` true 는 3건이었고 3건 모두 오판으로 되돌렸다(`-YySYOBbhD8` 무료 키트 10-13 · `RpY-KKZ7QTg` 끝에 자기 전자책 10-14 · `wgrpasYyiIQ` 끝에 자기 유료 강의 10-14). v4.6-b 에서 프롬프트에 "끝·중간에 잠깐 알리는 정도는 false"를 넣었지만 2.5 Flash·3.5 Flash-Lite 모두 "자기 상품을 조금이라도 팔면 true"처럼 답했다. 같은 영상도 모델마다 뒤집혔다.
+
+**시험(10-14, 8편 × 두 모델 + 5편 × 두 모델).** 판매 비중(`promo_share`)만으로는 확정 판매 영상(300만 원 컨설팅 고객 사례 + 모집, `2cX3_vi2y3I`)을 못 잡았다 — 본론 자체가 광고성이라 판매 멘트 시간은 짧다(2.5 Flash 0.051). 비중은 같은 영상도 회차마다 0.05 ↔ 0.32 로 흔들렸다. 판매 구간 시각(spans)은 영상 길이를 넘는 값이 나와 못 쓴다. 본론 신호(`promo_subject`)는 두 모델·두 회차에서 일관됐다 — 2cX3 만 true, 오판 3건·협찬 영상·정보 위주 + 강의 홍보 영상은 false.
+
+| 항목 | 내용 |
+|---|---|
+| 신호 | `lib/video_summary.js` PROMPT·`RESPONSE_SCHEMA` 에 `promo_share`(NUMBER, 0~1 — 설명란·고정 댓글은 세지 않음)·`promo_subject`(BOOLEAN) 추가, 둘 다 필수. promo_main 정의 문구는 그대로 |
+| 응답 검사 | `parseResponse` — `promo_subject` 가 boolean 이 아니거나 `promo_share` 가 유한한 수가 아니면 `bad_signals`. 비중은 0~1 로 자르고 소수 셋째 자리까지 |
+| 등급 | `computeGrade` — 판매 제외 = `promo_main AND (promo_share ≥ PROMO_SHARE_MIN(0.5) OR promo_subject)`. **promo_main 이 false 면 비중·본론과 상관없이 판매 제외 아님**(정의 넓히기 금지 — 지금보다 좁기만 하다). generic·not_ai 는 그대로. 두 값이 없는 옛 신호는 promo_main 만으로 제외하지 않는다 |
+| 로그 | promo_main 이 true 인데 제외되지 않으면 `🎬 영상 요약 (…) → keep (promo_minor 0.03)`. `why` 는 제외 사유만 담는다(그대로) |
+| 장부 | `quality` 에 `promo_share`·`promo_subject` 가 같이 들어간다(신호 펼침, 별도 코드 없음). 스키마 무변경(user_version 3), 장부 이전 없음(exclude 0건) |
+| 시험 결과 | 새 규칙으로 오판 3건 keep(두 모델) · 2cX3 exclude(두 모델) · 패스트캠퍼스 강의 홍보가 붙은 정보 영상 keep(v4.6-b 정의 "잠깐 알림 = false" 와 일치) |
+| 무변경 | 재요약·신규 경로 흐름 · 재시도·분량 상한 · generic·not_ai 규칙 · 노트·Wiki·검색의 exclude 처리 |
+| 테스트 | `scripts/test_video_summary.js` 28/28(+3). 회귀 테스트 14종 |
+| 지시서 | `docs/tasks/2026-10-14-v412-promo-share.md` |
+
 
 #### [v4.11] — 2026-10-14 (⏱️ 재요약 5xx 조기 중단)
 

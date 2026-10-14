@@ -12,6 +12,8 @@
 //   7) (v4.6-b) 모델 인자 — 2.x 는 thinkingBudget 0, 3.x 는 thinkingLevel minimal(thinkingBudget 은 400). 대체 없음(fallback:false)·신규 몫 예약.
 //      bad_summary 는 어느 검사에 걸렸는지 로그 1줄. promo_main 은 무료 자료 배포·구독 유도를 판매로 보지 않는다
 //   8) (v4.11) maxServerErrors — 5xx 만 세어 그 횟수면 재시도 그만(재요약용). 주지 않으면 예전대로 키 4개 × 2회
+//   9) (v4.12) promo_main 은 판매 비중 ≥ 0.5 또는 본론이 자기 상품(promo_subject)일 때만 제외 — 끝에 잠깐 알리는 자기 홍보는 keep(promo_minor).
+//      promo_main false 면 비중·본론과 상관없이 판매 제외 아님(정의 넓히기 금지). 두 신호는 필수 — 없거나 형식이 틀리면 bad_signals
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -24,7 +26,7 @@ const { validateSummary } = require(path.join(__dirname, '..', 'scheduler.js'));
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'video-summary-'));
 let seq = 0;
 const GOOD_MD = '## 영상 개요\n개요 문장.\n\n## 핵심 내용\n* **A**: 설명\n\n## 주요 인사이트\n* **B**: 설명\n\n## 활용 포인트\n실무에 이렇게 활용할 수 있다.';
-const SIG = (o = {}) => ({ promo_main: false, generic: false, ai_related: true, has_demo: true, sponsored: false, reason: '근거', ...o });
+const SIG = (o = {}) => ({ promo_main: false, promo_share: 0, promo_subject: false, generic: false, ai_related: true, has_demo: true, sponsored: false, reason: '근거', ...o });
 const ok200 = (sig = SIG(), md = GOOD_MD, videoTok = 42600) => ({
   status: 200,
   data: {
@@ -95,14 +97,14 @@ const cases = [
   ['computeGrade: 판매 주목적·일반론·AI 무관 → exclude, 모두 아니면 keep, 신호 없으면 null · 유료 광고는 제외 사유 아님', async () => {
     const g = (o) => vs.computeGrade(SIG(o));
     assert(g({}).grade === 'keep' && g({}).why.length === 0, 'keep');
-    assert(g({ promo_main: true }).grade === 'exclude' && g({ promo_main: true }).why[0] === 'promo_main', 'promo');
+    assert(g({ promo_main: true, promo_subject: true }).grade === 'exclude' && g({ promo_main: true, promo_subject: true }).why[0] === 'promo_main', 'promo');
     assert(g({ generic: true }).why[0] === 'generic' && g({ ai_related: false }).why[0] === 'not_ai', 'generic·not_ai');
-    assert(g({ promo_main: true, ai_related: false }).why.join() === 'promo_main,not_ai', '복수 사유');
+    assert(g({ promo_main: true, promo_share: 0.8, ai_related: false }).why.join() === 'promo_main,not_ai', '복수 사유');
     assert(vs.computeGrade(null).grade === null, '신호 없음');
     assert(g({ has_demo: false }).grade === 'keep' && g({ sponsored: true }).grade === 'keep', 'has_demo·sponsored(유료 광고) 는 등급에 안 쓴다');
   }],
   ['summarize: 공개 영상 → src video · 등급 · quality JSON · 분량 누계(앞 30분만 셈)', async () => {
-    const h = harness({ script: [ok200(SIG({ promo_main: true }))] });
+    const h = harness({ script: [ok200(SIG({ promo_main: true, promo_subject: true }))] });
     const r = await h.s.summarize(V({ durationSec: 2731 }));
     const q = JSON.parse(r.quality);
     assert(r.src === 'video' && r.grade === 'exclude' && r.summary === GOOD_MD, JSON.stringify(r).slice(0, 200));
@@ -112,6 +114,44 @@ const cases = [
     const qt = h.quota();
     assert(qt.date === '2026-10-12' && qt.seconds === 1800 && qt.calls === 1, JSON.stringify(qt));
     assert(h.s.stats.video === 1 && h.s.stats.exclude === 1, JSON.stringify(h.s.stats));
+  }],
+  ['(v4.12) computeGrade: promo_main 은 비중 ≥ 0.5 또는 본론이 자기 상품일 때만 제외 — 끝에 잠깐 알리면 keep(promo_minor)', async () => {
+    const g = (o) => vs.computeGrade(SIG(o));
+    assert(vs.PROMO_SHARE_MIN === 0.5, `기준 ${vs.PROMO_SHARE_MIN}`);
+    // 10-13·10-14 오판 3형태: 끝에 전자책·유료 강의 안내(비중 0.02~0.13) — keep
+    for (const share of [0.019, 0.03, 0.13, 0.49]) {
+      const r = g({ promo_main: true, promo_share: share });
+      assert(r.grade === 'keep' && r.why.length === 0 && r.note === `promo_minor ${share}`, `${share} → ${JSON.stringify(r)}`);
+    }
+    // 확정 판매: 본론이 자기 컨설팅 사례·모집(비중 0.05~0.32) — exclude
+    assert(g({ promo_main: true, promo_share: 0.051, promo_subject: true }).grade === 'exclude', '본론이 자기 상품');
+    assert(g({ promo_main: true, promo_share: 0.5 }).grade === 'exclude' && g({ promo_main: true, promo_share: 1 }).note === '', '비중 0.5 이상');
+    // 정의 넓히기 금지: promo_main false 면 본론·비중이 있어도 판매 제외 아님
+    assert(g({ promo_subject: true, promo_share: 0.9 }).grade === 'keep' && g({ promo_subject: true }).note === '', 'promo_main false');
+    // 두 값이 없는 옛 신호: promo_main 만으로는 제외 안 함 (좁아지기만)
+    const old = vs.computeGrade({ promo_main: true, generic: false, ai_related: true });
+    assert(old.grade === 'keep' && old.note === 'promo_minor 0', JSON.stringify(old));
+    assert(g({ promo_main: true, generic: true }).why.join() === 'generic', 'generic 은 그대로');
+  }],
+  ['(v4.12) parseResponse: promo_share·promo_subject 필수 · 비중은 0~1 로 자름', async () => {
+    assert(vs.parseResponse(ok200(SIG({ promo_share: undefined })).data, validateSummary).reason === 'bad_signals', 'share 누락');
+    assert(vs.parseResponse(ok200(SIG({ promo_share: '0.3' })).data, validateSummary).reason === 'bad_signals', 'share 문자열');
+    assert(vs.parseResponse(ok200(SIG({ promo_subject: undefined })).data, validateSummary).reason === 'bad_signals', 'subject 누락');
+    assert(vs.parseResponse(ok200(SIG({ promo_subject: 'no' })).data, validateSummary).reason === 'bad_signals', 'subject 문자열');
+    assert(vs.parseResponse(ok200(SIG({ promo_share: 1.7 })).data, validateSummary).signals.promo_share === 1, '1 넘으면 1');
+    assert(vs.parseResponse(ok200(SIG({ promo_share: -0.2 })).data, validateSummary).signals.promo_share === 0, '0 미만이면 0');
+    const r = vs.parseResponse(ok200(SIG({ promo_share: 0.12345, promo_subject: true })).data, validateSummary);
+    assert(r.signals.promo_share === 0.123 && r.signals.promo_subject === true, JSON.stringify(r.signals));
+    const req = vs.buildBody(V()).generationConfig.responseSchema.properties.signals;
+    assert(req.required.includes('promo_share') && req.required.includes('promo_subject') && req.properties.promo_share.type === 'NUMBER', '스키마');
+    assert(/promo_share:/.test(vs.PROMPT) && /promo_subject:/.test(vs.PROMPT) && /고객 사례/.test(vs.PROMPT) && /설명란·고정 댓글은 세지 말 것/.test(vs.PROMPT), '프롬프트');
+  }],
+  ['(v4.12) summarize: 끝에 잠깐 자기 상품 → keep · 로그 promo_minor · quality 에 두 신호', async () => {
+    const h = harness({ script: [ok200(SIG({ promo_main: true, promo_share: 0.03 }))] });
+    const r = await h.s.summarize(V());
+    const q = JSON.parse(r.quality);
+    assert(r.src === 'video' && r.grade === 'keep' && q.why.length === 0 && q.promo_main === true && q.promo_share === 0.03 && q.promo_subject === false, r.quality);
+    assert(h.logs.some(l => / → keep \(promo_minor 0\.03\)$/.test(l)) && h.s.stats.exclude === 0, h.logs.join('|'));
   }],
   ['summarize: 일부공개·비공개·길이 모름은 영상 요청 없이 설명란 요약 (src app · grade null)', async () => {
     const h = harness();

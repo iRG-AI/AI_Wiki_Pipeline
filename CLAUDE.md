@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**현재 버전: v4.11** (2026-10-14) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.12** (2026-10-14) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > v4.9: 꿀팁 분류 보정 — 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)는 태그 판정에서 호스트를 빼고(「지식관리」 오분류), 한글 표기(「클로드」·「노션」·「제미나이」 등)도 같은 태그로(`lib/kakao_parse.classify`). 기존 꿀팁은 `scripts/recategorize_tips.py`(규칙이 매긴 행만 다시 매김 · 출처 `https://` 접두 정리 · 노트 제자리 수정)로 한 번 반영.
 > v4.10: 꿀팁 「기타」 + 태그 없음(노션 이관 때 기본값 그대로 남은 행)은 사람이 고른 값으로 보지 않고 `recategorize_tips.py` 가 다시 매긴다(`blank_default`). 꿀팁 제목 3차 25건(URL 추정 제목 → 원문 제목, `retitle_tips.py`) 뒤 재분류 — 「기타」 66 → 42.
 > v4.11: 재요약(3.5 Flash-Lite)은 5xx 를 영상 1편에 `RESUMMARY_MAX_5XX`(기본 1)회 받으면 재시도 없이 그 실행의 재요약을 멈춘다(10-14 00시 503 8회 = 약 13분). 그 영상은 `quality.resummary_5xx` +1, 3회면 건너뜀. 신규 영상 경로는 그대로 키 4개 × 2회.
+> v4.12: promo_main 만으로 판매 제외하지 않는다 — 영상 요약 신호에 `promo_share`(판매 멘트 비중 0~1)·`promo_subject`(본론 자체가 자기 상품)를 더하고 `promo_main AND (promo_share ≥ 0.5 OR promo_subject)` 일 때만 제외(끝에 자기 상품을 잠깐 알린 영상의 오판 3건). 지금보다 좁기만 하고 장부 무변경.
 
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
@@ -73,7 +74,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 
 # 회귀 테스트 14종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
 /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
-/opt/homebrew/bin/node scripts/test_video_summary.js         # 25/25  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 · (v4.11) 5xx 상한 (가짜 요청)
+/opt/homebrew/bin/node scripts/test_video_summary.js         # 28/28  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 · (v4.11) 5xx 상한 · (v4.12) 판매 비중·본론 신호 (가짜 요청)
 /opt/homebrew/bin/node scripts/test_resummarize.js           # 11/11  (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 · (v4.11) 5xx 조기 중단·3회 건너뜀 (임시 장부, 가짜 요약기)
 /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
 /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
@@ -351,13 +352,13 @@ main().catch → outcome=fail 먼저 기록 → [실행 실패] 텔레그램 →
 ```
 videos.list(statistics,snippet,contentDetails,status — 1유닛 그대로) → 길이(초)·공개 상태
    │ public · 길이 있음 · 하루 분량 남음 ─▶ Gemini 2.5 Flash 에 YouTube URL 을 영상으로(LOW, 30분 넘으면 endOffset 1800s)
-   │                                        └ JSON {summary_md, signals{promo_main, generic, ai_related, has_demo, sponsored, reason}}
+   │                                        └ JSON {summary_md, signals{promo_main, promo_share, promo_subject, generic, ai_related, has_demo, sponsored, reason}}
    │                                        └ 등급 = 코드 규칙 → 장부 summary_src 'video' · grade keep|exclude · quality(JSON)
    └ 그 밖·실패 ─▶ 기존 설명란 요약(geminiSummarize) → summary_src 'app' · grade NULL(미판정)
 ```
 
 - 모듈은 `lib/video_summary.js`, 호출 자리는 `scheduler.js:processMasterIngest` 하나(레거시 재생목록 순회 경로는 설명란 요약 그대로).
-- **등급은 모델이 아니라 코드가 매긴다** — `computeGrade`: `promo_main`(제작자 **자신의** 강의·컨설팅·커뮤니티·상품 판매가 주목적) · `generic`(구체 정보 없는 일반론) · `!ai_related` 중 하나라도면 `exclude`. 유료 광고·협찬(`sponsored`)·시연(`has_demo`)은 기록만 하고 등급에 안 쓴다. 모델에게 A/B/C 를 매기게 했더니 판매 영상에도 A 를 줬다(10-12 시험) — 모델 등급으로 되돌리지 말 것. `promo_main` 정의를 넓히지 말 것 — "판매·홍보가 주목적"으로 두면 다른 회사 도구를 시연하는 협찬 영상까지 제외됐다(10-13 시험).
+- **등급은 모델이 아니라 코드가 매긴다** — `computeGrade`: `promo_main`(제작자 **자신의** 강의·컨설팅·커뮤니티·상품 판매가 주목적) · `generic`(구체 정보 없는 일반론) · `!ai_related` 중 하나라도면 `exclude`. 유료 광고·협찬(`sponsored`)·시연(`has_demo`)은 기록만 하고 등급에 안 쓴다. 모델에게 A/B/C 를 매기게 했더니 판매 영상에도 A 를 줬다(10-12 시험) — 모델 등급으로 되돌리지 말 것. `promo_main` 정의를 넓히지 말 것 — "판매·홍보가 주목적"으로 두면 다른 회사 도구를 시연하는 협찬 영상까지 제외됐다(10-13 시험). (v4.12) 판매 제외는 `promo_main AND (promo_share ≥ PROMO_SHARE_MIN(0.5) OR promo_subject)` — 두 모델 모두 영상 끝에 자기 상품을 잠깐 알리면 promo_main 을 true 로 낸다(오판 3건). promo_main 이 false 면 비중·본론과 상관없이 제외하지 않는다(이 AND 를 OR 로 바꾸지 말 것 — 정의 넓히기). 비중은 같은 영상도 회차마다 0.05 ↔ 0.32 로 흔들려 안전망으로만 쓰고, 광고성 본문(자기 상품의 고객 사례·소개)은 `promo_subject` 가 잡는다. 판매 구간 시각(spans)은 영상 길이를 넘는 값이 나와 쓰지 않는다(10-14 시험). promo_main 이 true 인데 제외 안 되면 로그 `(promo_minor 0.03)`.
 - **영상 토큰 0 이면 실패다.** 삭제된 영상은 200 + 영상 토큰 0 + 지어낸 답을 돌려준다(10-13 시험). `parseResponse` 의 이 검사를 빼지 말 것.
 - 공개(`public`)가 아닌 영상은 영상 입력을 시도하지 않는다(일부공개 = 403 PERMISSION_DENIED). 영상 입력 403 은 영상 단위라 그 영상만 대체하고, **연속 2회면 그 실행에서 영상 입력을 끈다**(403 난사 방지). 대체 요약(같은 키)도 403 이면 `geminiSummarize` 의 기존 즉시 종료 경로를 탄다.
 - 429·5xx·네트워크 오류는 키를 돌려 재시도(키 4개 × 2회 상한) 후 대체. 400 등 그 밖의 오류는 재시도 없이 대체.
@@ -602,6 +603,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-14 (v4.12 — promo_main 오판 줄이기: 판매 비중·본론 신호)** — 배경: 실제 영상 요약 46편 중 promo_main true 3건이 모두 오판(`-YySYOBbhD8` 무료 키트 · `RpY-KKZ7QTg` 끝에 자기 전자책 · `wgrpasYyiIQ` 끝에 자기 유료 강의)이라 되돌렸다. v4.6-b 의 "잠깐 알리는 정도는 false" 문구를 두 모델 모두 따르지 않았다. 시험(10-14, 맥 `~/v412probe`, 장부 무관): 비중(`promo_share`)만으로는 확정 판매 영상(`2cX3_vi2y3I` 300만 원 컨설팅 고객 사례 + 모집)이 2.5 Flash 0.051 로 빠지고, 비중은 회차마다 0.05 ↔ 0.32 로 흔들렸다. 본론 신호(`promo_subject`)는 두 모델·두 회차 일관(2cX3 만 true). 판매 구간 시각은 영상 길이를 넘어 못 씀. 수정: `lib/video_summary.js` PROMPT·스키마에 `promo_share`·`promo_subject`(필수, 형식 틀리면 `bad_signals`, 비중 0~1 자름), `computeGrade` 판매 제외 = `promo_main AND (promo_share ≥ 0.5 OR promo_subject)`(대표님 결정 10-14 — 지금보다 좁기만 함), 로그 `promo_minor`. 장부·스키마·재요약 흐름 무변경. 테스트: `test_video_summary.js` 28/28(+3). 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-14-v412-promo-share.md`.
 - **2026-10-14 (검색 화면 손질, 버전 유지)** — 대표님 요청: 필터 사이드바 264 → 320px(1100px 이하 232px 규칙 삭제 — 종류·날짜·조회수 칩이 한 줄, 실측 칩 줄 최대 256px · 안쪽 271px), 타이틀을 필터 카드 안쪽 글자선에 맞춤(`.brand` 왼쪽 17px, 860px 이하 0), 타이틀·탭 제목 앞 🧠(v4.7 전 화면처럼), 검색 칸·검색·AI 답변을 머리줄에서 결과 머리 `.rtools`(건수 뒤 · 정렬 앞, 구분선)로 옮김 — 머리줄은 타이틀 + (휴대폰) 필터 버튼만. 좁아지면 검색 칸만 줄어든다(480 → 최소 220). `wiki.html` 만, 요소 id·JS·API 무변경. 확인: 내장 브라우저 1600·1280·375px · `/` 포커스 · 의미 검색 · `test_wiki_search.js` 34/34. 두 서버가 매 요청 파일을 읽어 재기동 불필요.
 - **2026-10-14 (v4.11 — 재요약 5xx 조기 중단)** — 배경: 10-14 00:00 실행에서 재요약 1편(`RtGvzYeZ9gs`)이 3.5 Flash-Lite 503 을 8회(키 4개 × 2) 받았다 — 응답이 1~2분 뒤에 와서 00:03:38 → 00:16:20, 실행 16분 15초의 대부분이었다(2.5 Flash 신규 영상의 503 은 약 20초 안에 오고 1~2회 뒤 성공). 재요약은 신규보다 뒷순위이고 실패하면 기존 요약을 그대로 두므로 오래 붙잡을 이유가 없다. 수정: `lib/video_summary.js` `makeVideoSummarizer` 에 선택 인자 `maxServerErrors`(5xx 만 셈, 0 = 상한 없음 — 신규 경로는 넘기지 않아 그대로), `lib/resummarize.js` 가 `RESUMMARY_MAX_5XX`(기본 1)를 넘기고 5xx 로 멈추면 그 영상 `quality.resummary_5xx` +1(`lib/library.js:markResummary` `server`, 3회면 `resummary_skip = '5xx:…'` — 후보 맨 앞 영상이 매번 막지 않게), `scheduler.js:runResummary` 전달. 429·네트워크 오류 처리·장부 스키마·`updated_at` 규칙 무변경. 테스트: `test_video_summary.js` 25/25(+2), `test_resummarize.js` 11/11(+2). 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-14-v411-resummary-5xx-stop.md`.
 - **2026-10-14 (v4.10 — 꿀팁 빈 기본값 재분류 · 제목 3차)** — 배경: v4.9 뒤 「기타」 66건 중 사람이 고른 값 43건, 그중 태그가 빈 19건은 「클로드 코드 토큰 3배…」처럼 내용이 뻔한데 노션 기본값(기타·태그 없음)이 남아 있었다. 또 09-12~10-10 적재분 26건이 URL 추정 제목(`agent reach`·`mobilebasic`·`view` 등) — v4.8 자동 조회는 신규 행만 대상이라 남았다. 수정: `scripts/recategorize_tips.py` `decide()` 에 빈 기본값(`BLANK_DEFAULT = ('기타', [])`) — v4.8 규칙 값이 아니어도 「기타」·태그 없음이면 다시 매긴다, `RESULT_JSON.blank_default`·로그 표시. 데이터: `docs/tasks/2026-10-14-retitle-tips-3.csv` 25건(`lib/title_fetch.py` 조회 25 성공 · 비공개 노션 1건 제외, 사이트 이름 꼬리·`.pdf` 정리) → `retitle_tips.py` → `recategorize_tips.py`. 장부·스키마 무변경(값만). 사전 검증(맥 네이티브, 장부 사본 + Vault 사본): 제목 25행 · 노트 25 · 링크 59(12파일) → 재분류 28행(빈 기본값 16 · 제목 따라 12) · 기타→개발툴 9 · →프롬프트 8 · →모델/LLM 7 · 모델/LLM→개발툴 1 · 사람이 고른 값 유지 75 · 두 번째 실행 0행 · integrity ok · 「기타」 66 → 42. 테스트: `test_recategorize_tips.py` 52/52(+7). 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-14-v410-tips-blank-default.md`.
