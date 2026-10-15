@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**현재 버전: v4.13** (2026-10-15) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.14** (2026-10-15) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -19,6 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > v4.11: 재요약(3.5 Flash-Lite)은 5xx 를 영상 1편에 `RESUMMARY_MAX_5XX`(기본 1)회 받으면 재시도 없이 그 실행의 재요약을 멈춘다(10-14 00시 503 8회 = 약 13분). 그 영상은 `quality.resummary_5xx` +1, 3회면 건너뜀. 신규 영상 경로는 그대로 키 4개 × 2회.
 > v4.12: promo_main 만으로 판매 제외하지 않는다 — 영상 요약 신호에 `promo_share`(판매 멘트 비중 0~1)·`promo_subject`(본론 자체가 자기 상품)를 더하고 `promo_main AND (promo_share ≥ 0.5 OR promo_subject)` 일 때만 제외(끝에 자기 상품을 잠깐 알린 영상의 오판 3건). 지금보다 좁기만 하고 장부 무변경.
 > v4.13: 영상 하루 8시간을 모델별·키(프로젝트)별로 따로 센다(`.video_quota.json` `models`·`keys`) — 둘 다 넘지 않을 때만 요청, 찬 키는 다음 키로. PT 10-14 실측 키 4개 · 모델 2개 합계 약 10.4시간에 429 0건("전체 합계 8시간"이 아님). 재요약 신규 몫 예약 기본 3시간 → 0. 장부 무변경.
+> v4.14: 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite(`lib/classifier.js`, `.env CLASSIFY_MODEL` 로 되돌림) — 신규 영상 1편의 2.5 Flash 요청 2회 → 1회. 비교 20편에서 영상당 토픽 4.4 → 2.5개(추상 토픽 과추천이 줄어듦, 대표님 결정 A안). 분류 응답 한글 청크 경계 깨짐(`chunks += c`) 수정. 장부 무변경.
 
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
@@ -73,9 +74,10 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
-# 회귀 테스트 14종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+# 회귀 테스트 15종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
 /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
 /opt/homebrew/bin/node scripts/test_video_summary.js         # 32/32  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 · (v4.11) 5xx 상한 · (v4.12) 판매 비중·본론 신호 · (v4.13) 모델·키별 분량 (가짜 요청)
+/opt/homebrew/bin/node scripts/test_classifier.js            # 8/8    (v4.14) 토픽 분류 — 모델 기본값·CLASSIFY_MODEL·모델별 thinking·요청 주소·한글 청크 경계·allowedSet·오류 문구 (가짜 https)
 /opt/homebrew/bin/node scripts/test_resummarize.js           # 11/11  (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 · (v4.11) 5xx 조기 중단·3회 건너뜀 (임시 장부, 가짜 요약기)
 /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
 /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
@@ -165,7 +167,7 @@ console.log(hit.length===want.length?'✅ 일치':'❌ 불일치 — 재발급 �
 ```
 YouTube "AI 영상목록" (마스터 모드)
     → scheduler.js:processMasterIngest()
-    → lib/classifier.js:classifyTopics()  [Gemini 2.5 Flash, 토픽 1~5개]
+    → lib/classifier.js:classifyTopics()  [(v4.14) Gemini 3.5 Flash-Lite, 토픽 0~5개]
     → saveToLibrary()                     [로컬 장부 data/library.db 저장 — lib/library.js]
     → runResummary()                      [(v4.6-b) 기존분 재요약 — lib/resummarize.js, 실행당 최대 5편]
     → lib/youtube_oauth.js:addToPlaylist() [토픽별 YouTube 재생목록 추가]
@@ -186,7 +188,7 @@ YouTube "AI 영상목록" (마스터 모드)
 | `scheduler.js` | 메인 오케스트레이터. YouTube API 조회, Gemini 요약, **로컬 장부 저장(v4.0, `lib/library.js`)**, Telegram 알림. launchd가 6시간 간격 실행. 노션 호출 없음. |
 | `server.js` | HTTP 서버(포트 3000, `127.0.0.1` 전용). `index.html` 서빙 + SSE `/api/master-ingest`(scheduler.js 실행·실시간 로그) + Wiki 검색 API. v4.0 에서 노션 프록시·`/test-notion`·`/api/sync-obsidian` 제거. |
 | `index.html` | 단일 페이지 웹 UI. 재생목록 관리, 마스터 인제스트 트리거, 처리 결과 테이블. |
-| `lib/classifier.js` | Gemini 기반 토픽 분류기. `playlists.json`의 토픽 목록만 허용(allowedSet 필터). 신뢰도 0.6 미만이면 YouTube 추가 건너뜀. |
+| `lib/classifier.js` | Gemini 기반 토픽 분류기. `playlists.json`의 토픽 목록만 허용(allowedSet 필터). 신뢰도 0.6 미만이면 YouTube 추가 건너뜀. (v4.14) 모델 기본 `gemini-3.5-flash-lite` — `.env CLASSIFY_MODEL`(`resolveModel`)로 바꾸고 `opts.model` 로 호출마다도. thinking 은 `thinkingConfigFor`(2.x 예산 0 · 3.x minimal). 결과에 `model`. 테스트 `scripts/test_classifier.js`. |
 | `lib/youtube_oauth.js` | YouTube OAuth2 쓰기 전용. access_token 메모리 캐시(50분), 일일 quota 추적(`.quota_state.json`), 호출 간 200ms rate limit. |
 | `sync_obsidian.py` | (v4.0) 장부 `data/library.db`(읽기 전용) → Obsidian 증분 동기화. 노션 호출 없음. 내부적으로 `wiki_ingest.py`와 연동. 고아 `.md` 격리 포함(아래 참조). `--dry-run` 으로 할 일만 센다. |
 | `wiki_ingest.py` | Karpathy LLM Wiki 파이프라인. Obsidian 노트를 순회하며 Gemini로 엔티티·개념 추출 → (v4.5) 장부 `wiki_extract` 에 소스별 누적 → `_wiki/entities`·`concepts`·`index.md` 를 그 표 전체 + 현재 Vault 로 다시 그림(내용 같으면 안 씀). 아래 「Wiki 합성 결과 누적」. |
@@ -419,7 +421,7 @@ scheduler.js main: 마스터 인제스트(신규 영상) 뒤 · 장부 연결이
 
 - **YouTube Data API v3** (읽기전용): `YOUTUBE_API_KEY`
 - **YouTube OAuth v3** (재생목록 쓰기): `YOUTUBE_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`
-- **Gemini 2.5 Flash**: `GEMINI_API_KEY`·`GEMINI_API_KEYS` (요약 + 분류 + Wiki 합성 + 검색 임베딩)
+- **Gemini 2.5 Flash**: `GEMINI_API_KEY`·`GEMINI_API_KEYS` (요약 + Wiki 합성 + 검색 임베딩) · **3.5 Flash-Lite**: 같은 키 (재요약 v4.6-b · 토픽 분류 v4.14)
 - **Google Apps Script 웹앱** (v4.0, 시트 미러 받는 쪽): `SHEET_MIRROR_URL`, `SHEET_MIRROR_TOKEN`
 - **Telegram Bot**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
 - **구글 드라이브 데스크톱 앱** (v4.1, 장부 백업 사본): `LIBRARY_BACKUP_DIR` — API 호출 없음, 앱이 동기화하는 로컬 폴더에 파일만 쓴다
@@ -543,6 +545,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 - `401`/`403`은 **명시적으로 즉시 중단**한다(보안 원칙 1). 재시도 조건을 넓힐 때 이 가드를 지우지 말 것.
 - 재시도 소진 시 `cls`가 `undefined`인 채 `cls.topics`로 진입하던 잠복 TypeError 경로가 있었다. `clsAttempt < maxClsAttempts` 가드와 루프 직후 `if (!cls) throw` **가드 2개가 짝**이다. 한쪽만 지우면 되살아난다.
 - `classifyTopics`를 `maxRetries: 0`으로 호출하는 것은 **의도된 설계**다. 재시도는 키 교체를 하는 바깥 루프가 담당한다.
+- (v4.14) 분류 모델은 `gemini-3.5-flash-lite`(2.5 Flash 하루 요청 한도를 영상 요약에 남긴다). 같은 프롬프트로 2.5 Flash 보다 토픽을 적게(비교 20편 4.4 → 2.5개) 붙인다 — 프롬프트의 「추상 토픽 남발 금지」를 지킨 결과라 의도된 변화다(대표님 결정 10-15). 예전 분류로 되돌릴 때는 코드가 아니라 `.env CLASSIFY_MODEL=gemini-2.5-flash`. 응답은 `Buffer.concat` 으로 모은다 — `chunks += c` 로 되돌리지 말 것(한글 토픽이 청크 경계에서 깨져 allowedSet 에서 떨어진다).
 
 **Gemini API 최적화 (중요)**: Gemini 2.5 Flash 모델 사용 시 내부 추론 과정에서 과다한 "Thinking 토큰" 과금을 방지하기 위해 반드시 API 호출 옵션에 `generationConfig: { thinkingConfig: { thinkingBudget: 0 } }`를 적용해야 합니다 (비용 85% 절감 효과). (v4.6-b) 3.x 모델(`gemini-3.5-flash-lite` 등)은 `thinkingBudget` 을 400 INVALID_ARGUMENT 로 거절한다 — `thinkingConfig: { thinkingLevel: 'minimal' }`(`lib/video_summary.js:thinkingConfigFor`).
 
@@ -604,6 +607,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-15 (v4.14 — 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite)** — 배경: 신규 영상 1편에 2.5 Flash 를 요약 1 + 분류 1회 쓴다. 2.5 Flash 무료 RPD 프로젝트당 20, AI Studio 28일 최대 36/20(키 로테이션으로 버팀). 비교 시험(10-15, 맥 `~/v414chk`, 장부 읽기 전용, 최근 신규 20편): 2.5 Flash 재실행은 장부 토픽과 16/20 같음(자기 일관), 3.5 Flash-Lite 는 0/20 · Jaccard 0.44 · 영상당 4.4 → 2.5개 — 빠진 것은 주로 추상 토픽(생산성 향상 13·자동화 7·에이전트 6)·곁다리 도구, 더 맞게 붙은 것 바이브코딩 4·트렌드 1, 아쉬운 누락 수익화 1·전환 1. 오류·신뢰도 0.6 미만·목록 밖 토픽 0. 대표님 결정 A안(그대로 전환). 수정: `lib/classifier.js` `resolveModel`(기본 `gemini-3.5-flash-lite`, `.env CLASSIFY_MODEL`)·`thinkingConfigFor`·`opts.model`·결과 `model`·`Buffer.concat`(잠복 결함 — 옛 코드는 청크 경계 한글에서 토픽 `[]`), `scheduler.js` 분류 로그에 모델. 프롬프트·재시도·장부·스키마 무변경. 테스트: 신규 `test_classifier.js` 8/8(옛 코드 2/8). 회귀 테스트 15종. 지시서 `docs/tasks/2026-10-15-v414-classify-flash-lite.md`.
 - **2026-10-15 (v4.13 — 영상 하루 분량을 모델별·키별로)** — 배경: 10-15 06시 재요약 0편(`daily_video_cap`) — PT 10-14 신규 14편이 10,590초를 써서 합계 17,524초, 재요약 한도(28,800 − 예약 10,800)까지 476초만 남았다. 재요약이 하루 20편 상한의 절반(9편)에서 멈춰 남은 2,981편에 약 10개월. 근거: 같은 PT 하루에 파이프라인 17,524초 + v4.12 시험(`~/v412probe`, 두 모델 × 13편) 19,810초 = 약 10.4시간을 키 4개 · 모델 2개로 썼는데 영상 요청 429 0건(8시간을 넘긴 뒤 00시 실행도 200) → 코드의 "전체 합계 8시간" 전제는 실제보다 보수적. 모델별로는 2.5 Flash 약 20,500초 · 3.5 Flash-Lite 약 15,500초로 둘 다 8시간 미만이라 단위(모델·프로젝트)는 미확정 → 둘 다 센다(대표님 결정 10-15). 수정: `lib/video_summary.js` `.video_quota.json` 에 `models`·`keys`(sha256 앞 8자리)·`legacy`, 요청 전 모델·키 누계 검사, 찬 키는 다음 키로(로그 `⏭ 이 키의 오늘 영상 분량이 찼다`), 재시도로 요청을 받은 키는 모두 셈. `lib/resummarize.js` `RESUMMARY_RESERVE_SECONDS` 기본 10800 → 0. 장부·스키마·`.env` 무변경. 테스트: `test_video_summary.js` 32/32(+4), `test_resummarize.js` 11/11(기대값 1곳). 회귀 테스트 14종. 함께: v4.12 지시서 시험·사전 검증 시각 표기 정정. 지시서 `docs/tasks/2026-10-15-v413-video-quota-per-model-key.md`.
 - **2026-10-14 (v4.12 — promo_main 오판 줄이기: 판매 비중·본론 신호)** — 배경: 실제 영상 요약 46편 중 promo_main true 3건이 모두 오판(`-YySYOBbhD8` 무료 키트 · `RpY-KKZ7QTg` 끝에 자기 전자책 · `wgrpasYyiIQ` 끝에 자기 유료 강의)이라 되돌렸다. v4.6-b 의 "잠깐 알리는 정도는 false" 문구를 두 모델 모두 따르지 않았다. 시험(10-14, 맥 `~/v412probe`, 장부 무관): 비중(`promo_share`)만으로는 확정 판매 영상(`2cX3_vi2y3I` 300만 원 컨설팅 고객 사례 + 모집)이 2.5 Flash 0.051 로 빠지고, 비중은 회차마다 0.05 ↔ 0.32 로 흔들렸다. 본론 신호(`promo_subject`)는 두 모델·두 회차 일관(2cX3 만 true). 판매 구간 시각은 영상 길이를 넘어 못 씀. 수정: `lib/video_summary.js` PROMPT·스키마에 `promo_share`·`promo_subject`(필수, 형식 틀리면 `bad_signals`, 비중 0~1 자름), `computeGrade` 판매 제외 = `promo_main AND (promo_share ≥ 0.5 OR promo_subject)`(대표님 결정 10-14 — 지금보다 좁기만 함), 로그 `promo_minor`. 장부·스키마·재요약 흐름 무변경. 테스트: `test_video_summary.js` 28/28(+3). 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-14-v412-promo-share.md`.
 - **2026-10-14 (검색 화면 손질, 버전 유지)** — 대표님 요청: 필터 사이드바 264 → 320px(1100px 이하 232px 규칙 삭제 — 종류·날짜·조회수 칩이 한 줄, 실측 칩 줄 최대 256px · 안쪽 271px), 타이틀을 필터 카드 안쪽 글자선에 맞춤(`.brand` 왼쪽 17px, 860px 이하 0), 타이틀·탭 제목 앞 🧠(v4.7 전 화면처럼), 검색 칸·검색·AI 답변을 머리줄에서 결과 머리 `.rtools`(건수 뒤 · 정렬 앞, 구분선)로 옮김 — 머리줄은 타이틀 + (휴대폰) 필터 버튼만. 좁아지면 검색 칸만 줄어든다(480 → 최소 220). `wiki.html` 만, 요소 id·JS·API 무변경. 확인: 내장 브라우저 1600·1280·375px · `/` 포커스 · 의미 검색 · `test_wiki_search.js` 34/34. 두 서버가 매 요청 파일을 읽어 재기동 불필요.

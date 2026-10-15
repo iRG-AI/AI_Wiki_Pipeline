@@ -995,7 +995,7 @@ async function processMasterIngest(libCache) {
         const topics = cls.topics;  // 분류된 토픽들
         const allTopics = [...topics];  // 분류 토픽만 (AI 영상목록은 재생목록이지 주제 태그 아님)
 
-        const confStr = `conf=${cls.confidence.toFixed(2)}`;
+        const confStr = `conf=${cls.confidence.toFixed(2)}${cls.model ? ` · ${cls.model}` : ''}`;   // (v4.14) 분류 모델
         log(`    🏷  분류: [${topics.join(', ')}] (${confStr})`);
         if (cls.droppedTopics?.length) {
           log(`    ⚠️  droppedTopics (allowedSet 불일치): [${cls.droppedTopics.join(', ')}]`);

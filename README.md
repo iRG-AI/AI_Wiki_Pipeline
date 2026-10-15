@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.13** (2026-10-15)
+**현재 버전: v4.14** (2026-10-15)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -21,6 +21,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.11: 기존분 재요약이 Gemini 서버 오류(503)를 받으면 오래 재시도하지 않고 그 실행의 재요약을 바로 멈춥니다(1편에 약 13분 → 1~2분). 같은 영상이 3번 막히면 그 영상은 건너뜁니다.
 > v4.12: 영상 끝에 자기 강의·전자책을 잠깐 알리기만 한 영상이 「판매가 주목적」으로 제외되던 오판을 줄였습니다. 판매 멘트가 영상 절반 이상이거나 영상 본론 자체가 자기 상품(소개·고객 사례)일 때만 판매로 제외합니다.
 > v4.13: 영상 입력 하루 8시간을 모델별·키별로 따로 셉니다. 신규 영상과 재요약이 서로의 분량을 먹지 않아, 재요약이 하루 20편까지 갑니다(전에는 신규가 많은 날 약 9편).
+> v4.14: 영상 토픽 분류를 Gemini 3.5 Flash-Lite 로 옮겼습니다. 2.5 Flash 하루 요청 한도를 영상 요약에 남기고, 분류 프롬프트의 「추상 토픽 남발 금지」를 더 잘 지켜 영상당 토픽이 약 4.4개 → 2.5개로 줄어듭니다(재생목록 추가도 그만큼 줄어 YouTube 할당량에 이득). 되돌리기는 `.env` `CLASSIFY_MODEL=gemini-2.5-flash` 한 줄.
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
@@ -79,7 +80,7 @@ flowchart TD
         ENTRY["processMasterIngest()"]
         FETCH["영상 메타 조회 (Data API v3)\n+ 장부 캐시 · 중복 체크"]
         GEMINI["geminiSummarize() — scheduler.js\nGemini 2.5 Flash · thinkingBudget 0\n4섹션 요약"]
-        CLS["lib/classifier.js\nGemini · 토픽 1~5개 분류"]
+        CLS["lib/classifier.js\nGemini 3.5 Flash-Lite · 토픽 0~5개 분류"]
         LSAVE["saveToLibrary()\nlib/library.js (node:sqlite)"]
         YSAVE["lib/youtube_oauth.js\nplaylistItems.insert (50유닛)\nYOUTUBE_PLAYLIST_SYNC=true 일 때만"]
         ENTRY --> FETCH --> GEMINI --> CLS --> LSAVE --> YSAVE
@@ -211,7 +212,7 @@ AI_Wiki_Pipeline/
 │   ├── resummarize.js                 # (v4.6-b) 기존분 재요약 — 후보 선정·상한·건너뜀/실패/중단 처리 (scheduler.js 가 매 실행 호출)
 │   ├── env_util.py                    # (v4.0) .env 읽기 (의존성 없음)
 │   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
-│   ├── classifier.js                  # Gemini 기반 토픽 분류기
+│   ├── classifier.js                  # Gemini 기반 토픽 분류기 (v4.14 3.5 Flash-Lite · .env CLASSIFY_MODEL)
 │   ├── wiki_search.js                 # Wiki 검색 코어 (임베딩 코사인 + 키워드 폴백)
 │   ├── kakao_parse.py                 # URL 추출·정규화·중복 키·제목/카테고리 추정 (순수 함수)
 │   └── title_fetch.py                 # (v4.8) 링크 원문 제목 조회 — 노션 공개 API · 유튜브 oEmbed · og:title
@@ -222,7 +223,7 @@ AI_Wiki_Pipeline/
 │   ├── migrate_library.py             # (v4.5·v4.6) 장부 스키마 이전 1·2 → 3 (dry-run 기본, 백업 먼저)
 │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
 │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
-│   └── test_*.{js,py}                 # 회귀 테스트 14종 (네트워크 0회)
+│   └── test_*.{js,py}                 # 회귀 테스트 15종 (네트워크 0회)
 ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
 ├── docs/tasks/                        # Cowork → Claude Code 작업지시서 (날짜-슬러그.md) + patches/
 ├── docs/cowork-project-instructions.md # (옛) Cowork 프로젝트 인수인계 사본 (2026-08-17) — 현재 원본은 Cowork 프로젝트 설정
@@ -287,6 +288,9 @@ RESUMMARY_PER_RUN=5                                 # 정시 실행 1회당 편�
 RESUMMARY_DAILY_MAX=20                              # 하루(태평양시) 편수 — 장부 quality.resummary_day 로 센다
 RESUMMARY_RESERVE_SECONDS=0                         # (v4.13 기본 0) 재요약이 모델·키별 하루 분량에서 남겨 둘 초 — 분량을 모델·키별로 세므로 보통 0
 RESUMMARY_MAX_5XX=1                                 # (v4.11) 영상 1편에 5xx 이 횟수면 재시도 없이 그 실행 재요약 중단 (0 = 신규와 같은 8회)
+
+# (v4.14) 토픽 분류 모델 — 없으면 gemini-3.5-flash-lite. 예전 분류로 되돌릴 때만 gemini-2.5-flash
+# CLASSIFY_MODEL=gemini-2.5-flash
 
 # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
 WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
@@ -467,6 +471,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.14** | 2026-10-15 | **토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite**: 신규 영상 1편에 2.5 Flash 를 요약 1 + 분류 1회 쓰던 것을 요약 1회로 — 2.5 Flash 무료 하루 요청 한도(프로젝트당 20, 28일 최대 36/20)를 영상 요약에 남긴다. 3.5 Flash-Lite 는 하루 500. 비교 시험(최근 신규 20편): 오류·신뢰도 0.6 미만 0, 영상당 토픽 4.4 → 2.5개 — 주로 추상 토픽(생산성 향상 13·자동화 7·에이전트 6)이 빠지고 바이브코딩 4·트렌드 1이 더 맞게 붙음(대표님 결정 A안). `.env CLASSIFY_MODEL` 로 되돌림. 분류 응답 한글이 청크 경계에서 깨질 수 있던 잠복 결함(`chunks += c`) 수정. 장부·스키마 무변경. 회귀 테스트 15종 |
 | **v4.13** | 2026-10-15 | **영상 하루 분량을 모델별·키별로**: `.video_quota.json` 에 모델별(`models`)·키별(`keys`, sha256 앞 8자리) 누계를 두고 둘 다 8시간 안일 때만 요청, 찬 키는 다음 키로. PT 10-14 실측 키 4개 · 모델 2개 합계 약 10.4시간에 영상 429 0건 — 예전 "전체 합계 8시간" 전제가 보수적이었다. 재요약 신규 몫 예약(`RESUMMARY_RESERVE_SECONDS`) 기본 3시간 → 0 — 신규가 많은 날 재요약이 9편에서 멈추던 것(남은 2,981편에 약 10개월)을 하루 20편 상한까지. 장부·스키마 무변경. 회귀 테스트 14종 |
 | **v4.12** | 2026-10-14 | **promo_main 오판 줄이기 — 판매 비중·본론 신호**: 영상 요약 신호에 `promo_share`(판매·모집 멘트가 차지하는 비중 0~1)·`promo_subject`(본론 자체가 제작자 자신의 유료 상품 — 소개·후기·고객 사례)를 더하고, 판매 제외를 `promo_main AND (promo_share ≥ 0.5 OR promo_subject)` 로 좁혔다(오판 3건 = 끝에 자기 상품 잠깐 안내 · 두 모델 모두 promo_main 을 true 로 냄). promo_main 이 true 인데 제외되지 않으면 로그 `(promo_minor …)`. 지금보다 좁기만 하고 장부·스키마 무변경. 회귀 테스트 14종 |
 | **v4.11** | 2026-10-14 | **재요약 5xx 조기 중단**: 재요약(3.5 Flash-Lite)이 503 을 받으면 신규와 같은 8회(키 4개 × 2) 재시도 — 503 이 1~2분 뒤에 와서 1편에 약 13분(10-14 00시). 이제 영상 1편에 5xx `RESUMMARY_MAX_5XX`(기본 1)회면 재시도 없이 그 실행의 재요약을 멈추고, 그 영상은 `quality.resummary_5xx` +1(3회면 건너뜀). 신규 영상 경로·429·네트워크 처리는 그대로. 회귀 테스트 14종 |
@@ -502,6 +507,33 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.14] — 2026-10-15 (🏷️ 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite)
+
+**배경.** 신규 영상 1편에 Gemini 2.5 Flash 를 두 번(영상 요약 1 + 토픽 분류 1) 쓴다. 2.5 Flash 무료 하루 요청 한도는 프로젝트(키)당 20인데, AI Studio 28일 최대가 한 프로젝트 36/20 — 키 4개를 돌려 버티는 상태였다. 신규가 몰린 날(10-10, 29편)이면 2.5 Flash 요청만 약 60회다. 분류는 요약 글을 읽고 토픽 목록에서 고르는 가벼운 일이라 한도가 넉넉한 3.5 Flash-Lite(하루 500, 재요약이 이미 쓰는 모델)로 옮긴다.
+
+**비교 시험(10-15, 장부 읽기 전용).** 최근 신규 영상 20편(실제 영상 요약을 입력으로 쓴 것)을 같은 프롬프트로 두 모델에 분류했다.
+
+| 항목 | 2.5 Flash (다시 돌림) | 3.5 Flash-Lite |
+|---|---|---|
+| 장부 토픽과 완전히 같음 | 16/20 | 0/20 |
+| 겹침(Jaccard 평균) | 0.95 | 0.44 |
+| 영상당 토픽 | 4.5 (장부 4.4) | 2.5 |
+| 오류 · 신뢰도 0.6 미만 · 목록 밖 토픽 | 0 · 0 · 0 | 0 · 0 · 0 |
+| 응답 시간(평균) | 1.6초 | 1.9초 |
+
+3.5 Flash-Lite 에서 빠진 토픽은 대부분 프롬프트가 「남발 금지」로 적은 추상 토픽(생산성 향상 13 · 자동화 7 · 에이전트 6 · 트렌드 4 · 프롬프트 4)과 곁다리 도구 언급(「Gemini 4 아르곤 출시」 영상의 Codex · 보안)이다. 더 맞게 붙은 것: 바이브코딩 4(「코딩 못해도 AI 게임 만드는 법」 등) · 트렌드 1(「AI 주요 소식」). 아쉬운 누락: 수익화 1 · 전환 1. 대표님 결정(10-15): 그대로 전환(A안).
+
+| 항목 | 내용 |
+|---|---|
+| 모델 | `lib/classifier.js` 기본 `gemini-3.5-flash-lite` — `.env CLASSIFY_MODEL` 로 바꾼다(`gemini-2.5-flash` = 예전 분류). `opts.model` 로 호출마다 바꿀 수도 있다(시험용) |
+| thinking | 2.x 는 `thinkingBudget: 0`, 3.x 는 `thinkingLevel: 'minimal'`(3.x 는 `thinkingBudget` 을 400 으로 거절) — `video_summary.thinkingConfigFor` 와 같은 규칙 |
+| 결과 | `model` 이 붙는다. `scheduler.log` 분류 줄이 `🏷  분류: [...] (conf=0.90 · gemini-3.5-flash-lite)` |
+| 잠복 결함 | 응답을 `chunks += c` 로 이어 붙여 한글이 청크 경계에서 깨지면 토픽이 allowedSet 에서 떨어질 수 있었다 → `Buffer.concat`(테스트로 재현: 옛 코드 토픽 `[]`) |
+| 무변경 | 프롬프트 · allowedSet 필터 · 5개 상한 · 신뢰도 0.6 재생목록 기준 · scheduler 분류 재시도(429·5xx 키 로테이션, 401/403 즉시 중단) · 장부·스키마 · 과거 영상 토픽 |
+| 영향 | 2.5 Flash 요청이 신규 1편당 1회 줄고, 3.5 Flash-Lite 요청이 1회 는다(하루 재요약 40 + 분류 약 15~30, 한도 500). 토픽 재생목록 추가(50유닛)가 약 45% 줄어든다. 「생산성 향상」·「자동화」·「에이전트」 재생목록·허브에 새로 들어오는 영상이 줄고, 옛 영상(넓은 태그)과 새 영상(좁은 태그)이 섞인다 |
+| 테스트 | 신규 `scripts/test_classifier.js` 8/8(옛 코드 2/8). 회귀 테스트 15종 |
+| 지시서 | `docs/tasks/2026-10-15-v414-classify-flash-lite.md` |
 
 #### [v4.13] — 2026-10-15 (⏱️ 영상 하루 분량을 모델별·키별로)
 
