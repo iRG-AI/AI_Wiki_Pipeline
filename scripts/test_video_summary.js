@@ -14,6 +14,8 @@
 //   8) (v4.11) maxServerErrors — 5xx 만 세어 그 횟수면 재시도 그만(재요약용). 주지 않으면 예전대로 키 4개 × 2회
 //   9) (v4.12) promo_main 은 판매 비중 ≥ 0.5 또는 본론이 자기 상품(promo_subject)일 때만 제외 — 끝에 잠깐 알리는 자기 홍보는 keep(promo_minor).
 //      promo_main false 면 비중·본론과 상관없이 판매 제외 아님(정의 넓히기 금지). 두 신호는 필수 — 없거나 형식이 틀리면 bad_signals
+//  10) (v4.13) 하루 8시간은 모델별·키별로 따로 — 다른 모델은 막지 않고, 찬 키는 다음 키로, 모두 차면 요청 0.
+//      재시도로 요청을 받은 키는 모두 센다. v4.13 전 파일의 그날 누계는 legacy 로 모든 모델·키에 보수적으로. 키 원문은 파일에 안 남긴다
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -269,6 +271,51 @@ const cases = [
   }],
   ['(v4.6-b) promo_main 프롬프트: 무료 자료 배포·구독 유도·끝에 잠깐 알리는 자기 홍보는 판매 아님', async () => {
     assert(/무료 자료·템플릿·키트 배포/.test(vs.PROMPT) && /돈을 받는/.test(vs.PROMPT) && /자신의/.test(vs.PROMPT) && /잠깐 알리는 정도도 false/.test(vs.PROMPT), '프롬프트 문구');
+  }],
+  ['(v4.13) 모델별 누계: 2.5 Flash 가 찼어도 3.5 Flash-Lite 는 요청 · 파일에 모델·키 id(원문 아님)', async () => {
+    const full = { date: '2026-10-12', seconds: 8 * 3600 - 300, calls: 30, models: { 'gemini-2.5-flash': 8 * 3600 - 300 }, keys: {} };
+    const h = harness({ quota: full });
+    assert((await h.s.summarize(V({ durationSec: 600 }))).src === 'app' && h.requests.length === 0, '2.5 Flash 는 상한');
+    const h2 = harness({ script: [ok200()], quota: full, extra: { model: 'gemini-3.5-flash-lite', fallback: false } });
+    const r = await h2.s.summarize(V({ durationSec: 600 }));
+    const q = h2.quota();
+    assert(r.ok && h2.requests.length === 1, JSON.stringify(r));
+    assert(q.models['gemini-3.5-flash-lite'] === 600 && q.models['gemini-2.5-flash'] === 8 * 3600 - 300 && q.seconds === 8 * 3600 + 300 && q.calls === 31, JSON.stringify(q));
+    assert(q.keys[vs.keyId('TESTKEY')] === 600 && /^[0-9a-f]{8}$/.test(vs.keyId('TESTKEY')) && !fs.readFileSync(h2.quotaFile, 'utf8').includes('TESTKEY'), JSON.stringify(q.keys));
+  }],
+  ['(v4.13) 키별 누계: 찬 키는 다음 키로(로그) · 키 4개 모두 차면 요청 0 · daily_video_cap', async () => {
+    const KEYS = ['K1', 'K2', 'K3', 'K4']; let i = 0;
+    const rot = { getKey: () => KEYS[i % 4], rotateKey: () => { i++; return true; } };
+    const keys = { [vs.keyId('K1')]: 8 * 3600 - 100, [vs.keyId('K2')]: 8 * 3600 - 100 };
+    const h = harness({ script: [ok200()], quota: { date: '2026-10-12', seconds: 2 * (8 * 3600 - 100), calls: 40, models: { 'gemini-2.5-flash': 100 }, keys }, extra: rot });
+    const r = await h.s.summarize(V({ durationSec: 600 }));
+    assert(r.src === 'video' && /key=K3$/.test(h.requests[0].opts.path) && h.logs.filter(l => /이 키의 오늘 영상 분량이 찼다/.test(l)).length === 2, h.logs.join('|'));
+    assert(h.quota().keys[vs.keyId('K3')] === 600 && h.quota().keys[vs.keyId('K1')] === 8 * 3600 - 100, JSON.stringify(h.quota().keys));
+    i = 0;
+    const allFull = Object.fromEntries(KEYS.map(k => [vs.keyId(k), 8 * 3600]));
+    const h2 = harness({ quota: { date: '2026-10-12', seconds: 0, calls: 0, models: {}, keys: allFull }, extra: { ...rot, fallback: false } });
+    const r2 = await h2.s.summarize(V({ durationSec: 600 }));
+    assert(r2.ok === false && r2.reason === 'daily_video_cap' && r2.detail === 'keys' && h2.requests.length === 0, JSON.stringify(r2));
+  }],
+  ['(v4.13) 재시도로 요청을 받은 키는 모두 센다 · 모델·합계는 1회', async () => {
+    const KEYS = ['K1', 'K2', 'K3', 'K4']; let i = 0;
+    const h = harness({ script: [{ status: 429, data: {} }, ok200()], extra: { getKey: () => KEYS[i % 4], rotateKey: () => { i++; return true; } } });
+    const r = await h.s.summarize(V({ durationSec: 600 }));
+    const q = h.quota();
+    assert(r.src === 'video' && q.keys[vs.keyId('K1')] === 600 && q.keys[vs.keyId('K2')] === 600 && q.models['gemini-2.5-flash'] === 600 && q.seconds === 600 && q.calls === 1, JSON.stringify(q));
+  }],
+  ['(v4.13) v4.13 전 파일: 그날 누계를 legacy 로 모든 모델·키에 · 저장 뒤에도 유지 · 날짜가 바뀌면 0', async () => {
+    const old = { date: '2026-10-12', seconds: 8 * 3600 - 300, calls: 24 };
+    const h = harness({ quota: old, extra: { model: 'gemini-3.5-flash-lite' } });
+    assert((await h.s.summarize(V({ durationSec: 600 }))).src === 'app' && h.requests.length === 0, '옛 누계를 3.5 에도 세야');
+    const h2 = harness({ script: [ok200()], quota: { date: '2026-10-12', seconds: 5 * 3600, calls: 9 } });
+    await h2.s.summarize(V({ durationSec: 600 }));
+    const q = h2.quota();
+    assert(q.legacy === 5 * 3600 && q.models['gemini-2.5-flash'] === 600 && q.seconds === 5 * 3600 + 600, JSON.stringify(q));
+    const r = vs.readQuota(h2.quotaFile, () => '2026-10-12');
+    assert(vs.modelUsed(r, 'gemini-3.5-flash-lite') === 5 * 3600 && vs.keyUsed(r, vs.keyId('TESTKEY')) === 5 * 3600 + 600, JSON.stringify(r));
+    const n = vs.readQuota(h2.quotaFile, () => '2026-10-13');
+    assert(n.legacy === 0 && n.seconds === 0 && Object.keys(n.models).length === 0, JSON.stringify(n));
   }],
 ];
 

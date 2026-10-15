@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.12** (2026-10-14)
+**현재 버전: v4.13** (2026-10-15)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -20,6 +20,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.10: 노션에서 넘어올 때 기본값(「기타」·태그 없음)이 그대로 남은 꿀팁도 규칙으로 다시 분류하고, URL 로 추정한 제목이 남아 있던 꿀팁 25건에 원문 제목을 넣었습니다 — 「기타」 66 → 42건.
 > v4.11: 기존분 재요약이 Gemini 서버 오류(503)를 받으면 오래 재시도하지 않고 그 실행의 재요약을 바로 멈춥니다(1편에 약 13분 → 1~2분). 같은 영상이 3번 막히면 그 영상은 건너뜁니다.
 > v4.12: 영상 끝에 자기 강의·전자책을 잠깐 알리기만 한 영상이 「판매가 주목적」으로 제외되던 오판을 줄였습니다. 판매 멘트가 영상 절반 이상이거나 영상 본론 자체가 자기 상품(소개·고객 사례)일 때만 판매로 제외합니다.
+> v4.13: 영상 입력 하루 8시간을 모델별·키별로 따로 셉니다. 신규 영상과 재요약이 서로의 분량을 먹지 않아, 재요약이 하루 20편까지 갑니다(전에는 신규가 많은 날 약 9편).
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
@@ -206,7 +207,7 @@ AI_Wiki_Pipeline/
 │   ├── library.js                     # (v4.0) 장부 Node 헬퍼 (openLibrary·insertVideo·addTopic·updateStats)
 │   ├── library_db.py                  # (v4.0) 장부 Python 헬퍼 (open_existing — 없으면 만들지 않음)
 │   ├── library_schema.sql             # (v4.0) 장부 스키마 원본 (user_version 3 = v4.6 videos.grade·quality·summarized_at)
-│   ├── video_summary.js               # (v4.6) 실제 영상 요약 + 품질 신호 · 등급 규칙 · 하루 영상 분량 누계 (v4.6-b 모델 인자·대체 없음·신규 몫 예약)
+│   ├── video_summary.js               # (v4.6) 실제 영상 요약 + 품질 신호 · 등급 규칙 · 하루 영상 분량 누계 (v4.6-b 모델 인자·대체 없음 · v4.13 모델·키별 분량)
 │   ├── resummarize.js                 # (v4.6-b) 기존분 재요약 — 후보 선정·상한·건너뜀/실패/중단 처리 (scheduler.js 가 매 실행 호출)
 │   ├── env_util.py                    # (v4.0) .env 읽기 (의존성 없음)
 │   ├── youtube_oauth.js               # YouTube OAuth 2.0 + playlistItems.insert
@@ -284,7 +285,7 @@ RESUMMARY=true
 RESUMMARY_MODEL=gemini-3.5-flash-lite               # 신규 요약(2.5 Flash)과 무료 한도가 모델별로 따로
 RESUMMARY_PER_RUN=5                                 # 정시 실행 1회당 편수
 RESUMMARY_DAILY_MAX=20                              # 하루(태평양시) 편수 — 장부 quality.resummary_day 로 센다
-RESUMMARY_RESERVE_SECONDS=10800                     # 하루 영상 분량 상한에서 신규 영상 몫으로 남길 초(3시간)
+RESUMMARY_RESERVE_SECONDS=0                         # (v4.13 기본 0) 재요약이 모델·키별 하루 분량에서 남겨 둘 초 — 분량을 모델·키별로 세므로 보통 0
 RESUMMARY_MAX_5XX=1                                 # (v4.11) 영상 1편에 5xx 이 횟수면 재시도 없이 그 실행 재요약 중단 (0 = 신규와 같은 8회)
 
 # (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
@@ -466,6 +467,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.13** | 2026-10-15 | **영상 하루 분량을 모델별·키별로**: `.video_quota.json` 에 모델별(`models`)·키별(`keys`, sha256 앞 8자리) 누계를 두고 둘 다 8시간 안일 때만 요청, 찬 키는 다음 키로. PT 10-14 실측 키 4개 · 모델 2개 합계 약 10.4시간에 영상 429 0건 — 예전 "전체 합계 8시간" 전제가 보수적이었다. 재요약 신규 몫 예약(`RESUMMARY_RESERVE_SECONDS`) 기본 3시간 → 0 — 신규가 많은 날 재요약이 9편에서 멈추던 것(남은 2,981편에 약 10개월)을 하루 20편 상한까지. 장부·스키마 무변경. 회귀 테스트 14종 |
 | **v4.12** | 2026-10-14 | **promo_main 오판 줄이기 — 판매 비중·본론 신호**: 영상 요약 신호에 `promo_share`(판매·모집 멘트가 차지하는 비중 0~1)·`promo_subject`(본론 자체가 제작자 자신의 유료 상품 — 소개·후기·고객 사례)를 더하고, 판매 제외를 `promo_main AND (promo_share ≥ 0.5 OR promo_subject)` 로 좁혔다(오판 3건 = 끝에 자기 상품 잠깐 안내 · 두 모델 모두 promo_main 을 true 로 냄). promo_main 이 true 인데 제외되지 않으면 로그 `(promo_minor …)`. 지금보다 좁기만 하고 장부·스키마 무변경. 회귀 테스트 14종 |
 | **v4.11** | 2026-10-14 | **재요약 5xx 조기 중단**: 재요약(3.5 Flash-Lite)이 503 을 받으면 신규와 같은 8회(키 4개 × 2) 재시도 — 503 이 1~2분 뒤에 와서 1편에 약 13분(10-14 00시). 이제 영상 1편에 5xx `RESUMMARY_MAX_5XX`(기본 1)회면 재시도 없이 그 실행의 재요약을 멈추고, 그 영상은 `quality.resummary_5xx` +1(3회면 건너뜀). 신규 영상 경로·429·네트워크 처리는 그대로. 회귀 테스트 14종 |
 | **v4.10** | 2026-10-14 | **꿀팁 빈 기본값 재분류 · 제목 3차**: `recategorize_tips.py` 가 카테고리 「기타」 + 태그 없음(노션 이관 때 기본값 그대로)을 사람이 고른 값으로 보지 않고 다시 매긴다(`blank_default`, 19건 중 16건 이동). URL 추정 제목 25건 → 원문 제목(`retitle_tips.py`, 비공개 노션 1건 제외) 뒤 재분류. 재분류 28행 · 「기타」 66 → 42. 회귀 테스트 14종 |
@@ -500,6 +502,24 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.13] — 2026-10-15 (⏱️ 영상 하루 분량을 모델별·키별로)
+
+**배경.** 10-15 06시 실행의 재요약이 0편(`daily_video_cap`)이었다. PT 10-14 하루에 신규 영상 14편이 10,590초를 써서 합계 17,524초 — 재요약 한도(8시간 − 신규 몫 3시간 = 18,000초)까지 476초만 남았다. 재요약이 하루 20편 상한의 절반(9편)에서 멈춰 남은 2,981편에 약 10개월이 걸리는 속도였다(설계 5개월).
+
+**근거.** 같은 PT 하루에 파이프라인 17,524초 + v4.12 시험(두 모델 × 13편) 19,810초 = 약 10.4시간을 키 4개 · 모델 2개로 썼는데 영상 요청에 429 가 한 번도 없었다(8시간을 넘긴 뒤의 00시 실행도 200). 즉 한도는 "모든 키·모델 합계 8시간"이 아니다. 모델별로는 2.5 Flash 약 20,500초 · 3.5 Flash-Lite 약 15,500초로 둘 다 8시간 미만이라, 단위가 모델인지 프로젝트(키)인지는 이 데이터로 가를 수 없다(문서에도 없음) → 둘 다 센다.
+
+| 항목 | 내용 |
+|---|---|
+| 누계 | `.video_quota.json` 에 `models`(모델별 초) · `keys`(키별 초 — 키 원문 대신 sha256 앞 8자리) · `legacy` 추가. `seconds`·`calls` 는 전체 합계로 그대로(표시용) |
+| 판단 | 요청 전 **그 모델 누계와 지금 키 누계가 둘 다** `VIDEO_DAILY_SECONDS`(8시간) 안일 때만. 키가 찼으면 다음 키로(키 수만큼, 로그 `⏭ 이 키의 오늘 영상 분량이 찼다`), 모두 찼거나 모델이 찼으면 `daily_video_cap`(신규는 설명란 대체 · 재요약은 중단 — 기존 경로) |
+| 세는 법 | 실패 요청도 센다(그대로). 재시도로 요청을 받은 키는 모두 센다, 모델·합계는 영상 1편에 1회 |
+| 첫날 | v4.13 전 파일의 그날 누계는 `legacy` 로 모든 모델·키에 더한다(보수적 — 그 PT 하루만) |
+| 재요약 | `RESUMMARY_RESERVE_SECONDS` 기본 10800 → 0 — 재요약(3.5 Flash-Lite)과 신규(2.5 Flash)가 각자 모델 누계를 쓰고, 키 누계는 찬 키를 건너뛰므로 예약이 필요 없다. 값을 주면 모델·키 누계 둘 다에서 남긴다 |
+| 틀렸을 때 | 한도를 넘으면 Google 이 429 로 거절할 뿐이다 — 재요약은 그 실행 중단, 신규는 키를 돌린 뒤 설명란 대체(기존 경로). 403 난사와 무관 |
+| 무변경 | 장부·스키마·`.env` · 재요약 하루 20편·실행당 5편 · 신규 경로 재시도 |
+| 테스트 | `scripts/test_video_summary.js` 32/32(+4) · `scripts/test_resummarize.js` 11/11(예약 기본값 기대 1곳). 회귀 테스트 14종 |
+| 지시서 | `docs/tasks/2026-10-15-v413-video-quota-per-model-key.md` |
 
 #### [v4.12] — 2026-10-14 (🏷️ promo_main 오판 줄이기 — 판매 비중·본론 신호)
 
@@ -603,7 +623,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 항목 | 내용 |
 |---|---|
-| 재요약 | `lib/resummarize.js` — 후보 `summary_src != 'video'` · 건너뜀 표시 없음 · 최신 업로드부터. `scheduler.js` 가 신규 처리 뒤 매 실행 호출(던지지 않음, 저장·Skip·오류 집계 밖). 상한: 실행당 `RESUMMARY_PER_RUN` 5 · 하루(PT) `RESUMMARY_DAILY_MAX` 20(장부 `quality.resummary_day` 로 셈) · 하루 영상 분량 8시간 중 `RESUMMARY_RESERVE_SECONDS` 3시간은 신규 몫. 모델 `RESUMMARY_MODEL` 기본 `gemini-3.5-flash-lite`(`thinkingLevel: minimal` — 3.x 는 `thinkingBudget` 을 400 으로 거절) |
+| 재요약 | `lib/resummarize.js` — 후보 `summary_src != 'video'` · 건너뜀 표시 없음 · 최신 업로드부터. `scheduler.js` 가 신규 처리 뒤 매 실행 호출(던지지 않음, 저장·Skip·오류 집계 밖). 상한: 실행당 `RESUMMARY_PER_RUN` 5 · 하루(PT) `RESUMMARY_DAILY_MAX` 20(장부 `quality.resummary_day` 로 셈) · 하루 영상 분량 8시간은 (v4.13) 모델별·키별로 세고 `RESUMMARY_RESERVE_SECONDS` 기본 0(v4.12 까지 3시간). 모델 `RESUMMARY_MODEL` 기본 `gemini-3.5-flash-lite`(`thinkingLevel: minimal` — 3.x 는 `thinkingBudget` 을 400 으로 거절) |
 | 실패 | 대체 요약 없이 기존 요약 유지. 삭제·공개 아님·영상 토큰 0 → `quality.resummary_skip`(다시 안 함), 형식 실패 2회 → 건너뜀, 429·5xx·하루 분량·403 연속 → 그 실행 중단. 건너뜀·실패 표시는 `updated_at` 안 건드림 |
 | 장부 | 성공 시 `summary`·`summary_src 'video'`·`grade`·`quality`·`summarized_at`·`updated_at`(시트 미러) + 그 소스 `wiki_extract` → `stale`(attempts 0). 스키마 무변경(user_version 3) |
 | 노트 | `sync_obsidian.py:refresh_changed_notes` — 장부 `summary_src` 가 `video` 인데 노트 프론트매터와 다르면 요약 절(`▶ 영상 보기` 다음 `---` 부터 `🔗 관련 항목` 앞까지)만 교체 + `grade`·`summary_src` 맞춤. 경계를 못 찾으면 그대로 두고 `refresh_skipped` 로 보고. 장부 `grade` 만 고쳐도 노트가 따라옴 |

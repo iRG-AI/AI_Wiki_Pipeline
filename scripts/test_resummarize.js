@@ -85,7 +85,7 @@ const cases = [
     assert(q.resummary === true && q.resummary_day === '2026-10-13' && q.model === 'gemini-3.5-flash-lite', JSON.stringify(q));
     const w = db.prepare("SELECT * FROM wiki_extract WHERE record_id='r-new'").get();
     assert(w.status === 'stale' && w.attempts === 0 && w.updated_at === OLD_TS, JSON.stringify(w));
-    assert(h.made.length === 1 && h.made[0].model === 'gemini-3.5-flash-lite' && h.made[0].reserveSeconds === 10800, JSON.stringify(h.made));
+    assert(h.made.length === 1 && h.made[0].model === 'gemini-3.5-flash-lite' && h.made[0].reserveSeconds === 0, JSON.stringify(h.made));
     assert(h.fetched.length === 1, '영상 조회는 실행당 1회');
     assert(r.today === 2 && r.remaining === 2, JSON.stringify(r));
     assert(rs.summaryLine(r).startsWith('🔁 재요약: 2편 (제외 등급 1)') && rs.summaryLine(r).includes('오늘 2/20 · 남은 대상 2'), rs.summaryLine(r));
