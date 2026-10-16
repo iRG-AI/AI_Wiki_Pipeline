@@ -4,7 +4,7 @@
 > 갱신 방법(v4.0 3단계, 2026-10-12~): `CLAUDE.md` 를 고친 뒤 이 파일을 다시 만든다 — 이 머리글 + `CLAUDE.md` 4행부터 끝까지.
 > (예전 이 파일 끝에 붙어 있던 v2.5 시절 「Imported Claude Cowork project instructions」 사본은 낡아서 뺐다. 프로젝트 지침 원본은 Cowork 프로젝트 설정에 있다.)
 
-**현재 버전: v4.14** (2026-10-15) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.15** (2026-10-16) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -22,7 +22,9 @@
 > v4.12: promo_main 만으로 판매 제외하지 않는다 — 영상 요약 신호에 `promo_share`(판매 멘트 비중 0~1)·`promo_subject`(본론 자체가 자기 상품)를 더하고 `promo_main AND (promo_share ≥ 0.5 OR promo_subject)` 일 때만 제외(끝에 자기 상품을 잠깐 알린 영상의 오판 3건). 지금보다 좁기만 하고 장부 무변경.
 > v4.13: 영상 하루 8시간을 모델별·키(프로젝트)별로 따로 센다(`.video_quota.json` `models`·`keys`) — 둘 다 넘지 않을 때만 요청, 찬 키는 다음 키로. PT 10-14 실측 키 4개 · 모델 2개 합계 약 10.4시간에 429 0건("전체 합계 8시간"이 아님). 재요약 신규 몫 예약 기본 3시간 → 0. 장부 무변경.
 > v4.14: 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite(`lib/classifier.js`, `.env CLASSIFY_MODEL` 로 되돌림) — 신규 영상 1편의 2.5 Flash 요청 2회 → 1회. 비교 20편에서 영상당 토픽 4.4 → 2.5개(추상 토픽 과추천이 줄어듦, 대표님 결정 A안). 분류 응답 한글 청크 경계 깨짐(`chunks += c`) 수정. 장부 무변경.
+> v4.15: 정시 실행을 `/usr/bin/caffeinate -i` 로 감싼다(`com.irichgreen.ytsummarizer` plist) — 실행 중 유휴 잠자기(배터리 설정 `sleep 1` = 1분)를 막는다. 덮개를 닫은 잠자기·이미 잠든 맥은 못 막는다(10-15 12시 실패 = 11:54 Clamshell Sleep). 레포 plist 원본 4개·`install-server.sh`·`install-scheduler.sh` sed 패턴을 10-16 이관 경로(`~/Dev`)로 맞췄다. 코드·장부 무변경.
 
+> 2026-10-16에 `~/Documents/Claude/Projects/AI_Wiki_Pipeline` → `~/Dev/AI_Wiki_Pipeline` 로 이관했습니다(Google Drive 백업 밖 · 옛 자리에 링크). launchd 4개(server · wiki-ingest · wiki-lan · ytsummarizer)도 새 경로로 바꿨습니다(원본 `*.plist.bak.20261016`).
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
 > 구 백업: `~/Claude/Youtube_Notion_Grap_BACKUP_20260717`.
@@ -562,11 +564,12 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 | 라벨 | 실행 대상 | 스케줄 | 인터프리터 |
 |------|-----------|--------|-----------|
 | `com.irichgreen.server` | `server.js` (포트 3000) | `KeepAlive`, `RunAtLoad` — 상주 | `/opt/homebrew/bin/node` |
-| `com.irichgreen.ytsummarizer` | `scheduler.js` | 00 / 06 / 12 / 18시 | `/opt/homebrew/bin/node` |
+| `com.irichgreen.ytsummarizer` | `scheduler.js` (v4.15 `caffeinate -i` 로 감쌈) | 00 / 06 / 12 / 18시 | `/opt/homebrew/bin/node` |
 | `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분 + backfill + 재렌더) | 매일 17:30 | `/opt/homebrew/bin/python3` |
 | `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | `KeepAlive`, `RunAtLoad`, `ThrottleInterval 60` — 상주 | `/opt/homebrew/bin/node` |
 
 - **실제 동작하는 plist는 `~/Library/LaunchAgents/`에 있다.** 레포 루트의 plist 4개는 그 원본이며 모두 실경로(`<REPO_ROOT>` 의 절대경로)가 들어 있다. **원본은 설치본과 같게 유지한다** — 2026-10-12 대조에서 `wiki-ingest` 원본만 옛 값(03:00 · `/usr/bin/python3` · `--full`)이라 설치본(17:30 · Homebrew python3 · 증분)으로 맞췄다. 확인: `diff <(plutil -convert xml1 -o - ~/Library/LaunchAgents/<라벨>.plist) <(plutil -convert xml1 -o - <라벨>.plist)`. 예전에 `server`·`ytsummarizer` 두 개에 있던 `/Users/사용자명/youtube-notion-app` 플레이스홀더는 제거했다.
+- **(v4.15) `com.irichgreen.ytsummarizer` 의 `ProgramArguments` 는 `/usr/bin/caffeinate -i /opt/homebrew/bin/node <REPO_ROOT>/scheduler.js` 다.** caffeinate 가 node 를 자식으로 띄우고 node 가 끝날 때까지 유휴 잠자기 방지 단언(`PreventUserIdleSystemSleep`)을 쥔다 — 배터리 설정이 `sleep 1`(1분)이라 덮개를 연 채 자리를 비우면 실행 도중 잠들 수 있었다. 종료 코드는 node 것을 그대로 돌려준다(10-16 실측). **덮개를 닫은 잠자기(Clamshell)·이미 잠든 맥은 막지 못한다**(10-15 12:00 실패 = 11:54 Clamshell Sleep, 배터리 36%) — 그 경우는 v4.2 알림과 다음 실행의 이어 처리로 버틴다. 강제로 막는 `pmset disablesleep` 은 가방 속 발열 위험이라 쓰지 않는다. `launchctl list` 의 PID 는 caffeinate 이고 `pgrep -f scheduler.js` 는 두 줄(caffeinate·node)이 나온다. 실행 중 확인: `pmset -g assertions | grep caffeinate`. `server.js` `/api/master-ingest` 로 띄운 수동 실행은 감싸지 않는다(범위 밖). caffeinate 를 빼지 말 것.
 - 각 plist는 `ProgramArguments`·`WorkingDirectory` **2곳에 절대경로**가 박혀 있다. 경로 변경 시 8군데(4개 × 2) 동기화 + `plutil -lint` + unload/load.
 - **레포 경로 자체를 바꿀 때 함께 고칠 맥 설정(레포 밖):** 설치된 plist 4개, `~/Library/Scripts/rotate_extra_logs.sh` 의 `YTDIR`, Claude Code MCP `wiki-search` 등록(`~/.claude.json` 사용자 범위 — `claude mcp remove`/`add -s user`), 스킬 `kakao-tips-update` 의 경로. 절차·검증은 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
 - `install-server.sh`·`install-scheduler.sh`는 plist를 `~/Library/LaunchAgents/`로 복사하며 **sed로 이 실경로를 `$APP_DIR`로 치환**한다. 레포 경로를 바꾸면 두 스크립트의 sed 패턴도 같이 고쳐야 치환이 동작한다. `install-wiki-ingest.sh` 는 치환 없이 그대로 복사한다(원본 = 설치본). `deploy.sh` 는 옛 일괄 업로드 스크립트라 쓰지 않는다.
@@ -609,6 +612,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-10-16 (v4.15 — 정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤)** — 배경: 10-15 12:00 실행이 `ENOTFOUND` 로 통째 실패(맥 잠자기). `pmset -g log` 로 보니 원인은 11:54 덮개 닫힘(Clamshell Sleep, 배터리 36%) — 이 경우는 소프트웨어로 안전하게 막을 수 없다. 대신 배터리 설정이 `sleep 1`(1분)이라 덮개를 연 채 자리를 비워도 15분짜리 실행 도중 유휴 잠자기에 들 수 있어, 그 경우만 막는다. 수정: `com.irichgreen.ytsummarizer.plist` `ProgramArguments` 앞에 `/usr/bin/caffeinate -i`(맥에서 단언 생성·종료 코드 전달 확인). 함께: 10-16 레포 이관(`~/Documents/Claude/Projects` → `~/Dev`, 옛 자리 링크) 때 설치본만 바뀌어 레포 plist 원본 4개가 설치본과 달라져 있던 것을 맞춤(경로 2곳씩), `install-server.sh`·`install-scheduler.sh` sed 패턴 · `wiki_mcp.js` 주석 경로 · `AGENTS.md` 레포 경로. 코드·장부·`.env` 무변경. 레포 밖 `rotate_extra_logs.sh` `YTDIR`·MCP `wiki-search` 등록은 옛 경로(링크로 동작) — 범위 밖. 지시서 `docs/tasks/2026-10-16-v415-caffeinate-plist-sync.md`.
 - **2026-10-15 (v4.14 — 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite)** — 배경: 신규 영상 1편에 2.5 Flash 를 요약 1 + 분류 1회 쓴다. 2.5 Flash 무료 RPD 프로젝트당 20, AI Studio 28일 최대 36/20(키 로테이션으로 버팀). 비교 시험(10-15, 맥 `~/v414chk`, 장부 읽기 전용, 최근 신규 20편): 2.5 Flash 재실행은 장부 토픽과 16/20 같음(자기 일관), 3.5 Flash-Lite 는 0/20 · Jaccard 0.44 · 영상당 4.4 → 2.5개 — 빠진 것은 주로 추상 토픽(생산성 향상 13·자동화 7·에이전트 6)·곁다리 도구, 더 맞게 붙은 것 바이브코딩 4·트렌드 1, 아쉬운 누락 수익화 1·전환 1. 오류·신뢰도 0.6 미만·목록 밖 토픽 0. 대표님 결정 A안(그대로 전환). 수정: `lib/classifier.js` `resolveModel`(기본 `gemini-3.5-flash-lite`, `.env CLASSIFY_MODEL`)·`thinkingConfigFor`·`opts.model`·결과 `model`·`Buffer.concat`(잠복 결함 — 옛 코드는 청크 경계 한글에서 토픽 `[]`), `scheduler.js` 분류 로그에 모델. 프롬프트·재시도·장부·스키마 무변경. 테스트: 신규 `test_classifier.js` 8/8(옛 코드 2/8). 회귀 테스트 15종. 지시서 `docs/tasks/2026-10-15-v414-classify-flash-lite.md`.
 - **2026-10-15 (v4.13 — 영상 하루 분량을 모델별·키별로)** — 배경: 10-15 06시 재요약 0편(`daily_video_cap`) — PT 10-14 신규 14편이 10,590초를 써서 합계 17,524초, 재요약 한도(28,800 − 예약 10,800)까지 476초만 남았다. 재요약이 하루 20편 상한의 절반(9편)에서 멈춰 남은 2,981편에 약 10개월. 근거: 같은 PT 하루에 파이프라인 17,524초 + v4.12 시험(`~/v412probe`, 두 모델 × 13편) 19,810초 = 약 10.4시간을 키 4개 · 모델 2개로 썼는데 영상 요청 429 0건(8시간을 넘긴 뒤 00시 실행도 200) → 코드의 "전체 합계 8시간" 전제는 실제보다 보수적. 모델별로는 2.5 Flash 약 20,500초 · 3.5 Flash-Lite 약 15,500초로 둘 다 8시간 미만이라 단위(모델·프로젝트)는 미확정 → 둘 다 센다(대표님 결정 10-15). 수정: `lib/video_summary.js` `.video_quota.json` 에 `models`·`keys`(sha256 앞 8자리)·`legacy`, 요청 전 모델·키 누계 검사, 찬 키는 다음 키로(로그 `⏭ 이 키의 오늘 영상 분량이 찼다`), 재시도로 요청을 받은 키는 모두 셈. `lib/resummarize.js` `RESUMMARY_RESERVE_SECONDS` 기본 10800 → 0. 장부·스키마·`.env` 무변경. 테스트: `test_video_summary.js` 32/32(+4), `test_resummarize.js` 11/11(기대값 1곳). 회귀 테스트 14종. 함께: v4.12 지시서 시험·사전 검증 시각 표기 정정. 지시서 `docs/tasks/2026-10-15-v413-video-quota-per-model-key.md`.
 - **2026-10-14 (v4.12 — promo_main 오판 줄이기: 판매 비중·본론 신호)** — 배경: 실제 영상 요약 46편 중 promo_main true 3건이 모두 오판(`-YySYOBbhD8` 무료 키트 · `RpY-KKZ7QTg` 끝에 자기 전자책 · `wgrpasYyiIQ` 끝에 자기 유료 강의)이라 되돌렸다. v4.6-b 의 "잠깐 알리는 정도는 false" 문구를 두 모델 모두 따르지 않았다. 시험(10-14, 맥 `~/v412probe`, 장부 무관): 비중(`promo_share`)만으로는 확정 판매 영상(`2cX3_vi2y3I` 300만 원 컨설팅 고객 사례 + 모집)이 2.5 Flash 0.051 로 빠지고, 비중은 회차마다 0.05 ↔ 0.32 로 흔들렸다. 본론 신호(`promo_subject`)는 두 모델·두 회차 일관(2cX3 만 true). 판매 구간 시각은 영상 길이를 넘어 못 씀. 수정: `lib/video_summary.js` PROMPT·스키마에 `promo_share`·`promo_subject`(필수, 형식 틀리면 `bad_signals`, 비중 0~1 자름), `computeGrade` 판매 제외 = `promo_main AND (promo_share ≥ 0.5 OR promo_subject)`(대표님 결정 10-14 — 지금보다 좁기만 함), 로그 `promo_minor`. 장부·스키마·재요약 흐름 무변경. 테스트: `test_video_summary.js` 28/28(+3). 회귀 테스트 14종. 지시서 `docs/tasks/2026-10-14-v412-promo-share.md`.

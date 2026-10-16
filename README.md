@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.14** (2026-10-15)
+**현재 버전: v4.15** (2026-10-16)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -22,6 +22,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.12: 영상 끝에 자기 강의·전자책을 잠깐 알리기만 한 영상이 「판매가 주목적」으로 제외되던 오판을 줄였습니다. 판매 멘트가 영상 절반 이상이거나 영상 본론 자체가 자기 상품(소개·고객 사례)일 때만 판매로 제외합니다.
 > v4.13: 영상 입력 하루 8시간을 모델별·키별로 따로 셉니다. 신규 영상과 재요약이 서로의 분량을 먹지 않아, 재요약이 하루 20편까지 갑니다(전에는 신규가 많은 날 약 9편).
 > v4.14: 영상 토픽 분류를 Gemini 3.5 Flash-Lite 로 옮겼습니다. 2.5 Flash 하루 요청 한도를 영상 요약에 남기고, 분류 프롬프트의 「추상 토픽 남발 금지」를 더 잘 지켜 영상당 토픽이 약 4.4개 → 2.5개로 줄어듭니다(재생목록 추가도 그만큼 줄어 YouTube 할당량에 이득). 되돌리기는 `.env` `CLASSIFY_MODEL=gemini-2.5-flash` 한 줄.
+> v4.15: 정시 실행 동안 맥이 유휴 잠자기에 들지 않게 `caffeinate -i` 로 감쌌습니다(배터리에서 1분 뒤 잠드는 설정이라 덮개를 연 채 자리를 비우면 실행 도중 잠들 수 있었음). 덮개를 닫아 잠든 경우는 막지 못합니다 — 그때는 실패 알림과 다음 실행이 이어 받습니다. 10-16 레포 이관(`~/Dev/AI_Wiki_Pipeline`)에 맞춰 plist 원본·설치 스크립트 경로도 맞췄습니다.
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
@@ -341,7 +342,7 @@ launchd 데몬 4개 (설치본 = `~/Library/LaunchAgents/`, 원본 = 레포 루�
 | 라벨 | 실행 대상 | 스케줄 | 설치 |
 |---|---|---|---|
 | `com.irichgreen.server` | `server.js` (127.0.0.1:3000) | 상주 (로그인 시 시작) | `install-server.sh` |
-| `com.irichgreen.ytsummarizer` | `scheduler.js` | 00 / 06 / 12 / 18시 | `install-scheduler.sh` |
+| `com.irichgreen.ytsummarizer` | `scheduler.js` (`caffeinate -i` 로 감쌈 — 실행 중 잠자기 방지) | 00 / 06 / 12 / 18시 | `install-scheduler.sh` |
 | `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분) | 매일 17:30 (Gemini 일 한도 리셋 직후) | `install-wiki-ingest.sh` |
 | `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | 상주 | 아래 「6. Wiki 검색」 |
 
@@ -471,6 +472,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.15** | 2026-10-16 | **정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤**: `com.irichgreen.ytsummarizer` 를 `/usr/bin/caffeinate -i` 로 감싸 실행 중 유휴 잠자기(배터리 `sleep 1`)를 막는다. 덮개를 닫은 잠자기(10-15 12시 실패 원인)는 못 막는다. 10-16 레포 이관(`~/Dev`)으로 설치본과 달라진 레포 plist 원본 4개·`install-server.sh`·`install-scheduler.sh` sed 패턴·`wiki_mcp.js` 주석을 새 경로로. 코드·장부 무변경 |
 | **v4.14** | 2026-10-15 | **토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite**: 신규 영상 1편에 2.5 Flash 를 요약 1 + 분류 1회 쓰던 것을 요약 1회로 — 2.5 Flash 무료 하루 요청 한도(프로젝트당 20, 28일 최대 36/20)를 영상 요약에 남긴다. 3.5 Flash-Lite 는 하루 500. 비교 시험(최근 신규 20편): 오류·신뢰도 0.6 미만 0, 영상당 토픽 4.4 → 2.5개 — 주로 추상 토픽(생산성 향상 13·자동화 7·에이전트 6)이 빠지고 바이브코딩 4·트렌드 1이 더 맞게 붙음(대표님 결정 A안). `.env CLASSIFY_MODEL` 로 되돌림. 분류 응답 한글이 청크 경계에서 깨질 수 있던 잠복 결함(`chunks += c`) 수정. 장부·스키마 무변경. 회귀 테스트 15종 |
 | **v4.13** | 2026-10-15 | **영상 하루 분량을 모델별·키별로**: `.video_quota.json` 에 모델별(`models`)·키별(`keys`, sha256 앞 8자리) 누계를 두고 둘 다 8시간 안일 때만 요청, 찬 키는 다음 키로. PT 10-14 실측 키 4개 · 모델 2개 합계 약 10.4시간에 영상 429 0건 — 예전 "전체 합계 8시간" 전제가 보수적이었다. 재요약 신규 몫 예약(`RESUMMARY_RESERVE_SECONDS`) 기본 3시간 → 0 — 신규가 많은 날 재요약이 9편에서 멈추던 것(남은 2,981편에 약 10개월)을 하루 20편 상한까지. 장부·스키마 무변경. 회귀 테스트 14종 |
 | **v4.12** | 2026-10-14 | **promo_main 오판 줄이기 — 판매 비중·본론 신호**: 영상 요약 신호에 `promo_share`(판매·모집 멘트가 차지하는 비중 0~1)·`promo_subject`(본론 자체가 제작자 자신의 유료 상품 — 소개·후기·고객 사례)를 더하고, 판매 제외를 `promo_main AND (promo_share ≥ 0.5 OR promo_subject)` 로 좁혔다(오판 3건 = 끝에 자기 상품 잠깐 안내 · 두 모델 모두 promo_main 을 true 로 냄). promo_main 이 true 인데 제외되지 않으면 로그 `(promo_minor …)`. 지금보다 좁기만 하고 장부·스키마 무변경. 회귀 테스트 14종 |
@@ -507,6 +509,19 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.15] — 2026-10-16 (☕ 정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤)
+
+**배경.** 10-15 12:00 실행이 `ENOTFOUND` 로 통째 실패했다(v4.2 `[실행 실패]` 알림은 정상, 놓친 신규 0). `pmset -g log` 로 보니 11:54 덮개 닫힘(Clamshell Sleep, 배터리 36%) 뒤 잠깐 깨는 사이(DarkWake)에 실행이 시작됐다가 다시 잠들었다. 덮개를 닫은 잠자기는 소프트웨어로 안전하게 막을 방법이 없다(`pmset disablesleep` 은 가방 속 발열 위험). 다만 배터리 설정이 `sleep 1`(1분)이라, 덮개를 연 채 자리를 비워도 15분 안팎의 실행 도중 유휴 잠자기에 들 수 있다 — 이 경우만 막는다.
+
+| 항목 | 내용 |
+|---|---|
+| 스케줄러 | `com.irichgreen.ytsummarizer.plist` `ProgramArguments` = `/usr/bin/caffeinate -i /opt/homebrew/bin/node <REPO_ROOT>/scheduler.js`. node 가 끝날 때까지 `PreventUserIdleSystemSleep` 단언을 쥐고, 종료 코드는 node 것을 그대로 돌려준다(맥에서 확인) |
+| 못 막는 것 | 덮개를 닫은 잠자기 · 정시에 이미 잠든 맥 · `server.js` 에서 띄운 수동 실행 |
+| 경로 맞춤 | 10-16 레포 이관(`~/Documents/Claude/Projects` → `~/Dev`, 옛 자리 링크) 때 설치본 plist 4개만 바뀌어 레포 원본과 달랐다 → 원본 4개 경로(각 2곳) · `install-server.sh`·`install-scheduler.sh` sed 패턴 · `wiki_mcp.js` 등록 주석 · `AGENTS.md` 레포 경로 |
+| 무변경 | 코드 · 장부 · `.env` · 스케줄(00/06/12/18시) · 다른 데몬 동작 |
+| 확인 | 정시 실행 중 `pmset -g assertions \| grep caffeinate` |
+| 지시서 | `docs/tasks/2026-10-16-v415-caffeinate-plist-sync.md` |
 
 #### [v4.14] — 2026-10-15 (🏷️ 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite)
 

@@ -9,7 +9,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/opt/homebrew/bin/node</string>
-		<string>/Users/tycoonan/Documents/Claude/Projects/AI_Wiki_Pipeline/wiki_lan_server.js</string>
+		<string>/Users/tycoonan/Dev/AI_Wiki_Pipeline/wiki_lan_server.js</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>
@@ -20,6 +20,6 @@
 	<key>ThrottleInterval</key>
 	<integer>60</integer>
 	<key>WorkingDirectory</key>
-	<string>/Users/tycoonan/Documents/Claude/Projects/AI_Wiki_Pipeline</string>
+	<string>/Users/tycoonan/Dev/AI_Wiki_Pipeline</string>
 </dict>
 </plist>

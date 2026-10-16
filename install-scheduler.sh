@@ -47,7 +47,7 @@ fi
 mkdir -p "$HOME/Library/LaunchAgents"
 
 sed \
-  -e "s|/Users/tycoonan/Documents/Claude/Projects/AI_Wiki_Pipeline|$APP_DIR|g" \
+  -e "s|/Users/tycoonan/Dev/AI_Wiki_Pipeline|$APP_DIR|g" \
   -e "s|/usr/local/bin/node|$NODE_PATH|g" \
   "$PLIST_SRC" > "$PLIST_DST"
 

@@ -6,8 +6,10 @@
 	<string>com.irichgreen.ytsummarizer</string>
 	<key>ProgramArguments</key>
 	<array>
+		<string>/usr/bin/caffeinate</string>
+		<string>-i</string>
 		<string>/opt/homebrew/bin/node</string>
-		<string>/Users/tycoonan/Documents/Claude/Projects/AI_Wiki_Pipeline/scheduler.js</string>
+		<string>/Users/tycoonan/Dev/AI_Wiki_Pipeline/scheduler.js</string>
 	</array>
 	<key>RunAtLoad</key>
 	<false/>
@@ -43,6 +45,6 @@
 		</dict>
 	</array>
 	<key>WorkingDirectory</key>
-	<string>/Users/tycoonan/Documents/Claude/Projects/AI_Wiki_Pipeline</string>
+	<string>/Users/tycoonan/Dev/AI_Wiki_Pipeline</string>
 </dict>
 </plist>
