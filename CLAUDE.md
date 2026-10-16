@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**현재 버전: v4.14** (2026-10-15) · 레포 경로: `<REPO_ROOT>` = `~/Documents/Claude/Projects/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.14** (2026-10-15) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -21,6 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > v4.13: 영상 하루 8시간을 모델별·키(프로젝트)별로 따로 센다(`.video_quota.json` `models`·`keys`) — 둘 다 넘지 않을 때만 요청, 찬 키는 다음 키로. PT 10-14 실측 키 4개 · 모델 2개 합계 약 10.4시간에 429 0건("전체 합계 8시간"이 아님). 재요약 신규 몫 예약 기본 3시간 → 0. 장부 무변경.
 > v4.14: 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite(`lib/classifier.js`, `.env CLASSIFY_MODEL` 로 되돌림) — 신규 영상 1편의 2.5 Flash 요청 2회 → 1회. 비교 20편에서 영상당 토픽 4.4 → 2.5개(추상 토픽 과추천이 줄어듦, 대표님 결정 A안). 분류 응답 한글 청크 경계 깨짐(`chunks += c`) 수정. 장부 무변경.
 
+> 2026-10-16에 `~/Documents/Claude/Projects/AI_Wiki_Pipeline` → `~/Dev/AI_Wiki_Pipeline` 로 이관했습니다(Google Drive 백업 밖 · 옛 자리에 링크). launchd 4개(server · wiki-ingest · wiki-lan · ytsummarizer)도 새 경로로 바꿨습니다(원본 `*.plist.bak.20261016`).
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
 > 이전 경로가 박힌 문서·스크립트를 발견하면 갱신 대상입니다.
 > 구 백업: `~/Claude/Youtube_Notion_Grap_BACKUP_20260717`.
