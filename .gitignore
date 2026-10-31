@@ -52,3 +52,6 @@ Claude outputs/
 # v4.0 로컬 원본 장부 (노션에서 옮긴 요약·꿀팁 전체 — 공개 레포에 절대 포함 금지, 2026-10-11)
 # library.db · .tmp · .bak.* · -journal 모두 이 폴더 안에 생긴다
 data/
+# (2026-10-31) pm-wiki — 워커 메모리 · 이 맥 전용 인수인계
+.claude/agent-memory/
+.claude/pm/local/

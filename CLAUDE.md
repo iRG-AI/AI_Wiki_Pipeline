@@ -93,6 +93,11 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 /opt/homebrew/bin/node scripts/test_wiki_search.js           # 34/34  (v4.7) 검색 화면 API — 전체 목록·전체 점수·비슷한 노트·노트 본문 + 집 안 서버 경로 (임시 인덱스·Vault, 가짜 Gemini)
 /opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
 
+# (2026-10-31) 회귀 테스트 15종 한 번에 — 마지막 줄 RESULT: 15/15 통과, 실패하면 exit 1
+scripts/run_all_tests.sh             # all | js | py
+# (2026-10-31) 실행 PM 세션 띄우기 (Opus + 워커 서브에이전트, 「운영 체계」 절)
+./pm-wiki.sh                         # --rc 면 Remote Control
+
 # 대기 큐 정리 (중복 제거 + dead-letter 격리) — 기본 dry-run
 node scripts/clean_pending_queue.js
 node scripts/clean_pending_queue.js --apply
@@ -598,6 +603,20 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ---
 
+## 운영 체계 — pm-wiki · 워커 · Cowork (2026-10-31~)
+
+| 주체 | 어디서 | 하는 일 | 하지 않는 일 |
+|---|---|---|---|
+| **pm-wiki** (실행 PM) | Claude Code 세션 `./pm-wiki.sh` (Opus, 지침 `.claude/pm/PM_ROLE.md`) | 지시서 작성 → 대표님 승인 → 워커 호출 → 검수 판정 → (대표님 승인 뒤) `git push` · 인수인계 `.claude/pm/local/HANDOFF.md` | 코드·문서 직접 수정 |
+| **워커** | pm-wiki 의 서브에이전트 `.claude/agents/` | `implementer`(Sonnet) 실행 · `verifier`(Opus, 읽기 전용) 검수 · `investigator`(Opus, 읽기 전용) 조사·설계 · `scribe`(Haiku) 문서 기록 | 지시서 범위 밖 변경 · `git push` |
+| **Cowork(CW)** | claude.ai 프로젝트 「AI Wiki Pipeline」 | 정시 실행 판정·관찰, 대표님 상담(등급 오판 등 결정 자료), 조사·설계 메모, 다른 프로젝트 연계 | 레포·장부·데몬 쓰기 |
+
+- 일의 흐름: 대표님 지시 또는 XP 요청서 → pm-wiki 가 `docs/tasks/` 지시서 → 승인 → implementer → verifier(기준표 ✅/❌) → 미달이면 같은 implementer 에 재지시(지시서당 3회까지) → 통과 보고 → push 승인.
+- 승인 단위는 **지시서 1건**이다 — 대표님이 승인한 지시서의 범위·기준표 안이면 워커가 추가 승인 없이 수행한다. 범위 밖 변경·지시서에 없는 장부 쓰기·외부 발송·launchd/`.env`/OAuth·운영 상태 파일 손수정·`git push` 는 멈추고 묻는다.
+- CW ↔ pm-wiki 는 XP 보드 `~/Documents/Claude/XP/`(`open/`·`done/`, `[XP-MMDD-A]`, `from: cw-wiki · to: pm-wiki` 또는 반대). CW 는 Claude Code 세션이 아니라 메시지를 받지 못한다 — 파일로만 주고받는다.
+- 훅(`.claude/settings.json`): `guard_run_window.sh`(PreToolUse) — 장부 쓰기·launchd 조작은 매시 분 50~59·00~20, 코드·plist 편집은 정시 실행·wiki-ingest 창과 실행 중에 막는다. `record_base.sh`(SubagentStart) + `gate_subagent_stop.sh`(SubagentStop) — 워커가 끝나기 전에 공개 레포 규칙(개인 절대경로·맥 이름·`.env` 값)·gitignore·`README.html`·plist/셸 문법·회귀 15종을 검사하고, 미통과면 3회까지 돌려보낸다(`/tmp/cc-gate-<세션>.log`).
+- `.claude/agents/`·`.claude/pm/PM_ROLE.md`·`.claude/hooks/`·`.claude/settings.json`·`pm-wiki.sh` 는 git 추적. `.claude/agent-memory/`(워커 메모리)·`.claude/pm/local/`(인수인계)·`.claude/settings.local.json` 은 gitignore.
+
 ## 산출물 규칙
 
 - 커밋 전 **`README.md`만** 갱신한다. **`README.html`은 v3.0에서 폐지 — 다시 만들지 않는다.** (2026-09-06)
@@ -605,10 +624,12 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 - `CLAUDE.md`는 구조·제약이 바뀔 때 갱신하고 하단 이력에 날짜와 함께 남긴다.
 - `AGENTS.md`는 **git 추적 대상**이다(2026-09-08~). `CLAUDE.md`와 함께 갱신하고, 두 문서가 어긋나면 **`CLAUDE.md`가 이긴다**.
 - 문서에 **개인 절대경로를 새로 쓰지 않는다**(2026-09-09~). 앞으로 추가·수정하는 줄은 `<REPO_ROOT>/...` 또는 `~/...` 표기를 쓴다. 기존 표기는 소급 정리하지 않는다.
-- Cowork → Claude Code 핸드오프는 `docs/tasks/YYYY-MM-DD-<슬러그>.md` 작업지시서로 한다.
+- 작업지시서는 `docs/tasks/YYYY-MM-DD-<슬러그>.md`(번호 `[CC-MMDD-X]`) — pm-wiki 가 쓰고 워커가 실행한다(「운영 체계」 절). Cowork 는 XP 요청서로 pm-wiki 에 발주한다.
 - `git push`는 사용자 확인 후.
 
 ## 변경 이력
+
+- **2026-10-31 (운영 체계 전환, 버전 유지)** — 실행 PM 을 Claude Code 세션 `pm-wiki`(`./pm-wiki.sh`, Opus) + 워커 서브에이전트 4종(`.claude/agents/` implementer·verifier·investigator·scribe) + 훅(`.claude/hooks/` 실행 창 보호·워커 종료 게이트)으로 옮겼다(iRichGreen_ERP `pm-erp` 구조). Cowork 는 정시 실행 판정·관찰·상담·설계 메모를 맡고 pm-wiki 에는 XP 요청서로 발주한다. `scripts/run_all_tests.sh`(회귀 15종 한 번에) 신설. `.gitignore` 에 `.claude/agent-memory/`·`.claude/pm/local/`. 코드·장부·데몬 무변경. 지시서 `docs/tasks/2026-10-31-pm-wiki-structure.md`.
 
 - **2026-10-16 (v4.15 — 정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤)** — 배경: 10-15 12:00 실행이 `ENOTFOUND` 로 통째 실패(맥 잠자기). `pmset -g log` 로 보니 원인은 11:54 덮개 닫힘(Clamshell Sleep, 배터리 36%) — 이 경우는 소프트웨어로 안전하게 막을 수 없다. 대신 배터리 설정이 `sleep 1`(1분)이라 덮개를 연 채 자리를 비워도 15분짜리 실행 도중 유휴 잠자기에 들 수 있어, 그 경우만 막는다. 수정: `com.irichgreen.ytsummarizer.plist` `ProgramArguments` 앞에 `/usr/bin/caffeinate -i`(맥에서 단언 생성·종료 코드 전달 확인). 함께: 10-16 레포 이관(`~/Documents/Claude/Projects` → `~/Dev`, 옛 자리 링크) 때 설치본만 바뀌어 레포 plist 원본 4개가 설치본과 달라져 있던 것을 맞춤(경로 2곳씩), `install-server.sh`·`install-scheduler.sh` sed 패턴 · `wiki_mcp.js` 주석 경로 · `AGENTS.md` 레포 경로. 코드·장부·`.env` 무변경. 레포 밖 `rotate_extra_logs.sh` `YTDIR`·MCP `wiki-search` 등록은 옛 경로(링크로 동작) — 범위 밖. 지시서 `docs/tasks/2026-10-16-v415-caffeinate-plist-sync.md`.
 - **2026-10-15 (v4.14 — 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite)** — 배경: 신규 영상 1편에 2.5 Flash 를 요약 1 + 분류 1회 쓴다. 2.5 Flash 무료 RPD 프로젝트당 20, AI Studio 28일 최대 36/20(키 로테이션으로 버팀). 비교 시험(10-15, 맥 `~/v414chk`, 장부 읽기 전용, 최근 신규 20편): 2.5 Flash 재실행은 장부 토픽과 16/20 같음(자기 일관), 3.5 Flash-Lite 는 0/20 · Jaccard 0.44 · 영상당 4.4 → 2.5개 — 빠진 것은 주로 추상 토픽(생산성 향상 13·자동화 7·에이전트 6)·곁다리 도구, 더 맞게 붙은 것 바이브코딩 4·트렌드 1, 아쉬운 누락 수익화 1·전환 1. 오류·신뢰도 0.6 미만·목록 밖 토픽 0. 대표님 결정 A안(그대로 전환). 수정: `lib/classifier.js` `resolveModel`(기본 `gemini-3.5-flash-lite`, `.env CLASSIFY_MODEL`)·`thinkingConfigFor`·`opts.model`·결과 `model`·`Buffer.concat`(잠복 결함 — 옛 코드는 청크 경계 한글에서 토픽 `[]`), `scheduler.js` 분류 로그에 모델. 프롬프트·재시도·장부·스키마 무변경. 테스트: 신규 `test_classifier.js` 8/8(옛 코드 2/8). 회귀 테스트 15종. 지시서 `docs/tasks/2026-10-15-v414-classify-flash-lite.md`.

@@ -201,6 +201,8 @@ AI_Wiki_Pipeline/
 ├── wiki_mcp.js                        # Wiki 검색 stdio MCP (search_wiki, read_note)
 ├── com.irichgreen.*.plist             # launchd 원본 (server · ytsummarizer · wiki-ingest · wiki-lan) — 설치본과 같게 유지
 ├── install-*.sh                       # launchd 설치 스크립트 (server · scheduler · wiki-ingest)
+├── pm-wiki.sh                         # 실행 PM 세션(Claude Code) 띄우기
+├── .claude/                           # pm-wiki 지침(pm/PM_ROLE.md)·워커 서브에이전트(agents/)·훅(hooks/)·settings.json
 ├── deploy.sh                          # (옛) GitHub 일괄 업로드 스크립트 — 지금은 쓰지 않는다 (커밋·push 는 작업지시서로)
 ├── SKILL_SAFETY.md                    # 구글 API 안전 코딩 가이드 (401/403 즉시 중단 · 지수 백오프) — CLAUDE.md 보안 원칙의 원문
 ├── spec_sheet.html                    # (옛) v2.1 기술 명세서 — 기록용
@@ -223,6 +225,7 @@ AI_Wiki_Pipeline/
 │   ├── recategorize_tips.py           # (v4.9) 꿀팁 분류 보정 — 규칙이 매긴 카테고리·태그(+ v4.10 「기타」·태그 없음) 다시 매김 · 출처 호스트만 (dry-run 기본)
 │   ├── migrate_library.py             # (v4.5·v4.6) 장부 스키마 이전 1·2 → 3 (dry-run 기본, 백업 먼저)
 │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
+│   ├── run_all_tests.sh               # 회귀 테스트 15종 한 번에
 │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
 │   └── test_*.{js,py}                 # 회귀 테스트 15종 (네트워크 0회)
 ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
