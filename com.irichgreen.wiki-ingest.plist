@@ -13,6 +13,8 @@
 	<string>com.irichgreen.wiki-ingest</string>
 	<key>ProgramArguments</key>
 	<array>
+		<string>/usr/bin/caffeinate</string>
+		<string>-i</string>
 		<string>/opt/homebrew/bin/python3</string>
 		<string>/Users/tycoonan/Dev/AI_Wiki_Pipeline/wiki_ingest.py</string>
 	</array>
