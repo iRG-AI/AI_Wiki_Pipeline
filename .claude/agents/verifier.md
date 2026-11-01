@@ -28,7 +28,7 @@ PM 이 넘기는 것: 지시서 경로, implementer 보고, 라운드 번호, �
 - 장부를 썼으면: `/opt/homebrew/bin/python3 scripts/verify_library.py` 의 `ok: true`, `sqlite3 "file:data/library.db?mode=ro" "pragma integrity_check"` = ok, `sync_obsidian.py --dry-run` · `sheet_mirror.py --dry-run` 값이 지시서 기대값.
 - launchd 를 바꿨으면: `diff <(plutil -convert xml1 -o - ~/Library/LaunchAgents/<라벨>.plist) <(plutil -convert xml1 -o - <라벨>.plist)` 같음, `plutil -lint`, `launchctl print gui/$(id -u)/<라벨> | sed -n '/arguments = {/,/}/p'`.
 - **작업 시작 시각 이후 수정 파일 전수:** `find . -newermt '<시작 시각>' -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './Claude outputs/*' -not -name '*.log'`. 정시 실행이 쓰는 파일(`data/library.db`·`.run_state.json`·`.video_quota.json`·`.quota_state.json`·`wiki_index.*`·`.wiki_state.json`)이 나오면 `scheduler.log`·`~/Library/Logs/irichgreen/wiki-ingest.log` 시각과 맞춰 주체를 가리고, 가려지지 않으면 ❌. 시작 시각을 못 받았으면 ⚠️ 로 표시하고 PM 에 요청.
-- **게이트 로그:** `/tmp/cc-gate-<세션ID>.log`(없으면 `ls -t /tmp/cc-gate-*.log | head -1`). implementer 가 보고한 차단 횟수·문구가 `BLOCK n/3` 줄과 맞는가. `PASS-THROUGH` 가 있으면 그 결과는 ⚠️ — 전 항목을 직접 다시 본다. 파일이 없으면 "차단 없음".
+- **게이트 로그:** `/tmp/cc-gate-AI_Wiki_Pipeline-<세션ID>.log` — PM 이 넘긴 세션 ID 로 정확히 연다. `ls -t` 등으로 최근 파일을 고르지 않는다(다른 프로젝트·세션 로그일 수 있다). 세션 ID 를 못 받았으면 ⚠️ 로 표시하고 PM 에 요청. implementer 가 보고한 차단 횟수·문구가 `BLOCK n/3` 줄과 맞는가. `PASS-THROUGH` 가 있으면 그 결과는 ⚠️ — 전 항목을 직접 다시 본다. 파일이 없으면 "차단 없음".
 
 ## 출력 — 이 표 하나만
 | # | 기준(지시서) | 판정 | 내가 확인한 증빙 |

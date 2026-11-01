@@ -8,6 +8,6 @@ sid="$(printf '%s' "$input" | jq -r '.session_id // "nosid"' 2>/dev/null)"
 sid="${sid:-nosid}"
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root" || exit 0
-base_file="/tmp/cc-gate-${sid}.base"
+base_file="/tmp/cc-gate-AI_Wiki_Pipeline-${sid}.base"
 [ -f "$base_file" ] || git rev-parse HEAD > "$base_file" 2>/dev/null
 exit 0

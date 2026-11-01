@@ -2,9 +2,10 @@
 # gate_subagent_stop.sh — implementer(이름 모르는 워커 포함)가 멈추기 직전에 "커밋 전 체크리스트"를 기계적으로 검사한다.
 # 미통과면 exit 2 → Claude Code 가 워커를 멈추지 못하게 하고 stderr 를 피드백으로 넘긴다.
 # 차단 횟수는 워커(agent_id)별로 센다. 같은 워커를 3번 막으면 통과시키되(무한 루프 방지) 카운터를 지우고
-# /tmp/cc-gate-<세션>.log 에 PASS-THROUGH 를 남긴다 — verifier 가 그 로그로 대조한다.
+# /tmp/cc-gate-AI_Wiki_Pipeline-<세션>.log 에 PASS-THROUGH 를 남긴다 — verifier 가 그 로그로 대조한다.
 # 등록: .claude/settings.json → hooks.SubagentStop (timeout 900). 의존: git, jq, scripts/run_all_tests.sh
 # 이력: 2026-10-31 v1 — iRichGreen_ERP gate v3 를 이 레포 규칙(공개 레포·회귀 15종·plist)으로 옮김
+# 2026-11-01 — 로그·기준점·카운터 경로에 프로젝트 이름(다른 프로젝트 세션 로그 오독 방지, pm-cnc 알림)
 
 set -u
 input="$(cat)"
@@ -13,7 +14,7 @@ aid="$(printf '%s' "$input" | jq -r '.agent_id // ""' 2>/dev/null)"
 sid="$(printf '%s' "$input" | jq -r '.session_id // "nosid"' 2>/dev/null)"
 aid="${aid:-main}"; sid="${sid:-nosid}"
 now="$(date '+%Y-%m-%d %H:%M:%S')"
-gate_log="/tmp/cc-gate-${sid}.log"
+gate_log="/tmp/cc-gate-AI_Wiki_Pipeline-${sid}.log"
 
 # 읽기 전용 워커는 통과. 이름을 모르면(빈 값) 보수적으로 검사한다.
 case "$agent" in verifier|investigator|Explore|Plan) exit 0 ;; esac
@@ -21,7 +22,7 @@ case "$agent" in verifier|investigator|Explore|Plan) exit 0 ;; esac
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$root" || exit 0
 
-count_file="/tmp/cc-gate-${sid}-${aid}.count"
+count_file="/tmp/cc-gate-AI_Wiki_Pipeline-${sid}-${aid}.count"
 count="$(cat "$count_file" 2>/dev/null || echo 0)"
 if [ "$count" -ge 3 ]; then
   rm -f "$count_file" 2>/dev/null
@@ -31,7 +32,7 @@ if [ "$count" -ge 3 ]; then
 fi
 
 # 바뀐 파일 = (워커 시작 시점 HEAD 이후 커밋된 파일) + (작업 트리의 미커밋·untracked 파일, gitignore 제외)
-base="$(cat "/tmp/cc-gate-${sid}.base" 2>/dev/null || echo HEAD)"
+base="$(cat "/tmp/cc-gate-AI_Wiki_Pipeline-${sid}.base" 2>/dev/null || echo HEAD)"
 changed="$( { git diff --name-only "$base" HEAD 2>/dev/null; git diff --name-only 2>/dev/null; git diff --name-only --cached 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u )"
 [ -z "$changed" ] && exit 0
 
@@ -90,7 +91,7 @@ done
 
 # 8. 코드를 건드렸으면 회귀 테스트 15종 (1분 안쪽 — 네트워크 0, 실제 장부·Vault 무관)
 if printf '%s\n' "$changed" | grep -Eq '\.(js|py|sql|gs)$' && [ -x scripts/run_all_tests.sh ]; then
-  tlog="/tmp/cc-gate-${sid}-tests.log"
+  tlog="/tmp/cc-gate-AI_Wiki_Pipeline-${sid}-tests.log"
   if ! scripts/run_all_tests.sh all >"$tlog" 2>&1; then
     fail="${fail}- scripts/run_all_tests.sh 실패. 끝부분:\n$(tail -n 25 "$tlog" 2>/dev/null)\n(전체: ${tlog})\n"
   fi

@@ -78,7 +78,7 @@ verifier 가 지시서에 없어도 항상 보는 것은 `.claude/agents/verifie
 4. `data/`·상태 파일이 git 에 들어가지 않았다 · `README.html` 없음 · README 요약표 1행 + 상세 1절 · CLAUDE.md·AGENTS.md 동기(해당 시)
 5. 장부를 썼으면 `scripts/verify_library.py` ok · `sync_obsidian.py --dry-run` · `sheet_mirror.py --dry-run` 이 지시서 기대값
 6. launchd 를 바꿨으면 설치본 = 레포 원본 · `plutil -lint` · `launchctl print` arguments
-7. 게이트 로그 `/tmp/cc-gate-<세션ID>.log` 의 `BLOCK`·`PASS-THROUGH` 와 implementer 보고 대조
+7. 게이트 로그 `/tmp/cc-gate-AI_Wiki_Pipeline-<세션ID>.log` 의 `BLOCK`·`PASS-THROUGH` 와 implementer 보고 대조 — verifier 에 세션 ID 를 넘긴다
 
 ## 5. 멈추고 대표님께 묻는 것
 
