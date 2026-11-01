@@ -1004,9 +1004,16 @@ async function processMasterIngest(libCache) {
           log(`    ⚠️  신뢰도 낮음 — 주제 저장은 하되 수동 검토 권장`);
         }
 
+        // (v4.17) 등급을 토픽으로 다시 매긴다 — not_ai 는 토픽도 비었을 때만
+        const rg = videoSummary.regrade(sumMeta, topics);
+        if (sumMeta.grade === 'exclude' && rg.meta.grade === 'keep') summarizer.stats.exclude--;
+        if (rg.meta.grade !== sumMeta.grade || rg.note.includes('not_ai_minor')) {
+          log(`    🎚  등급(토픽 반영): ${sumMeta.grade} → ${rg.meta.grade}${rg.note ? ` (${rg.note})` : ''}`);
+        }
+
         // 장부 저장
-        const pageId = saveToLibrary(v, summary, allTopics, sumMeta);
-        log(`    ✓ 장부 저장 완료 (주제: ${allTopics.join(', ') || '(분류 없음)'} · 요약 ${sumMeta.src}${sumMeta.grade ? ` · ${sumMeta.grade}` : ''})`);
+        const pageId = saveToLibrary(v, summary, allTopics, rg.meta);
+        log(`    ✓ 장부 저장 완료 (주제: ${allTopics.join(', ') || '(분류 없음)'} · 요약 ${rg.meta.src}${rg.meta.grade ? ` · ${rg.meta.grade}` : ''})`);
         // 결과 테이블용 구조화 데이터 (server.js → index.html 전달)
         console.log('RESULT_ROW:' + JSON.stringify({
           videoId: v.videoId, title: v.title, channelTitle: v.channelTitle,

@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.16** (2026-10-31)
+**현재 버전: v4.17** (2026-11-01)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -24,6 +24,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.14: 영상 토픽 분류를 Gemini 3.5 Flash-Lite 로 옮겼습니다. 2.5 Flash 하루 요청 한도를 영상 요약에 남기고, 분류 프롬프트의 「추상 토픽 남발 금지」를 더 잘 지켜 영상당 토픽이 약 4.4개 → 2.5개로 줄어듭니다(재생목록 추가도 그만큼 줄어 YouTube 할당량에 이득). 되돌리기는 `.env` `CLASSIFY_MODEL=gemini-2.5-flash` 한 줄.
 > v4.15: 정시 실행 동안 맥이 유휴 잠자기에 들지 않게 `caffeinate -i` 로 감쌌습니다(배터리에서 1분 뒤 잠드는 설정이라 덮개를 연 채 자리를 비우면 실행 도중 잠들 수 있었음). 덮개를 닫아 잠든 경우는 막지 못합니다 — 그때는 실패 알림과 다음 실행이 이어 받습니다. 10-16 레포 이관(`~/Dev/AI_Wiki_Pipeline`)에 맞춰 plist 원본·설치 스크립트 경로도 맞췄습니다.
 > v4.16: 17:30 Wiki 인제스트도 `caffeinate -i` 로 감싸 실행 중 잠들지 않게 했습니다. `brew upgrade` 뒤 점검 순서를 CLAUDE.md 에 적었습니다(10-30 업그레이드로 정시 실행 2회가 빠진 일).
+> v4.17: 영상 요약의 「AI 무관(`ai_related=false`)」 신호만으로는 영상을 제외하지 않습니다 — 토픽 분류도 비었을 때만 제외합니다(신호 5건 중 진짜 비 AI 1건, 토픽 분류는 5/5 맞음). 신규 영상은 분류 뒤 등급을 다시 매기고, 재요약은 장부 토픽을 씁니다. 장부 무변경.
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
@@ -476,6 +477,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.17** | 2026-11-01 | **not_ai 제외는 토픽 분류도 비었을 때만**: 영상 신호 `ai_related=false` 5건 중 진짜 비 AI 1건(정밀도 1/5), 토픽 분류는 5/5 맞음. `computeGrade(signals, topics)` — `!ai_related` AND 토픽 0개일 때만 제외, 토픽이 있으면 `not_ai_minor` 로 알림. 신규는 분류 뒤 재판정, 재요약은 장부 토픽. 장부 무변경 · 소급 안 함 |
 | **v4.16** | 2026-10-31 | **wiki-ingest 잠자기 방지 · brew 업그레이드 뒤 점검 순서**: `com.irichgreen.wiki-ingest`(17:30)도 `/usr/bin/caffeinate -i` 로 감싼다. 10-30 `brew upgrade`(simdjson)로 node 가 dyld 오류로 기동 즉시 죽어 정시 실행 2회가 로그 없이 빠진 일을 계기로 점검 순서를 CLAUDE.md 에. 레포 밖 옛 경로 2곳을 `~/Dev` 로. 코드·장부 무변경 |
 | **v4.15** | 2026-10-16 | **정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤**: `com.irichgreen.ytsummarizer` 를 `/usr/bin/caffeinate -i` 로 감싸 실행 중 유휴 잠자기(배터리 `sleep 1`)를 막는다. 덮개를 닫은 잠자기(10-15 12시 실패 원인)는 못 막는다. 10-16 레포 이관(`~/Dev`)으로 설치본과 달라진 레포 plist 원본 4개·`install-server.sh`·`install-scheduler.sh` sed 패턴·`wiki_mcp.js` 주석을 새 경로로. 코드·장부 무변경 |
 | **v4.14** | 2026-10-15 | **토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite**: 신규 영상 1편에 2.5 Flash 를 요약 1 + 분류 1회 쓰던 것을 요약 1회로 — 2.5 Flash 무료 하루 요청 한도(프로젝트당 20, 28일 최대 36/20)를 영상 요약에 남긴다. 3.5 Flash-Lite 는 하루 500. 비교 시험(최근 신규 20편): 오류·신뢰도 0.6 미만 0, 영상당 토픽 4.4 → 2.5개 — 주로 추상 토픽(생산성 향상 13·자동화 7·에이전트 6)이 빠지고 바이브코딩 4·트렌드 1이 더 맞게 붙음(대표님 결정 A안). `.env CLASSIFY_MODEL` 로 되돌림. 분류 응답 한글이 청크 경계에서 깨질 수 있던 잠복 결함(`chunks += c`) 수정. 장부·스키마 무변경. 회귀 테스트 15종 |
@@ -514,6 +516,20 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.17] — 2026-11-01 (🎚 AI 무관 신호만으로는 제외하지 않는다 — 토픽 분류도 비었을 때만)
+
+**배경.** 실제 영상 요약의 `ai_related=false` 5편 중 진짜 비 AI 는 1편(작가용 워드프로세서)뿐이었다(정밀도 1/5). 나머지 4편은 바이브코더 대상 개발·운영 정보, AI 로 만든 결과물 공유였고 대표님이 손으로 keep 으로 되돌렸다. 같은 5편에서 토픽 분류는 사람 판정과 5/5 맞았다(진짜 비 AI 만 토픽 `[]`).
+
+| 항목 | 내용 |
+|---|---|
+| 규칙 | `computeGrade(signals, topics)` — `!ai_related` AND 토픽 0개일 때만 `not_ai` 제외. 토픽이 있으면 제외하지 않고 `not_ai_minor` 로 로그에 알린다. 토픽을 안 넘기면(모름) 지금처럼 제외. promo·generic 규칙 무변경 |
+| 신규 영상 | 요약 시점엔 토픽이 없으므로 분류 뒤·저장 앞에 `regrade` 로 다시 매긴다. exclude → keep 이면 `stats.exclude` −1, 로그 `🎚 등급(토픽 반영)` |
+| 재요약 | 후보에 장부 `topics` 를 실어 넘긴다(재분류 없음) |
+| 무변경 | 프롬프트 · 응답 스키마 · 장부 스키마 · 기존 장부 등급(소급 안 함) · 분류기 |
+| 테스트 | `test_video_summary.js` 35/35(+3) · `test_resummarize.js` 12/12(+1) · 회귀 15종 |
+
+지시서 `docs/tasks/2026-11-01-v417-not-ai-topics.md`.
 
 #### [v4.16] — 2026-10-31 (☕ wiki-ingest 잠자기 방지 · brew 업그레이드 뒤 점검 순서)
 

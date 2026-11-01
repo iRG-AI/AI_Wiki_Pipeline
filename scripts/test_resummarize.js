@@ -30,9 +30,9 @@ function makeDb(rows, extract = []) {
   const { DatabaseSync } = library.loadSqlite();
   const raw = new DatabaseSync(p);
   raw.exec(fs.readFileSync(path.join(ROOT, 'lib', 'library_schema.sql'), 'utf8'));
-  const ins = raw.prepare(`INSERT INTO videos (record_id, video_id, title, channel, upload_date, summary, summary_src, grade, quality, created_at, updated_at)
-    VALUES (?, ?, ?, 'ch', ?, ?, ?, ?, ?, ?, ?)`);
-  for (const r of rows) ins.run(r.id, r.vid, r.title || r.id, r.date, r.summary || '옛 요약', r.src || 'property', r.grade || null, r.quality || null, OLD_TS, OLD_TS);
+  const ins = raw.prepare(`INSERT INTO videos (record_id, video_id, title, channel, upload_date, summary, summary_src, grade, quality, topics, created_at, updated_at)
+    VALUES (?, ?, ?, 'ch', ?, ?, ?, ?, ?, ?, ?, ?)`);
+  for (const r of rows) ins.run(r.id, r.vid, r.title || r.id, r.date, r.summary || '옛 요약', r.src || 'property', r.grade || null, r.quality || null, r.topics || '[]', OLD_TS, OLD_TS);
   for (const id of extract) {
     raw.prepare(`INSERT INTO wiki_extract (record_id, status, source, entities, concepts, attempts, created_at, updated_at)
       VALUES (?, 'ok', 'single', '[]', '[]', 1, 'x', ?)`).run(id, OLD_TS);
@@ -53,7 +53,7 @@ function harness({ db, details = {}, script = [], env = {}, today = '2026-10-13'
   h.run = () => rs.run({
     db, env, todayKey: () => today, log: (m) => h.logs.push(m), sleep: async () => {},
     fetchDetails: async (ids) => { h.fetched.push(ids); const m = {}; for (const id of ids) if (details[id]) m[id] = details[id]; return m; },
-    makeSummarizer: (opts) => { h.made.push(opts); return { summarize: async (v) => { h.summarized.push(v.videoId); const s = script.shift(); if (!s) throw new Error('대본 없음'); return s; } }; },
+    makeSummarizer: (opts) => { h.made.push(opts); return { summarize: async (v) => { h.summarized.push(v.videoId); (h.vs ||= []).push(v); const s = script.shift(); if (!s) throw new Error('대본 없음'); return s; } }; },
   });
   return h;
 }
@@ -89,6 +89,13 @@ const cases = [
     assert(h.fetched.length === 1, '영상 조회는 실행당 1회');
     assert(r.today === 2 && r.remaining === 2, JSON.stringify(r));
     assert(rs.summaryLine(r).startsWith('🔁 재요약: 2편 (제외 등급 1)') && rs.summaryLine(r).includes('오늘 2/20 · 남은 대상 2'), rs.summaryLine(r));
+  }],
+  ['(v4.17) 후보에 장부 topics(parseTopics)를 실어 요약기 v.topics 로 넘긴다 · 기본값 행은 [] · 재분류 없음', async () => {
+    const db = makeDb([{ id: 'r1', vid: 'V1_________', date: '2026-10-02', topics: '["AI 바이브코딩"]' }, { id: 'r2', vid: 'V2_________', date: '2026-10-01' }]);
+    const h = harness({ db, details: { V1_________: DET(), V2_________: DET() }, script: [GOOD(), GOOD()] });
+    await h.run();
+    const t = Object.fromEntries(h.vs.map(v => [v.videoId, v.topics]));
+    assert(JSON.stringify(t.V1_________) === '["AI 바이브코딩"]' && JSON.stringify(t.V2_________) === '[]', JSON.stringify(t));
   }],
   ['이미 video 인 행은 updateResummary 가 건드리지 않는다', async () => {
     const db = makeDb(BASE);

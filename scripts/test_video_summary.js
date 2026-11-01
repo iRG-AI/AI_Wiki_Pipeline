@@ -155,6 +155,35 @@ const cases = [
     assert(r.src === 'video' && r.grade === 'keep' && q.why.length === 0 && q.promo_main === true && q.promo_share === 0.03 && q.promo_subject === false, r.quality);
     assert(h.logs.some(l => / → keep \(promo_minor 0\.03\)$/.test(l)) && h.s.stats.exclude === 0, h.logs.join('|'));
   }],
+  ['(v4.17) computeGrade: not_ai 는 토픽이 비었을 때만', async () => {
+    const g = (o, t) => vs.computeGrade(SIG({ ai_related: false, ...o }), t);
+    for (const t of [[], undefined]) {
+      const r = g({}, t);
+      assert(r.grade === 'exclude' && r.why.join() === 'not_ai' && r.note === '', JSON.stringify(r));
+    }
+    for (const t of [['AI 영상', 'AI 음악.음원', 'AI 자동화', 'AI 생산성 향상'], ['AI 바이브코딩'], ['AI 바이브코딩'], ['AI 바이브코딩', 'AI 여행계획']]) {
+      const r = g({}, t);
+      assert(r.grade === 'keep' && r.why.length === 0 && r.note === 'not_ai_minor', JSON.stringify(r));
+    }
+    const ge = g({ generic: true }, ['AI 바이브코딩']);
+    assert(ge.grade === 'exclude' && ge.why.join() === 'generic' && ge.note === 'not_ai_minor', JSON.stringify(ge));
+    const pm = g({ promo_main: true, promo_share: 0.03 }, ['AI 바이브코딩']);
+    assert(pm.note === 'promo_minor 0.03, not_ai_minor', pm.note);
+  }],
+  ['(v4.17) regrade: 영상 요약만 토픽으로 다시 매김 · quality 다른 키 보존', async () => {
+    const meta = { src: 'video', grade: 'exclude', quality: JSON.stringify({ ...SIG({ ai_related: false }), why: ['not_ai'], model: 'm', sec: 60 }) };
+    const k = vs.regrade(meta, ['AI 바이브코딩']);
+    const q = JSON.parse(k.meta.quality);
+    assert(k.meta.grade === 'keep' && q.why.length === 0 && q.ai_related === false && q.promo_main === false && q.model === 'm' && q.sec === 60 && k.note === 'not_ai_minor', JSON.stringify(k));
+    const app = { src: 'app', grade: null, quality: null };
+    assert(vs.regrade(app, ['AI 바이브코딩']).meta === app, 'app 은 그대로');
+    assert(vs.regrade(meta, []).meta.grade === 'exclude', '토픽 [] 면 exclude 그대로');
+  }],
+  ['(v4.17) summarize 로그: 토픽 있는 not_ai → keep (not_ai_minor)', async () => {
+    const h = harness({ script: [ok200(SIG({ ai_related: false }))] });
+    const r = await h.s.summarize(V({ topics: ['AI 바이브코딩'] }));
+    assert(r.grade === 'keep' && h.logs.some(l => / → keep \(not_ai_minor\)$/.test(l)), h.logs.join('|'));
+  }],
   ['summarize: 일부공개·비공개·길이 모름은 영상 요청 없이 설명란 요약 (src app · grade null)', async () => {
     const h = harness();
     for (const v of [V({ privacy: 'unlisted' }), V({ privacy: 'private' }), V({ privacy: '' }), V({ durationSec: null }), V({ durationSec: 0 })]) {

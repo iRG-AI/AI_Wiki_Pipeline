@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**현재 버전: v4.16** (2026-10-31) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.17** (2026-11-01) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -22,6 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > v4.14: 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite(`lib/classifier.js`, `.env CLASSIFY_MODEL` 로 되돌림) — 신규 영상 1편의 2.5 Flash 요청 2회 → 1회. 비교 20편에서 영상당 토픽 4.4 → 2.5개(추상 토픽 과추천이 줄어듦, 대표님 결정 A안). 분류 응답 한글 청크 경계 깨짐(`chunks += c`) 수정. 장부 무변경.
 > v4.15: 정시 실행을 `/usr/bin/caffeinate -i` 로 감싼다(`com.irichgreen.ytsummarizer` plist) — 실행 중 유휴 잠자기(배터리 설정 `sleep 1` = 1분)를 막는다. 덮개를 닫은 잠자기·이미 잠든 맥은 못 막는다(10-15 12시 실패 = 11:54 Clamshell Sleep). 레포 plist 원본 4개·`install-server.sh`·`install-scheduler.sh` sed 패턴을 10-16 이관 경로(`~/Dev`)로 맞췄다. 코드·장부 무변경.
 > v4.16: 17:30 Wiki 인제스트(`com.irichgreen.wiki-ingest`)도 `/usr/bin/caffeinate -i` 로 감싼다(v4.15 와 같은 이유). `brew upgrade` 뒤 점검 순서를 「launchd 데몬」 절에 적었다(10-30 simdjson 업그레이드로 node 가 기동 즉시 죽어 정시 실행 2회가 로그 없이 빠진 사건). 코드·장부 무변경.
+> v4.17: `computeGrade` 의 `not_ai` 제외를 「`ai_related=false` AND 토픽 분류 0개」로 좁혔다(v4.12 promo 의 AND 와 같은 방향). 신규는 분류 뒤 `regrade`, 재요약은 장부 `topics` 를 후보에 실어 넘긴다. 장부·프롬프트·스키마 무변경.
 
 > 2026-10-16에 `~/Documents/Claude/Projects/AI_Wiki_Pipeline` → `~/Dev/AI_Wiki_Pipeline` 로 이관했습니다(Google Drive 백업 밖 · 옛 자리에 링크). launchd 4개(server · wiki-ingest · wiki-lan · ytsummarizer)도 새 경로로 바꿨습니다(원본 `*.plist.bak.20261016`).
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
@@ -79,9 +80,9 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 
 # 회귀 테스트 15종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
 /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
-/opt/homebrew/bin/node scripts/test_video_summary.js         # 32/32  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 · (v4.11) 5xx 상한 · (v4.12) 판매 비중·본론 신호 · (v4.13) 모델·키별 분량 (가짜 요청)
+/opt/homebrew/bin/node scripts/test_video_summary.js         # 35/35  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 · (v4.11) 5xx 상한 · (v4.12) 판매 비중·본론 신호 · (v4.13) 모델·키별 분량 · (v4.17) not_ai 토픽 조건 (가짜 요청)
 /opt/homebrew/bin/node scripts/test_classifier.js            # 8/8    (v4.14) 토픽 분류 — 모델 기본값·CLASSIFY_MODEL·모델별 thinking·요청 주소·한글 청크 경계·allowedSet·오류 문구 (가짜 https)
-/opt/homebrew/bin/node scripts/test_resummarize.js           # 11/11  (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 · (v4.11) 5xx 조기 중단·3회 건너뜀 (임시 장부, 가짜 요약기)
+/opt/homebrew/bin/node scripts/test_resummarize.js           # 12/12  (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 · (v4.11) 5xx 조기 중단·3회 건너뜀 · (v4.17) 후보 토픽 (임시 장부, 가짜 요약기)
 /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
 /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
 /opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 64/64  Wiki 추출 누적·재렌더·backfill(v4.6-b 영상 요약 소스만·stale)·씨앗·품질 제외·항목 0 안내 페이지 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
@@ -369,7 +370,7 @@ videos.list(statistics,snippet,contentDetails,status — 1유닛 그대로) → 
 ```
 
 - 모듈은 `lib/video_summary.js`, 호출 자리는 `scheduler.js:processMasterIngest` 하나(레거시 재생목록 순회 경로는 설명란 요약 그대로).
-- **등급은 모델이 아니라 코드가 매긴다** — `computeGrade`: `promo_main`(제작자 **자신의** 강의·컨설팅·커뮤니티·상품 판매가 주목적) · `generic`(구체 정보 없는 일반론) · `!ai_related` 중 하나라도면 `exclude`. 유료 광고·협찬(`sponsored`)·시연(`has_demo`)은 기록만 하고 등급에 안 쓴다. 모델에게 A/B/C 를 매기게 했더니 판매 영상에도 A 를 줬다(10-12 시험) — 모델 등급으로 되돌리지 말 것. `promo_main` 정의를 넓히지 말 것 — "판매·홍보가 주목적"으로 두면 다른 회사 도구를 시연하는 협찬 영상까지 제외됐다(10-13 시험). (v4.12) 판매 제외는 `promo_main AND (promo_share ≥ PROMO_SHARE_MIN(0.5) OR promo_subject)` — 두 모델 모두 영상 끝에 자기 상품을 잠깐 알리면 promo_main 을 true 로 낸다(오판 3건). promo_main 이 false 면 비중·본론과 상관없이 제외하지 않는다(이 AND 를 OR 로 바꾸지 말 것 — 정의 넓히기). 비중은 같은 영상도 회차마다 0.05 ↔ 0.32 로 흔들려 안전망으로만 쓰고, 광고성 본문(자기 상품의 고객 사례·소개)은 `promo_subject` 가 잡는다. 판매 구간 시각(spans)은 영상 길이를 넘는 값이 나와 쓰지 않는다(10-14 시험). promo_main 이 true 인데 제외 안 되면 로그 `(promo_minor 0.03)`.
+- **등급은 모델이 아니라 코드가 매긴다** — `computeGrade`: `promo_main`(제작자 **자신의** 강의·컨설팅·커뮤니티·상품 판매가 주목적) · `generic`(구체 정보 없는 일반론) · `!ai_related` AND 토픽 분류 0개 중 하나라도면 `exclude`. 유료 광고·협찬(`sponsored`)·시연(`has_demo`)은 기록만 하고 등급에 안 쓴다. 모델에게 A/B/C 를 매기게 했더니 판매 영상에도 A 를 줬다(10-12 시험) — 모델 등급으로 되돌리지 말 것. `promo_main` 정의를 넓히지 말 것 — "판매·홍보가 주목적"으로 두면 다른 회사 도구를 시연하는 협찬 영상까지 제외됐다(10-13 시험). (v4.12) 판매 제외는 `promo_main AND (promo_share ≥ PROMO_SHARE_MIN(0.5) OR promo_subject)` — 두 모델 모두 영상 끝에 자기 상품을 잠깐 알리면 promo_main 을 true 로 낸다(오판 3건). promo_main 이 false 면 비중·본론과 상관없이 제외하지 않는다(이 AND 를 OR 로 바꾸지 말 것 — 정의 넓히기). 비중은 같은 영상도 회차마다 0.05 ↔ 0.32 로 흔들려 안전망으로만 쓰고, 광고성 본문(자기 상품의 고객 사례·소개)은 `promo_subject` 가 잡는다. 판매 구간 시각(spans)은 영상 길이를 넘는 값이 나와 쓰지 않는다(10-14 시험). promo_main 이 true 인데 제외 안 되면 로그 `(promo_minor 0.03)`. (v4.17) `!ai_related` 만으로는 제외하지 않는다 — `computeGrade(signals, topics)` 가 토픽 배열이 비었거나 없을 때만 `not_ai` 를 사유로 삼고, 토픽이 있으면 `not_ai_minor` 로 알린다(신호 5건 중 진짜 비 AI 1건, 토픽 분류는 5/5). 신규 영상은 `🎬 … → exclude [not_ai]` 가 요약 시점의 임시 값이고 분류 뒤 `regrade` 로 다시 매겨 최종 등급은 `🎚 등급(토픽 반영)`·`✓ 장부 저장 완료 … · keep` 줄로 본다. 재요약은 장부 `topics` 를 쓴다. 분야형 토픽(「AI 여행계획」 등)이 비 AI 영상에 붙으면 keep 이 되므로 `not_ai_minor` 로 관찰한다. 이 조건을 OR 로 되돌리거나 토픽 없이 not_ai 를 끄지 말 것.
 - **영상 토큰 0 이면 실패다.** 삭제된 영상은 200 + 영상 토큰 0 + 지어낸 답을 돌려준다(10-13 시험). `parseResponse` 의 이 검사를 빼지 말 것.
 - 공개(`public`)가 아닌 영상은 영상 입력을 시도하지 않는다(일부공개 = 403 PERMISSION_DENIED). 영상 입력 403 은 영상 단위라 그 영상만 대체하고, **연속 2회면 그 실행에서 영상 입력을 끈다**(403 난사 방지). 대체 요약(같은 키)도 403 이면 `geminiSummarize` 의 기존 즉시 종료 경로를 탄다.
 - 429·5xx·네트워크 오류는 키를 돌려 재시도(키 4개 × 2회 상한) 후 대체. 400 등 그 밖의 오류는 재시도 없이 대체.
@@ -632,8 +633,8 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-11-01 (v4.17 — not_ai 제외는 토픽 분류도 비었을 때만)** — 배경: 영상 신호 `ai_related=false` 5편 중 진짜 비 AI 는 `68zimAoOTcM`(작가용 워드프로세서) 1편뿐(정밀도 1/5), 오판 4건(`r98qvQYlrMc`·`5k0tCrXdIIM`·`VoqXu3oFsk4`·`0Ef6MaFg6b0`)은 대표님이 keep 으로 되돌렸다. 같은 5편에서 토픽 분류는 5/5 맞았다(진짜 비 AI 만 토픽 `[]`). 대표님 결정 11-01: 코드 규칙만 좁힌다(프롬프트·스키마 그대로). 수정: `lib/video_summary.js` `computeGrade(signals, topics)`(`!ai_related` AND 토픽 0개일 때만 `not_ai`, 아니면 note `not_ai_minor`) · `regrade`, `scheduler.js` 분류 뒤·저장 앞 재판정(`stats.exclude` 보정·`🎚 등급(토픽 반영)` 로그), `lib/library.js` 재요약 후보에 `topics`, `lib/resummarize.js` 가 `v.topics` 로 전달. 장부·스키마·기존 등급 무변경(소급 안 함). 테스트: `test_video_summary.js` 35/35(+3), `test_resummarize.js` 12/12(+1). 회귀 테스트 15종. 지시서 `docs/tasks/2026-11-01-v417-not-ai-topics.md`.
 - **2026-10-31 (v4.16 — wiki-ingest 잠자기 방지 · brew 업그레이드 뒤 점검 순서)** — `com.irichgreen.wiki-ingest` plist `ProgramArguments` 앞에 `/usr/bin/caffeinate -i`(원본·설치본, 재로드). 배경: 10-30 저녁 `brew upgrade`(simdjson) 뒤 node 26.10.0 이 dyld 오류로 기동 즉시 죽어 10-30 18시·10-31 00시 실행이 로그 없이 빠지고 상주 데몬이 00:19 node 26.13.0 설치까지 내려가 있었다 — 「launchd 데몬」 절에 점검 순서. 레포 밖 옛 경로(`rotate_extra_logs.sh` `YTDIR` · MCP `wiki-search`)는 설치 스크립트로 `~/Dev` 로 맞춤(v4.15 범위 밖이던 것). 코드·장부·`.env` 무변경. 지시서 `docs/tasks/2026-10-31-v416-wiki-ingest-caffeinate.md`.
-
 - **2026-10-31 (운영 체계 전환, 버전 유지)** — 실행 PM 을 Claude Code 세션 `pm-wiki`(`./pm-wiki.sh`, Opus) + 워커 서브에이전트 4종(`.claude/agents/` implementer·verifier·investigator·scribe) + 훅(`.claude/hooks/` 실행 창 보호·워커 종료 게이트)으로 옮겼다(iRichGreen_ERP `pm-erp` 구조). Cowork 는 정시 실행 판정·관찰·상담·설계 메모를 맡고 pm-wiki 에는 XP 요청서로 발주한다. `scripts/run_all_tests.sh`(회귀 15종 한 번에) 신설. `.gitignore` 에 `.claude/agent-memory/`·`.claude/pm/local/`. 코드·장부·데몬 무변경. 지시서 `docs/tasks/2026-10-31-pm-wiki-structure.md`.
 
 - **2026-10-16 (v4.15 — 정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤)** — 배경: 10-15 12:00 실행이 `ENOTFOUND` 로 통째 실패(맥 잠자기). `pmset -g log` 로 보니 원인은 11:54 덮개 닫힘(Clamshell Sleep, 배터리 36%) — 이 경우는 소프트웨어로 안전하게 막을 수 없다. 대신 배터리 설정이 `sleep 1`(1분)이라 덮개를 연 채 자리를 비워도 15분짜리 실행 도중 유휴 잠자기에 들 수 있어, 그 경우만 막는다. 수정: `com.irichgreen.ytsummarizer.plist` `ProgramArguments` 앞에 `/usr/bin/caffeinate -i`(맥에서 단언 생성·종료 코드 전달 확인). 함께: 10-16 레포 이관(`~/Documents/Claude/Projects` → `~/Dev`, 옛 자리 링크) 때 설치본만 바뀌어 레포 plist 원본 4개가 설치본과 달라져 있던 것을 맞춤(경로 2곳씩), `install-server.sh`·`install-scheduler.sh` sed 패턴 · `wiki_mcp.js` 주석 경로 · `AGENTS.md` 레포 경로. 코드·장부·`.env` 무변경. 레포 밖 `rotate_extra_logs.sh` `YTDIR`·MCP `wiki-search` 등록은 옛 경로(링크로 동작) — 범위 밖. 지시서 `docs/tasks/2026-10-16-v415-caffeinate-plist-sync.md`.
