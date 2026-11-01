@@ -26,7 +26,10 @@
       "Write(~/Documents/Claude/XP/**)",
       "Edit(~/Documents/Claude/XP/**)",
       "Read(~/Library/Logs/irichgreen/**)",
-      "Read(~/Library/LaunchAgents/**)"
+      "Read(~/Library/LaunchAgents/**)",
+      "mcp__pinboard__update",
+      "mcp__plugin_claude-mem_mcp-search__work_state_write",
+      "mcp__plugin_claude-mem_mcp-search__work_state_read"
     ],
     "ask": [
       "Bash(git push*)"
