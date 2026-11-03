@@ -166,6 +166,17 @@ function runTipsBot(python3) {
   });
 }
 
+// (v4.18) 텔레그램 꿀팁 입구 이상 알림 문구 — 알릴 일이 없으면 null. 치명 3종(auth·conflict·bad_request)이면 그 문구,
+// 아니면 마지막 정상 수신이 18시간 넘었을 때만 stale 문구(그 사이 오류가 있으면 이름을 덧붙임).
+function tipsBotAlert(r) {
+  if (!r) return null;
+  const fatal = ['auth', 'conflict', 'bad_request'].includes(r.error);
+  if (!fatal && !(r.stale_h >= 18)) return null;
+  return `⚠️ <b>[텔레그램 꿀팁 입구]</b>\n` + (fatal
+    ? `${r.error} — ${r.error === 'auth' ? '봇 토큰·chat id 확인' : r.error === 'conflict' ? '다른 곳에서 같은 봇을 읽는 중 (webhook·다른 프로그램)' : '요청 형식 오류'}`
+    : `마지막 정상 수신 ${r.stale_h}시간 전${r.error ? ` (오류 ${r.error})` : ''} — 봇 방에 보낸 링크가 쌓이는지 확인`);
+}
+
 // ── (v4.0 3단계) 장부 → 구글 시트 미러 (보기 전용, 변경분만) ──
 // sheet_mirror.py 실행. .env 에 SHEET_MIRROR_URL 이 없으면 Python 쪽이 skipped 로 즉시 끝난다.
 // 실패해도 reject 하지 않는다 — 시트는 보기용 사본이라 Obsidian 동기화를 막으면 안 된다. 실패분은 다음 실행이 다시 보낸다.
@@ -1548,11 +1559,8 @@ async function main() {
   log('\n📮 텔레그램 → AI 꿀팁 인제스트...');
   const tipsBot = await runTipsBot(python3);
   const tipsBotCreated = (tipsBot && tipsBot.created) || 0;
-  if (tipsBot && (['auth', 'conflict', 'bad_request'].includes(tipsBot.error) || tipsBot.stale_h >= 18)) {
-    await sendTelegram(`⚠️ <b>[텔레그램 꿀팁 입구]</b>\n` + (tipsBot.error
-      ? `${tipsBot.error} — ${tipsBot.error === 'auth' ? '봇 토큰·chat id 확인' : tipsBot.error === 'conflict' ? '다른 곳에서 같은 봇을 읽는 중 (webhook·다른 프로그램)' : '요청 형식 오류'}`
-      : `마지막 정상 수신 ${tipsBot.stale_h}시간 전 — 봇 방에 보낸 링크가 쌓이는지 확인`));
-  }
+  const tipsBotMsg = tipsBotAlert(tipsBot);
+  if (tipsBotMsg) await sendTelegram(tipsBotMsg);
 
   // ── (v4.0 3단계) 장부 → 구글 시트 미러 (설정 전이면 skipped) ──
   log('\n📗 구글 시트 미러...');
@@ -1657,7 +1665,7 @@ if (require.main === module) {
   });
 } else {
   module.exports = {
-    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror, runLibraryBackup, runTipsBot,
+    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror, runLibraryBackup, runTipsBot, tipsBotAlert,
     sendTelegram, readRunState, writeRunState, runNotices, isWholeRunFailure, escapeHtml,   // (v4.2) 실행 실패 알림
     validateSummary,   // (v4.6) scripts/test_video_summary.js
     runResummary,      // (v4.6-b) scripts/test_scheduler_guards.js

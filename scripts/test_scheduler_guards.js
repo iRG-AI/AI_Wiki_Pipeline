@@ -298,6 +298,12 @@ const cases = [
     const r = await sched.runTipsBot(fake);
     assert(r && r.skipped === 'not_configured' && !r.error, '결과가 다르다: ' + JSON.stringify(r));
   }],
+  ['tipsBotAlert: transient + stale 20h 는 stale 문구 (요청 형식 오류 문구 아님) · 치명은 그 문구 · 정상은 null', async () => {
+    const m = sched.tipsBotAlert({ error: 'transient', stale_h: 20 });
+    assert(m && m.includes('20시간') && m.includes('오류 transient') && !m.includes('요청 형식'), '문구: ' + m);
+    assert(sched.tipsBotAlert({ error: 'bad_request', stale_h: 1 }).includes('요청 형식 오류'), 'fatal 문구');
+    assert(sched.tipsBotAlert({ error: 'transient', stale_h: 2 }) === null && sched.tipsBotAlert({ skipped: 'not_configured' }) === null, '알리면 안 됨');
+  }],
   ['runLibraryBackup: 드라이브 실패(exit 1)여도 reject 없이 결과를 돌려준다', async () => {
     const fake = fakeInterpreter('echo \'RESULT_JSON:{"file":"library-20261012.db.gz","dests":{"local":"ok","drive":"unavailable"},"error":"drive_unavailable"}\'; exit 1');
     const r = await sched.runLibraryBackup(fake);

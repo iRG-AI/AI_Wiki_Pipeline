@@ -198,6 +198,12 @@ def main():
     check('15 dry-run → 장부·meta 쓰기 0 · sendMessage 0 · 후보 1', code == 0 and rj['candidates'] == 1 and len(q(p, 'select 1 from tips')) == 1
           and not q(p, "select 1 from meta where key like 'tips_bot%'") and not sent(), (code, rj))
 
+    print('▶ 정리 전후 URL 키가 다른 링크')
+    p = fresh(tmp, 't16')
+    queue[:] = [ok([msg(80, 800, 'https://example.com/x?v=1.&utm_source=a')])]
+    code, out, rj = run()
+    check('저장 답장이 나간다 (KeyError 없음)', code == 0 and rj['created'] == 1 and len(sent()) == 1 and sent()[0].startswith('저장: '), (code, rj, sent()))
+
     print('▶ whoami')
     queue[:] = [ok([msg(70, 700, 'x')])]
     code, out, rj = run(('--whoami',))

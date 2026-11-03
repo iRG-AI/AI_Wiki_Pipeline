@@ -84,7 +84,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
 # 회귀 테스트 16종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
-/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 33/33  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해
+/opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 37/37  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해 · (v4.18) 텔레그램 꿀팁 훅
 /opt/homebrew/bin/node scripts/test_video_summary.js         # 35/35  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 · (v4.11) 5xx 상한 · (v4.12) 판매 비중·본론 신호 · (v4.13) 모델·키별 분량 · (v4.17) not_ai 토픽 조건 (가짜 요청)
 /opt/homebrew/bin/node scripts/test_classifier.js            # 8/8    (v4.14) 토픽 분류 — 모델 기본값·CLASSIFY_MODEL·모델별 thinking·요청 주소·한글 청크 경계·allowedSet·오류 문구 (가짜 https)
 /opt/homebrew/bin/node scripts/test_resummarize.js           # 12/12  (v4.6-b) 기존분 재요약 — 후보·장부 갱신·stale·건너뜀/실패/중단·하루·실행 상한 · (v4.11) 5xx 조기 중단·3회 건너뜀 · (v4.17) 후보 토픽 (임시 장부, 가짜 요약기)
@@ -99,7 +99,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 /opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 15/15  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외 · (v4.7) 화면 필터용 메타
 /opt/homebrew/bin/node scripts/test_wiki_search.js           # 34/34  (v4.7) 검색 화면 API — 전체 목록·전체 점수·비슷한 노트·노트 본문 + 집 안 서버 경로 (임시 인덱스·Vault, 가짜 Gemini)
 /opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
-/opt/homebrew/bin/python3 scripts/test_tips_bot.py           # 24/24  (v4.18) 텔레그램 꿀팁 입구 — 저장·dup·허용 밖·offset·치명 응답·429·5xx·답장 실패·토큰 미노출 (가짜 urlopen·임시 장부)
+/opt/homebrew/bin/python3 scripts/test_tips_bot.py           # 25/25  (v4.18) 텔레그램 꿀팁 입구 — 저장·dup·허용 밖·offset·치명 응답·429·5xx·답장 실패·토큰 미노출 (가짜 urlopen·임시 장부)
 
 # (2026-10-31) 회귀 테스트 16종 한 번에 — 마지막 줄 RESULT: 16/16 통과, 실패하면 exit 1
 scripts/run_all_tests.sh             # all | js | py
@@ -644,7 +644,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 ## 변경 이력
 
 - **2026-11-03 (운영 체계, 버전 유지)** — XP 보드 규칙 v2(대표님 승인 11-03) 포인터: 정본 `~/Documents/Claude/XP/README.md`, 새 요청서는 `new_xp.sh <발주코드>` 로만, 번호 `XP-<발주코드>-<MMDD>-<순번>`, 상대에게는 번호로. 「운영 체계」 절 · `.claude/pm/PM_ROLE.md` §6 의 옛 `[XP-MMDD-A]` 표기 교체. 코드·장부 무변경. 지시서 `docs/tasks/2026-11-03-xp-board-v2-pointer.md`.
-- **2026-11-03 (v4.18 — 꿀팁 두 번째 입구: 텔레그램 전용 봇 → 장부 tips)** — 배경: 꿀팁 링크 흐름이 인스타 → 카톡 '나와의 채팅' → 맥 CSV 수동 내보내기라 자동화할 길이 없었다(읽기 API 없음 · 데이터 파일 암호화). 수정: `telegram_tips_ingest.py` 신규(위 카톡 절), `kakao_ingest.py` 에서 `existing_keys`·`plan_rows`·`insert_rows(conn, plan, meta=())` 를 같은 파일 함수로 떼고(카톡 결과 전후 diff 0), `lib/kakao_parse.py` 에 `links_from_messages`(`parse_links` 가 부름), `scheduler.js:runTipsBot` + 완료 텔레그램 `📮` 줄 + 입구 이상 알림. 장부 스키마(user_version 3)·카톡 결과·plist·`.env` 무변경. 테스트: 신규 `test_tips_bot.py` 24/24, `test_scheduler_guards.js` +3, `test_kakao_ingest.py` 37/37 그대로. 회귀 테스트 16종. 지시서 `docs/tasks/2026-11-03-v418-telegram-tips-bot.md`.
+- **2026-11-03 (v4.18 — 꿀팁 두 번째 입구: 텔레그램 전용 봇 → 장부 tips)** — 배경: 꿀팁 링크 흐름이 인스타 → 카톡 '나와의 채팅' → 맥 CSV 수동 내보내기라 자동화할 길이 없었다(읽기 API 없음 · 데이터 파일 암호화). 수정: `telegram_tips_ingest.py` 신규(위 카톡 절), `kakao_ingest.py` 에서 `existing_keys`·`plan_rows`·`insert_rows(conn, plan, meta=())` 를 같은 파일 함수로 떼고(카톡 결과 전후 diff 0), `lib/kakao_parse.py` 에 `links_from_messages`(`parse_links` 가 부름), `scheduler.js:runTipsBot` + 완료 텔레그램 `📮` 줄 + 입구 이상 알림. 장부 스키마(user_version 3)·카톡 결과·plist·`.env` 무변경. 테스트: 신규 `test_tips_bot.py` 25/25, `test_scheduler_guards.js` 37/37(+4), `test_kakao_ingest.py` 37/37 그대로. 회귀 테스트 16종. 지시서 `docs/tasks/2026-11-03-v418-telegram-tips-bot.md`.
 - **2026-11-01 (운영 체계, 버전 유지)** — 게이트 로그·기준점·카운터 경로를 `/tmp/cc-gate-<세션>` → `/tmp/cc-gate-AI_Wiki_Pipeline-<세션>`(`record_base.sh`·`gate_subagent_stop.sh`), verifier 의 `ls -t /tmp/cc-gate-*.log` 대체 규칙 삭제(세션 ID 로만 연다). 배경: 같은 꼴의 이름을 쓰는 다른 프로젝트에서 verifier 가 남의 세션 로그를 읽은 일(pm-cnc 알림, CNC 54a14ef). 코드·장부 무변경. 지시서 `docs/tasks/2026-11-01-gate-log-project-prefix.md`.
 - **2026-11-01 (운영 값, 버전 유지)** — `.env RESUMMARY_PER_RUN` 10 → 20(하루 `RESUMMARY_DAILY_MAX` 40 유지). 배경: 재요약 하루 평균 22.3편(PT 10-16~10-30, 장부·로그 일치) — 천장 약 33.6편(3.5 Flash-Lite 8시간 ÷ 편당 858초), 부족분 503 중단 52% · 통째 실패 26% · 누락 11% · 분량 상한 10%. 실행당 몫을 키워 빠진 실행의 몫을 같은 하루 다음 실행이 채운다(추정 하루 26~27편). 코드·장부 무변경. 백업 `.env.bak.20261101`. 지시서 `docs/tasks/2026-11-01-resummary-per-run-20.md`.
 - **2026-11-01 (v4.17 — not_ai 제외는 토픽 분류도 비었을 때만)** — 배경: 영상 신호 `ai_related=false` 5편 중 진짜 비 AI 는 `68zimAoOTcM`(작가용 워드프로세서) 1편뿐(정밀도 1/5), 오판 4건(`r98qvQYlrMc`·`5k0tCrXdIIM`·`VoqXu3oFsk4`·`0Ef6MaFg6b0`)은 대표님이 keep 으로 되돌렸다. 같은 5편에서 토픽 분류는 5/5 맞았다(진짜 비 AI 만 토픽 `[]`). 대표님 결정 11-01: 코드 규칙만 좁힌다(프롬프트·스키마 그대로). 수정: `lib/video_summary.js` `computeGrade(signals, topics)`(`!ai_related` AND 토픽 0개일 때만 `not_ai`, 아니면 note `not_ai_minor`) · `regrade`, `scheduler.js` 분류 뒤·저장 앞 재판정(`stats.exclude` 보정·`🎚 등급(토픽 반영)` 로그), `lib/library.js` 재요약 후보에 `topics`, `lib/resummarize.js` 가 `v.topics` 로 전달. 장부·스키마·기존 등급 무변경(소급 안 함). 테스트: `test_video_summary.js` 35/35(+3), `test_resummarize.js` 12/12(+1). 회귀 테스트 15종. 지시서 `docs/tasks/2026-11-01-v417-not-ai-topics.md`.

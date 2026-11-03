@@ -536,7 +536,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 - **안전.** 401·403·404·409·400 은 재시도 없이 즉시 중단(exit 2), 429 는 `retry_after`(상한 60초) 대기 2회, 5xx·네트워크는 2·4초 백오프 3회 뒤 exit 1. 허용 밖 발신자는 건수만 세고 버린다. 토큰은 URL 경로에 들어가므로 URL·토큰·chat id 를 로그·결과·예외에 쓰지 않는다.
 - **스케줄러.** `runTipsBot`(카톡 훅 다음 · 시트 미러 앞, reject 없음) + 완료 텔레그램 `📮` 줄. 입구가 막히거나(`auth`·`conflict`·`bad_request`) 마지막 정상 수신이 18시간을 넘으면 알림 봇이 따로 알린다.
 - **리팩터.** `kakao_ingest.py` 의 덩어리를 같은 파일 함수 3개로, `lib/kakao_parse.py` 에 `links_from_messages` 를 뗐다 — 같은 CSV 에 대한 RESULT_JSON·tips 행·로그 전후 diff 0.
-- **테스트.** 신규 `test_tips_bot.py` 24/24, `test_scheduler_guards.js` +3, `test_kakao_ingest.py` 37/37 그대로. 회귀 테스트 16종.
+- **테스트.** 신규 `test_tips_bot.py` 25/25, `test_scheduler_guards.js` 37/37(+4), `test_kakao_ingest.py` 37/37 그대로. 회귀 테스트 16종.
 
 #### [v4.17] — 2026-11-01 (🎚 AI 무관 신호만으로는 제외하지 않는다 — 토픽 분류도 비었을 때만)
 

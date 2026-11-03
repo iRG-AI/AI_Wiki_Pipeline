@@ -211,7 +211,7 @@ def main():
     finally:
         conn.close()
     res['created'] = len(titles)
-    shown = {url_key(p['url']): (t, p['category']) for p, t in zip(plan, titles)}
+    shown = {l['key']: (t, p['category']) for l, p, t in zip(new, plan, titles)}   # owner 와 같은 키(원본 기준)
 
     # 커밋 뒤에 답장 — 실패해도 적재는 그대로
     replies = []
