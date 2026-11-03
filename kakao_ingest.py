@@ -125,6 +125,50 @@ def resolve_titles(new):
     return found, stat
 
 
+def existing_keys(conn):
+    """장부 tips 전량 → (행 수, url_key 집합). url_key 열이 빈 행(이론상 없음)은 url 로 다시 계산해 대조에서 빠지지 않게 한다."""
+    rows = [dict(r) for r in conn.execute('SELECT url, url_key FROM tips')]
+    return len(rows), {r['url_key'] or url_key(r['url']) for r in rows if r['url'] or r['url_key']}
+
+
+def plan_rows(new, found):
+    """신규 후보 → 넣을 행 목록 (표 로그 포함). v4.18: 텔레그램 입구(telegram_tips_ingest.py)도 쓴다."""
+    log(f"{'날짜':10} | {'카테고리':6} | {'제목':42} | URL")
+    log('-' * 110)
+    plan = []
+    for l in new:
+        g = guess_meta(l['url'], l['message'], found.get(l['url']))
+        row = {
+            'title': g['title'], 'url': l['url'], 'source': g['source'], 'tags': g['tags'],
+            'category': g['category'], 'status': '미확인', 'importance': '중',
+            'saved_date': l['date'][:10], 'memo': g['memo'],
+        }
+        plan.append(row)
+        log(f"{row['saved_date']:10} | {row['category']:6} | {row['title'][:42]:42} | {row['url'][:70]}")
+    return plan
+
+
+def insert_rows(conn, plan, meta=()):
+    """plan 을 한 트랜잭션으로 넣는다. meta=[(key, value)] 는 같은 트랜잭션에서 meta 표에 쓴다(tips updated_at 무관).
+    돌려주는 값: (제목 목록, 장부 tips 총 건수). 실패하면 예외 — 아무 행·meta 도 남지 않는다. conn 은 닫지 않는다."""
+    # 노션 시절(v3.x)과 같은 기본값: 제목이 비면 URL, 카테고리 '기타', 상태 '미확인', 중요도 '중'
+    dt = datetime.now(timezone.utc)
+    now = dt.strftime('%Y-%m-%dT%H:%M:%S.') + f'{dt.microsecond // 1000:03d}Z'   # scheduler 와 같은 ISO 형식
+    vals = []
+    for row in plan:
+        vals.append((str(uuid.uuid4()), nfc((row['title'] or row['url'])[:200]), row['url'], url_key(row['url']),
+                     row.get('source') or '', json.dumps([nfc(t) for t in row.get('tags') or []], ensure_ascii=False),
+                     nfc(row.get('category') or '기타'), nfc(row.get('status') or '미확인'), nfc(row.get('importance') or '중'),
+                     (row.get('saved_date') or '')[:10] or None, nfc(row.get('memo') or ''), '', now, now))
+    with conn:   # 한 트랜잭션 — 실패하면 아무 행도 남지 않는다
+        conn.executemany('INSERT INTO tips (record_id, title, url, url_key, source, tags, category, status, importance, '
+                         'saved_date, memo, body_md, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', vals)
+        for k, v in meta:
+            conn.execute('INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)', (k, str(v)))
+    db_total = conn.execute('SELECT COUNT(*) FROM tips').fetchone()[0]
+    return [v[1] for v in vals], db_total
+
+
 def main():
     apply = '--apply' in sys.argv
     if_new = '--if-new' in sys.argv and '--force' not in sys.argv
@@ -151,12 +195,10 @@ def main():
 
     try:
         conn = ldb.open_existing(readonly=not apply)
-        rows = [dict(r) for r in conn.execute('SELECT url, url_key FROM tips')]
+        n_rows, existing = existing_keys(conn)
     except Exception as e:
         log(f'❌ 장부 열기 실패: {e}'); emit_result(error=str(e)[:200], csv=csv_name, created=0, candidates=0, db_total=None); sys.exit(1)
-    # url_key 열이 비어 있는 행(이론상 없음)은 url 로 다시 계산해 대조에서 빠지지 않게 한다
-    existing = {r['url_key'] or url_key(r['url']) for r in rows if r['url'] or r['url_key']}
-    log(f'🗂  장부 tips {len(rows)}건 로드 (URL 키 {len(existing)}개)')
+    log(f'🗂  장부 tips {n_rows}건 로드 (URL 키 {len(existing)}개)')
 
     new = [l for l in links if l['key'] not in existing]
     log(f'✨ 신규 후보 {len(new)}건\n')
@@ -167,59 +209,35 @@ def main():
         # apply 로 끝까지 돌았을 때만 "이 CSV 는 봤다"고 기록 (dry-run 은 기록하지 않는다)
         if apply and not limit:
             save_state({'csv': csv_name, 'mtime': csv_mtime, 'processed_at': time.strftime('%Y-%m-%d %H:%M:%S'),
-                        'created': created, 'db_total': len(rows) + created})
+                        'created': created, 'db_total': n_rows + created})
 
     if not new:
         conn.close()
         log('✅ 생성할 행 없음 — 멱등성 OK')
         mark_done(0)
-        emit_result(csv=csv_name, created=0, candidates=0, db_total=len(rows))
+        emit_result(csv=csv_name, created=0, candidates=0, db_total=n_rows)
         return
 
     found, tstat = resolve_titles(new)
     tl = {k: tstat[k] for k in ('need', 'ok', 'fail', 'skipped')}
 
-    log(f"{'날짜':10} | {'카테고리':6} | {'제목':42} | URL")
-    log('-' * 110)
-    plan = []
-    for l in new:
-        g = guess_meta(l['url'], l['message'], found.get(l['url']))
-        row = {
-            'title': g['title'], 'url': l['url'], 'source': g['source'], 'tags': g['tags'],
-            'category': g['category'], 'status': '미확인', 'importance': '중',
-            'saved_date': l['date'][:10], 'memo': g['memo'],
-        }
-        plan.append(row)
-        log(f"{row['saved_date']:10} | {row['category']:6} | {row['title'][:42]:42} | {row['url'][:70]}")
+    plan = plan_rows(new, found)
 
     if not apply:
         conn.close()
         log(f'\n👀 dry-run 종료 — 위 {len(plan)}건은 생성되지 않았습니다. 실제 생성은 --apply')
-        emit_result(dry_run=True, csv=csv_name, created=0, candidates=len(plan), db_total=len(rows), title_lookup=tl)
+        emit_result(dry_run=True, csv=csv_name, created=0, candidates=len(plan), db_total=n_rows, title_lookup=tl)
         return
 
-    # 노션 시절(v3.x)과 같은 기본값: 제목이 비면 URL, 카테고리 '기타', 상태 '미확인', 중요도 '중'
-    dt = datetime.now(timezone.utc)
-    now = dt.strftime('%Y-%m-%dT%H:%M:%S.') + f'{dt.microsecond // 1000:03d}Z'   # scheduler 와 같은 ISO 형식
-    vals = []
-    for row in plan:
-        vals.append((str(uuid.uuid4()), nfc((row['title'] or row['url'])[:200]), row['url'], url_key(row['url']),
-                     row.get('source') or '', json.dumps([nfc(t) for t in row.get('tags') or []], ensure_ascii=False),
-                     nfc(row.get('category') or '기타'), nfc(row.get('status') or '미확인'), nfc(row.get('importance') or '중'),
-                     (row.get('saved_date') or '')[:10] or None, nfc(row.get('memo') or ''), '', now, now))
     try:
-        with conn:   # 한 트랜잭션 — 실패하면 아무 행도 남지 않는다
-            conn.executemany('INSERT INTO tips (record_id, title, url, url_key, source, tags, category, status, importance, '
-                             'saved_date, memo, body_md, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', vals)
-        db_total = conn.execute('SELECT COUNT(*) FROM tips').fetchone()[0]
+        titles, db_total = insert_rows(conn, plan)
     except Exception as e:
         log(f'❌ 장부 쓰기 실패 — 아무 행도 넣지 않았습니다: {e}')
-        emit_result(error=str(e)[:200], csv=csv_name, created=0, candidates=len(plan), db_total=len(rows), title_lookup=tl)
+        emit_result(error=str(e)[:200], csv=csv_name, created=0, candidates=len(plan), db_total=n_rows, title_lookup=tl)
         sys.exit(1)
     finally:
         conn.close()
-    created = len(vals)
-    titles = [v[1] for v in vals]
+    created = len(titles)
     for i, t in enumerate(titles, 1):
         log(f'  [{i}/{created}] ✅ {t[:40]}')
     log(f'\n🎉 생성 {created}건 · 장부 tips 총 {db_total}건')

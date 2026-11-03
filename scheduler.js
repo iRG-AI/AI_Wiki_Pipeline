@@ -139,6 +139,33 @@ function runKakaoIngest(python3) {
   });
 }
 
+// ── (v4.18) 텔레그램 전용 봇 → 장부 tips (꿀팁 두 번째 입구) ──
+// telegram_tips_ingest.py --apply. .env TIPS_BOT_TOKEN 이 없으면 Python 쪽이 skipped 로 즉시 끝난다.
+// 실패해도 reject 하지 않는다(카톡 훅과 같은 원칙) — 알림은 main 이 보낸다. 이 함수는 네트워크를 쓰지 않는다.
+function runTipsBot(python3) {
+  return new Promise((resolve) => {
+    const { execFile } = require('child_process');
+    const script = path.join(__dirname, 'telegram_tips_ingest.py');
+    if (!fs.existsSync(script)) { log('ℹ️  telegram_tips_ingest.py 없음 — 건너뜀'); return resolve(null); }
+    execFile(python3, [script, '--apply'], { cwd: __dirname, timeout: 10 * 60 * 1000 },
+      (err, stdout) => {
+        let r = null;
+        const line = String(stdout || '').split('\n').find(l => l.startsWith('RESULT_JSON:'));
+        if (line) { try { r = JSON.parse(line.slice('RESULT_JSON:'.length)); } catch (e) { log(`⚠️ 텔레그램 꿀팁 결과 파싱 오류: ${e.message}`); } }
+        if (err) {
+          log(`⚠️ 텔레그램 꿀팁 입구 오류 (exit ${err.code}${r && r.error ? `, ${r.error}` : ''})`);   // stderr 는 싣지 않는다 — 요청 주소(토큰) 유출 방지
+          if (!r) r = { error: 'exit_' + err.code };
+          if (!r.error) r.error = 'exit_' + err.code;
+        } else if (r && r.skipped) {
+          log(`ℹ️  텔레그램 꿀팁 입구 건너뜀: ${r.skipped}`);
+        } else if (r) {
+          log(`📮 텔레그램 꿀팁: 신규 ${r.created}건 · 이미 있음 ${r.dup} · 링크 없음 ${r.no_link}${r.dropped ? ` · 허용 밖 ${r.dropped}` : ''} · DB 총 ${r.db_total}건`);
+        }
+        resolve(r);
+      });
+  });
+}
+
 // ── (v4.0 3단계) 장부 → 구글 시트 미러 (보기 전용, 변경분만) ──
 // sheet_mirror.py 실행. .env 에 SHEET_MIRROR_URL 이 없으면 Python 쪽이 skipped 로 즉시 끝난다.
 // 실패해도 reject 하지 않는다 — 시트는 보기용 사본이라 Obsidian 동기화를 막으면 안 된다. 실패분은 다음 실행이 다시 보낸다.
@@ -1517,6 +1544,16 @@ async function main() {
   const kakao = await runKakaoIngest(python3);
   const kakaoCreated = (kakao && kakao.created) || 0;
 
+  // ── (v4.18) 텔레그램 전용 봇 → 장부 tips (설정 전이면 skipped). 입구가 막히면 알림 봇으로 따로 알린다 ──
+  log('\n📮 텔레그램 → AI 꿀팁 인제스트...');
+  const tipsBot = await runTipsBot(python3);
+  const tipsBotCreated = (tipsBot && tipsBot.created) || 0;
+  if (tipsBot && (['auth', 'conflict', 'bad_request'].includes(tipsBot.error) || tipsBot.stale_h >= 18)) {
+    await sendTelegram(`⚠️ <b>[텔레그램 꿀팁 입구]</b>\n` + (tipsBot.error
+      ? `${tipsBot.error} — ${tipsBot.error === 'auth' ? '봇 토큰·chat id 확인' : tipsBot.error === 'conflict' ? '다른 곳에서 같은 봇을 읽는 중 (webhook·다른 프로그램)' : '요청 형식 오류'}`
+      : `마지막 정상 수신 ${tipsBot.stale_h}시간 전 — 봇 방에 보낸 링크가 쌓이는지 확인`));
+  }
+
   // ── (v4.0 3단계) 장부 → 구글 시트 미러 (설정 전이면 skipped) ──
   log('\n📗 구글 시트 미러...');
   const mirror = await runSheetMirror(python3);
@@ -1557,6 +1594,12 @@ async function main() {
           `  • 장부 신규: ${kakaoCreated}건 (총 ${kakao.db_total}건)`,
           ...(Array.isArray(kakao.titles) ? kakao.titles.slice(0, 5).map(t => `    - ${t}`) : []),
         ] : [];
+        const tipsBotSection = (tipsBotCreated > 0 || (tipsBot && (tipsBot.dup || tipsBot.no_link))) ? [
+          ``,
+          `━━━━━━━━━━━━━━━━━━━━━━`,
+          `📮 텔레그램 → AI 꿀팁`,
+          `  • 장부 신규: ${tipsBotCreated}건 · 이미 있음 ${tipsBot.dup || 0} · 링크 없음 ${tipsBot.no_link || 0} (총 ${tipsBot.db_total}건)`,
+        ] : [];
         const mirrorSection = (mirrorSent > 0 || mirrorFailed) ? [
           ``,
           `━━━━━━━━━━━━━━━━━━━━━━`,
@@ -1566,6 +1609,7 @@ async function main() {
         ] : [];
         const obsSection = [
           ...kakaoSection,
+          ...tipsBotSection,
           ...mirrorSection,
           ``,
           `━━━━━━━━━━━━━━━━━━━━━━`,
@@ -1578,7 +1622,7 @@ async function main() {
         ].join('\n');
         log(`✅ Obsidian 동기화 완료! 추가: ${r.added}개 (꿀팁 ${tipsAdded})`);
 
-        const hasNewOrUpdated = totalSaved > 0 || kakaoCreated > 0 || (r.added && r.added > 0) || (r.tags_updated && r.tags_updated > 0) || mirrorFailed;
+        const hasNewOrUpdated = totalSaved > 0 || kakaoCreated > 0 || tipsBotCreated > 0 || (r.added && r.added > 0) || (r.tags_updated && r.tags_updated > 0) || mirrorFailed;
         if (hasNewOrUpdated) {
           await sendTelegram(msg + obsSection);
         } else {
@@ -1613,7 +1657,7 @@ if (require.main === module) {
   });
 } else {
   module.exports = {
-    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror, runLibraryBackup,
+    ytFetch, getVideos, getBatchDetails, getBatchSubs, loadLibraryCache, findDuplicate, saveToLibrary, runSheetMirror, runLibraryBackup, runTipsBot,
     sendTelegram, readRunState, writeRunState, runNotices, isWholeRunFailure, escapeHtml,   // (v4.2) 실행 실패 알림
     validateSummary,   // (v4.6) scripts/test_video_summary.js
     runResummary,      // (v4.6-b) scripts/test_scheduler_guards.js

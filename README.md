@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.17** (2026-11-01)
+**현재 버전: v4.18** (2026-11-03)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -25,6 +25,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.15: 정시 실행 동안 맥이 유휴 잠자기에 들지 않게 `caffeinate -i` 로 감쌌습니다(배터리에서 1분 뒤 잠드는 설정이라 덮개를 연 채 자리를 비우면 실행 도중 잠들 수 있었음). 덮개를 닫아 잠든 경우는 막지 못합니다 — 그때는 실패 알림과 다음 실행이 이어 받습니다. 10-16 레포 이관(`~/Dev/AI_Wiki_Pipeline`)에 맞춰 plist 원본·설치 스크립트 경로도 맞췄습니다.
 > v4.16: 17:30 Wiki 인제스트도 `caffeinate -i` 로 감싸 실행 중 잠들지 않게 했습니다. `brew upgrade` 뒤 점검 순서를 CLAUDE.md 에 적었습니다(10-30 업그레이드로 정시 실행 2회가 빠진 일).
 > v4.17: 영상 요약의 「AI 무관(`ai_related=false`)」 신호만으로는 영상을 제외하지 않습니다 — 토픽 분류도 비었을 때만 제외합니다(신호 5건 중 진짜 비 AI 1건, 토픽 분류는 5/5 맞음). 신규 영상은 분류 뒤 등급을 다시 매기고, 재요약은 장부 토픽을 씁니다. 장부 무변경.
+> v4.18: 꿀팁 두 번째 입구 — 휴대폰 공유 → 텔레그램 전용 봇 방. 정시 실행마다 `telegram_tips_ingest.py` 가 봇의 `getUpdates` 를 읽어 카톡과 같은 엔진(`kakao_ingest.py` 의 `existing_keys`·`resolve_titles`·`plan_rows`·`insert_rows`)으로 같은 장부 `tips` 에 넣는다. 읽은 위치(offset)·마지막 정상 수신 시각은 장부 `meta` 키 2개(tips 와 같은 트랜잭션), 스키마 무변경. 카톡 경로는 그대로(안전망).
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
@@ -265,6 +266,8 @@ YOUTUBE_API_KEY=AIzaSy...
 GEMINI_API_KEY=AIzaSy...
 GEMINI_API_KEYS=AIzaSy...,AIzaSy...                 # 무료 키 로테이션 (쉼표)
 
+TIPS_BOT_TOKEN=<전용 봇 토큰>                           # (v4.18, 선택) 텔레그램 꿀팁 입구 — 없으면 건너뜀
+TIPS_BOT_CHAT_ID=<허용할 개인 대화 id>                  # (v4.18) telegram_tips_ingest.py --whoami 로 확인
 KAKAO_EXPORT_DIR=/Users/<사용자>/Downloads          # KakaoTalk_Chat_안진훈_*.csv 가 떨어지는 폴더
 # (선택, v4.8) 꿀팁 원문 제목 조회 — 없으면 켜짐 · 실행당 60건 · 180초
 # KAKAO_TITLE_LOOKUP=false
@@ -373,6 +376,12 @@ launchd 데몬 4개 (설치본 = `~/Library/LaunchAgents/`, 원본 = 레포 루�
 /opt/homebrew/bin/python3 scripts/recategorize_tips.py --apply  # 정시 실행 창(매시 50분~다음 시 20분) 밖에서
 ```
 
+**텔레그램 전용 봇 입구 (v4.18).** 휴대폰에서 공유한 링크를 카톡 CSV 없이 받는다. 설정 전에는 `skipped` 로 아무것도 하지 않는다.
+1. 텔레그램 BotFather 에서 `/newbot` → 새 봇 이름 정하기 → 토큰 받기(실행 알림 봇과 다른 봇).
+2. 새 봇 방을 열고 `/start` 보내기.
+3. `.env` 에 `TIPS_BOT_TOKEN`(토큰) 입력 → `/opt/homebrew/bin/python3 telegram_tips_ingest.py --whoami` → 나온 chat id 를 `.env` 에 `TIPS_BOT_CHAT_ID` 로 입력. 값은 문서·대화에 붙이지 않는다.
+4. 봇 방에 링크를 보내면 다음 정시 실행이 읽어 장부에 넣고 봇 방에 답장한다. 바로 확인: `telegram_tips_ingest.py`(dry-run) → `--apply`.
+
 ### 4. 구글 시트 미러 (v4.0)
 
 1. 구글 시트를 하나 만들고 확장 프로그램 → Apps Script 에 `gas/sheet_mirror.gs` 를 붙여 넣는다.
@@ -477,6 +486,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.18** | 2026-11-03 | **꿀팁 두 번째 입구 — 텔레그램 전용 봇 → 장부 tips**: 휴대폰 공유 → 전용 봇 방 → 정시 실행마다 `telegram_tips_ingest.py` 가 카톡과 같은 엔진으로 같은 `tips` 에 넣고 봇 방에 답장(저장·이미 있음·링크 없음). offset·마지막 수신 시각은 장부 `meta`(tips 와 같은 트랜잭션). 허용 chat 하나만, 치명 응답 즉시 중단. 카톡 경로 결과 diff 0 · 스키마 무변경 |
 | **v4.17** | 2026-11-01 | **not_ai 제외는 토픽 분류도 비었을 때만**: 영상 신호 `ai_related=false` 5건 중 진짜 비 AI 1건(정밀도 1/5), 토픽 분류는 5/5 맞음. `computeGrade(signals, topics)` — `!ai_related` AND 토픽 0개일 때만 제외, 토픽이 있으면 `not_ai_minor` 로 알림. 신규는 분류 뒤 재판정, 재요약은 장부 토픽. 장부 무변경 · 소급 안 함 |
 | **v4.16** | 2026-10-31 | **wiki-ingest 잠자기 방지 · brew 업그레이드 뒤 점검 순서**: `com.irichgreen.wiki-ingest`(17:30)도 `/usr/bin/caffeinate -i` 로 감싼다. 10-30 `brew upgrade`(simdjson)로 node 가 dyld 오류로 기동 즉시 죽어 정시 실행 2회가 로그 없이 빠진 일을 계기로 점검 순서를 CLAUDE.md 에. 레포 밖 옛 경로 2곳을 `~/Dev` 로. 코드·장부 무변경 |
 | **v4.15** | 2026-10-16 | **정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤**: `com.irichgreen.ytsummarizer` 를 `/usr/bin/caffeinate -i` 로 감싸 실행 중 유휴 잠자기(배터리 `sleep 1`)를 막는다. 덮개를 닫은 잠자기(10-15 12시 실패 원인)는 못 막는다. 10-16 레포 이관(`~/Dev`)으로 설치본과 달라진 레포 plist 원본 4개·`install-server.sh`·`install-scheduler.sh` sed 패턴·`wiki_mcp.js` 주석을 새 경로로. 코드·장부 무변경 |
@@ -516,6 +526,17 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.18] — 2026-11-03 (📮 꿀팁 두 번째 입구 — 텔레그램 전용 봇 → 장부 tips)
+
+**배경.** 꿀팁 링크는 인스타 → 대표님이 카톡 '나와의 채팅'에 옮김 → 맥에서 CSV 수동 내보내기 → 정시 실행으로 들어갔다. 카톡 내보내기는 자동화할 길이 없다(읽기 API 없음 · 데이터 파일 암호화). 휴대폰 공유 → 전용 봇 방 → 자동 적재 길을 더했다.
+- **새 입구.** `telegram_tips_ingest.py` — 전용 봇(실행 알림 봇과 다른 봇)의 `getUpdates` 를 읽어, 허용한 개인 대화(`TIPS_BOT_CHAT_ID`)의 링크만 카톡과 같은 함수(`kakao_ingest.py` 의 `existing_keys`·`resolve_titles`·`plan_rows`·`insert_rows`)로 장부 `tips` 에 넣는다. 카톡 경로는 안전망으로 그대로(중복은 `url_key` 대조).
+- **상태.** 읽은 위치(`tips_bot_offset`)·마지막 정상 수신(`tips_bot_last_ok`)은 장부 `meta` 키 2개 — tips INSERT 와 같은 트랜잭션이라 커밋 뒤에만 offset 이 오른다. 새 상태 파일·스키마 변경 없음.
+- **답장.** 커밋 뒤 메시지마다 `저장: <제목> · <카테고리>` / `이미 있음` / `링크 없음`. 답장 실패는 적재를 되돌리지 않는다.
+- **안전.** 401·403·404·409·400 은 재시도 없이 즉시 중단(exit 2), 429 는 `retry_after`(상한 60초) 대기 2회, 5xx·네트워크는 2·4초 백오프 3회 뒤 exit 1. 허용 밖 발신자는 건수만 세고 버린다. 토큰은 URL 경로에 들어가므로 URL·토큰·chat id 를 로그·결과·예외에 쓰지 않는다.
+- **스케줄러.** `runTipsBot`(카톡 훅 다음 · 시트 미러 앞, reject 없음) + 완료 텔레그램 `📮` 줄. 입구가 막히거나(`auth`·`conflict`·`bad_request`) 마지막 정상 수신이 18시간을 넘으면 알림 봇이 따로 알린다.
+- **리팩터.** `kakao_ingest.py` 의 덩어리를 같은 파일 함수 3개로, `lib/kakao_parse.py` 에 `links_from_messages` 를 뗐다 — 같은 CSV 에 대한 RESULT_JSON·tips 행·로그 전후 diff 0.
+- **테스트.** 신규 `test_tips_bot.py` 24/24, `test_scheduler_guards.js` +3, `test_kakao_ingest.py` 37/37 그대로. 회귀 테스트 16종.
 
 #### [v4.17] — 2026-11-01 (🎚 AI 무관 신호만으로는 제외하지 않는다 — 토픽 분류도 비었을 때만)
 

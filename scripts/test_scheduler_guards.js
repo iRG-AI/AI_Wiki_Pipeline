@@ -283,6 +283,21 @@ const cases = [
     const r = await sched.runSheetMirror(fake);
     assert(r && r.skipped === 'not_configured' && !r.error, '결과가 다르다: ' + JSON.stringify(r));
   }],
+  ['runTipsBot: 입구가 exit 2(auth) 여도 reject 없이 결과를 돌려준다', async () => {
+    const fake = fakeInterpreter('echo \'RESULT_JSON:{"error":"auth","created":0}\'; exit 2');
+    const r = await sched.runTipsBot(fake);
+    assert(r && r.error === 'auth', '결과가 다르다: ' + JSON.stringify(r));
+  }],
+  ['runTipsBot: 출력 없이 죽어도 reject 없이 exit 코드를 오류로 돌려준다', async () => {
+    const fake = fakeInterpreter('exit 3');
+    const r = await sched.runTipsBot(fake);
+    assert(r && r.error === 'exit_3', '결과가 다르다: ' + JSON.stringify(r));
+  }],
+  ['runTipsBot: skipped(설정 전)는 오류가 아니다', async () => {
+    const fake = fakeInterpreter('echo \'RESULT_JSON:{"skipped":"not_configured","created":0}\'');
+    const r = await sched.runTipsBot(fake);
+    assert(r && r.skipped === 'not_configured' && !r.error, '결과가 다르다: ' + JSON.stringify(r));
+  }],
   ['runLibraryBackup: 드라이브 실패(exit 1)여도 reject 없이 결과를 돌려준다', async () => {
     const fake = fakeInterpreter('echo \'RESULT_JSON:{"file":"library-20261012.db.gz","dests":{"local":"ok","drive":"unavailable"},"error":"drive_unavailable"}\'; exit 1');
     const r = await sched.runLibraryBackup(fake);

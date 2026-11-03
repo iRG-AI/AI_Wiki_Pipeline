@@ -83,19 +83,27 @@ def host_of(url):
     return h[4:] if h.startswith('www.') else h
 
 
-def parse_links(path, since=None):
-    """CSV → 링크 목록. since('YYYY-MM-DD') 이전 메시지는 제외. CSV 내부 중복은 첫 등장만 유지."""
+def links_from_messages(msgs, since=None):
+    """[{'date','message','ref'(선택),'urls'(선택: 미리 뽑은 URL)}] → 링크 목록. since 이전 제외, 내부 중복은 첫 등장만. ref 는 그대로 싣는다 (v4.18 텔레그램 입구 공용)."""
     seen, out = set(), []
-    for m in read_kakao_csv(path):
+    for m in msgs:
         if since and m['date'][:10] < since:
             continue
-        for u in extract_urls(m['message']):
+        for u in m.get('urls') or extract_urls(m['message']):
             k = url_key(u)
             if k in seen:
                 continue
             seen.add(k)
-            out.append({'date': m['date'], 'url': clean_url(u), 'key': k, 'message': m['message']})
+            row = {'date': m['date'], 'url': clean_url(u), 'key': k, 'message': m['message']}
+            if 'ref' in m:
+                row['ref'] = m['ref']
+            out.append(row)
     return out
+
+
+def parse_links(path, since=None):
+    """CSV → 링크 목록. since('YYYY-MM-DD') 이전 메시지는 제외. CSV 내부 중복은 첫 등장만 유지."""
+    return links_from_messages(read_kakao_csv(path), since)
 
 
 # ── 제목/카테고리/태그 추정 (규칙 기반, 1차) ──
