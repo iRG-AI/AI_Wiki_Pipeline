@@ -23,7 +23,6 @@
       "Bash(launchctl print *)",
       "Bash(shasum *)",
       "Read(~/Documents/Claude/XP/**)",
-      "Write(~/Documents/Claude/XP/**)",
       "Edit(~/Documents/Claude/XP/**)",
       "Read(~/Library/Logs/irichgreen/**)",
       "Read(~/Library/LaunchAgents/**)",
