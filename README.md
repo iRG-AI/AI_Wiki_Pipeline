@@ -6,41 +6,20 @@ YouTube 재생목록의 영상을 **Gemini AI**가 실제 영상을 보고 요�
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
 장부 내용은 **구글 시트**에 보기용 사본(미러)으로 자동 복사됩니다.
 
-> v4.0 에서 노션을 뺐습니다. 원본 = 장부(`data/library.db`), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없습니다.
-> v4.1: 장부를 하루 1회 로컬(`data/backups/`)과 구글 드라이브에 자동 백업합니다(최신 7개 + 주별 4개).
-> v4.2: 실행이 통째로 실패하거나, 알림을 못 보냈거나, 정시 실행이 빠지면 텔레그램으로 알립니다(못 보낸 알림은 다음 실행이 보냄).
-> v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠습니다. 장부 ↔ Vault 대조는 `scripts/verify_library.py` 입니다.
-> v4.4: 카톡 꿀팁의 추정 제목(「제목 미확인」·URL 조각)을 원문 제목으로 고치는 `scripts/retitle_tips.py` 를 넣었습니다 — 장부·Obsidian 노트(파일명 포함)·링크를 함께 바꿉니다.
-> v4.5: Wiki 합성 결과(엔티티·개념)를 장부 `wiki_extract` 에 쌓고 `_wiki` 페이지를 매번 전체로 다시 그립니다.
-> v4.6-a: 신규 영상은 **실제 영상**(YouTube URL)을 Gemini 에 넣어 요약하고, 판매가 주목적·일반론·AI 무관 영상은 등급 `exclude` 로 표시해 Wiki 합성·검색에서만 뺍니다(노트는 그대로). 영상 입력이 안 되면 예전처럼 설명란으로 요약합니다.
-> v4.6-b: 예전에 설명란만 보고 만든 요약 약 3,000편을 **실제 영상으로 천천히 다시 요약**합니다(정시 실행마다 최대 5편, 하루 20편, Gemini 3.5 Flash-Lite — 신규 영상 몫 3시간은 남겨 둠). 노트는 요약 절만 제자리에서 바뀌고, Wiki 합성은 실제 영상 요약 노트만 다시 추출합니다.
-> v4.7: Wiki 검색 화면을 개편했습니다 — 처음 열면 전체 목록이 나오고, 토픽 여러 개·종류·날짜·조회수·채널 등으로 거르고, 머리줄을 눌러 정렬합니다. 비슷한 영상·노트 전체 보기·엑셀 내려받기도 됩니다(회사 디자인 시스템 DS 1.1.23).
-> v4.8: 카톡 꿀팁을 넣을 때 링크의 **원문 제목**을 자동으로 가져옵니다(노션 공개 페이지·유튜브·일반 웹페이지). 못 가져오면 예전처럼 URL 로 추정한 제목과 「원문 확인 필요」 메모가 들어갑니다.
-> v4.9: 꿀팁 분류를 바로잡았습니다 — 노션에 올린 자료가 전부 「지식관리」로 잡히던 문제와 한글 「클로드」·「노션」 등이 태그로 안 잡히던 문제를 고치고, 이미 들어간 꿀팁도 규칙이 매긴 것만 다시 분류했습니다(사람이 고른 분류는 그대로). 옛 꿀팁의 출처 `https://…` 도 호스트만 남겼습니다.
-> v4.10: 노션에서 넘어올 때 기본값(「기타」·태그 없음)이 그대로 남은 꿀팁도 규칙으로 다시 분류하고, URL 로 추정한 제목이 남아 있던 꿀팁 25건에 원문 제목을 넣었습니다 — 「기타」 66 → 42건.
-> v4.11: 기존분 재요약이 Gemini 서버 오류(503)를 받으면 오래 재시도하지 않고 그 실행의 재요약을 바로 멈춥니다(1편에 약 13분 → 1~2분). 같은 영상이 3번 막히면 그 영상은 건너뜁니다.
-> v4.12: 영상 끝에 자기 강의·전자책을 잠깐 알리기만 한 영상이 「판매가 주목적」으로 제외되던 오판을 줄였습니다. 판매 멘트가 영상 절반 이상이거나 영상 본론 자체가 자기 상품(소개·고객 사례)일 때만 판매로 제외합니다.
-> v4.13: 영상 입력 하루 8시간을 모델별·키별로 따로 셉니다. 신규 영상과 재요약이 서로의 분량을 먹지 않아, 재요약이 하루 20편까지 갑니다(전에는 신규가 많은 날 약 9편).
-> v4.14: 영상 토픽 분류를 Gemini 3.5 Flash-Lite 로 옮겼습니다. 2.5 Flash 하루 요청 한도를 영상 요약에 남기고, 분류 프롬프트의 「추상 토픽 남발 금지」를 더 잘 지켜 영상당 토픽이 약 4.4개 → 2.5개로 줄어듭니다(재생목록 추가도 그만큼 줄어 YouTube 할당량에 이득). 되돌리기는 `.env` `CLASSIFY_MODEL=gemini-2.5-flash` 한 줄.
-> v4.15: 정시 실행 동안 맥이 유휴 잠자기에 들지 않게 `caffeinate -i` 로 감쌌습니다(배터리에서 1분 뒤 잠드는 설정이라 덮개를 연 채 자리를 비우면 실행 도중 잠들 수 있었음). 덮개를 닫아 잠든 경우는 막지 못합니다 — 그때는 실패 알림과 다음 실행이 이어 받습니다. 10-16 레포 이관(`~/Dev/AI_Wiki_Pipeline`)에 맞춰 plist 원본·설치 스크립트 경로도 맞췄습니다.
-> v4.16: 17:30 Wiki 인제스트도 `caffeinate -i` 로 감싸 실행 중 잠들지 않게 했습니다. `brew upgrade` 뒤 점검 순서를 CLAUDE.md 에 적었습니다(10-30 업그레이드로 정시 실행 2회가 빠진 일).
-> v4.17: 영상 요약의 「AI 무관(`ai_related=false`)」 신호만으로는 영상을 제외하지 않습니다 — 토픽 분류도 비었을 때만 제외합니다(신호 5건 중 진짜 비 AI 1건, 토픽 분류는 5/5 맞음). 신규 영상은 분류 뒤 등급을 다시 매기고, 재요약은 장부 토픽을 씁니다. 장부 무변경.
-> v4.18: 꿀팁 두 번째 입구 — 휴대폰에서 공유한 링크를 텔레그램 전용 봇 방으로 받습니다. 정시 실행마다 `telegram_tips_ingest.py` 가 봇 방을 읽어 카톡과 같은 엔진으로 같은 장부 `tips` 에 넣고 봇 방에 답장합니다. 읽은 위치는 장부 `meta` 에 두어 스키마 변경이 없고, 카톡 경로는 안전망으로 그대로 둡니다.
-> v4.19: 메시지에 붙은 URL 을 꿀팁 분류 판정 글자에서 뺐습니다(노션 주소만 붙어 있어도 「지식관리」가 되던 오분류). 인스타 공유 파라미터(`igsh`·`dlrf`) 제거, 인스타 추정 제목, 로그인 화면 제목 「Instagram」 거부, 지정 행만 다시 분류하는 `recategorize_tips.py --ids=` 를 더했습니다. 장부 스키마 무변경.
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + AI 자료 링크(꿀팁)** 두 갈래이고(꿀팁 입구는 카카오톡 CSV · v4.18 텔레그램 전용 봇), 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
 ---
 
-## 🚀 프로젝트 개요
-본 프로젝트는 AI 에이전트 기술을 활용하여 구현 및 고도화되었습니다.
-* **AI Assistant**: Claude (Anthropic) — Claude Code 실행 PM(pm-wiki) + 워커 서브에이전트
-* **AI Model**: **Gemini 2.5 Flash**(신규 영상 요약 · Wiki 합성) · **Gemini 3.5 Flash-Lite**(토픽 분류 · 기존분 재요약) · `gemini-embedding-001`(검색 임베딩)
-* **Coding Style**: **Vibe Coding** (AI-driven iterative design & implementation)
+## ⚡ Vibe Coding with AI
+
+* **Agentic Tool**: Claude Code (Claude Desktop Code 탭) — 실행 PM `pm-wiki` + 워커 서브에이전트(implementer · verifier · investigator · scribe, `.claude/agents/`) · 훅 게이트(`.claude/hooks/`) · Cowork(claude.ai 프로젝트 — 정시 실행 관찰·상담)
+* **사용 AI 모델**: Claude Opus(PM · 검수 · 조사) · Claude Sonnet(구현) · Claude Haiku(문서 기록) — 파이프라인이 런타임에 쓰는 Gemini 모델은 「🛠️ 기술 스택」
+* **Coding Style**: **Vibe Coding** — 작업지시서(`docs/tasks/`) → 구현 → 기준표 검수 → 회귀 테스트 16종 → push. 보안·계정 보호 1순위, dry-run 기본, 실패 시 멈춤(fail-closed)
 
 ---
 
-## ✨ 주요 기능
+## ✨ 핵심 기능 (Key Features)
 
 - 🎥 **YouTube 재생목록 자동 수집** — YouTube Data API v3로 재생목록 영상 전체 조회
 - 🤖 **Gemini AI 자동 요약 (v4.6)** — 공개 영상은 실제 영상(YouTube URL)을 Gemini 에 넣어 4섹션 요약 + 사실 신호를 받고, 안 되면 제목·설명란으로 요약
@@ -63,7 +42,7 @@ YouTube 재생목록의 영상을 **Gemini AI**가 실제 영상을 보고 요�
 
 ---
 
-## 🏗️ 시스템 아키텍처 (v4.19)
+## 🏗️ 아키텍처·데이터 파이프라인 (v4.19)
 
 ### 전체 데이터 흐름
 
@@ -178,6 +157,8 @@ flowchart TD
 | 9b | 검색 인덱스 | `build_search_index.py` | 바뀐 노트 | `wiki_index.json`·`.vec` 증분 | 변경 0이면 생략 |
 | 10 | 알림 | `scheduler.js` | 2·2a·3·3b·4·5~9 결과 | Telegram 1개 메시지 | 변경 0이면 발송 생략 (시트 실패는 알림 · 백업 실패는 별도 알림 · 실패 알림은 0·2b) |
 
+## 🏛️ 모듈별 상세 구조
+
 ### 두 소스의 격리 원칙
 
 영상 노트와 꿀팁 노트는 **같은 Vault, 다른 폴더, 다른 프론트매터 키**를 쓴다. 이 구분이 고아 격리 안전장치를 지킨다.
@@ -191,9 +172,75 @@ flowchart TD
 | 파일명 | `<채널>_<제목>_<날짜>.md` | `<저장일>_<제목>.md` (충돌 시 `_<id 끝 6자리>`) |
 | Wiki 합성 | ✅ 본문 요약 기반 | ✅ 제목·태그·메모 기반 (본문이 거의 없어 추출 품질은 낮음) |
 
+### 구글 시트 미러 (v4.0)
+
+> 시트는 보기 전용 사본이다. 시트를 고쳐도 장부로 돌아가지 않고, 다음 변경 때 덮어써진다. 열을 추가하지 말 것(머리글이 다르면 쓰기를 멈춘다 → `--full`).
+
+### 장부 백업 (v4.1)
+
+장부는 이 맥에만 있는 원본이다. 스케줄러가 매 실행(시트 미러 뒤 · Obsidian 동기화 앞)에 `backup_library.py` 를 부르고, 오늘(KST) 백업이 없는 곳에만 만든다 — 실제로는 00시 실행이 하루 1개를 만든다.
+
+- 파일: `library-YYYYMMDD.db.gz`(약 4MB). SQLite 온라인 백업 → `integrity_check` → gzip → 압축을 다시 풀어 sha256 대조. 장부는 읽기 전용으로만 연다.
+- 보관: 최신 7개 + 그보다 옛 주마다 1개씩 4주 = 최대 11개(약 45MB). 이름 형식이 다른 파일은 지우지 않는다.
+
+> 설치 순서·복원 절차는 「📦 설치 및 실행 가이드 › 6. 장부 백업·복원」.
+
+### Wiki 검색 (v3.2)
+
+| 입구 | 프로세스 | 바인딩 | 용도 |
+|---|---|---|---|
+| `http://localhost:3000/wiki` | `server.js` | `127.0.0.1:3000` | 이 맥에서 직접 |
+| `http://<맥이름>.local:3100/wiki` | `wiki_lan_server.js` | `0.0.0.0:3100` + 대역 필터 | 집 안 다른 컴퓨터(가족) |
+| MCP `wiki-search` | `wiki_mcp.js` (stdio) | 없음 | Claude 대화 중 |
+
+> 제약: 맥이 집에 켜져 있고 깨어 있을 때만 접속된다. 읽기 전용(검색·AI 답변)이며, 인제스트 실행 엔드포인트는 이 서버에 없다.
+
+화면(v4.7):
+- 처음 열면 전체 목록(최신순). 왼쪽 필터 — 종류(영상·꿀팁) · 토픽(여러 개, 「하나라도 / 모두」) · 올라온 날짜 · 조회수 · 요약 방식(영상을 보고 만든 요약만) · 채널 · 꿀팁 분류·중요도 · 지난 방문 뒤 새로 들어온 것. 필터 옆 숫자는 다른 조건에 맞춰 바로 바뀐다.
+- 검색어를 넣으면 의미 점수 상위 200건을 관련 결과로 보고 그 안에서 거르고 정렬한다(임베딩 한도에 걸리면 글자 일치).
+- 표 머리줄(제목·채널·토픽·올라온 날·조회수·관련도)을 누르면 정렬, 한 번 더 누르면 뒤집힌다. 표/카드 보기 전환. 줄을 누르면 펼쳐지고 「전체 요약 보기」로 노트 본문과 비슷한 영상 5개를 오른쪽 패널에서 본다.
+- 「엑셀」은 지금 목록(필터·정렬 그대로)을 `ai-llm-wiki-YYYYMMDD.xlsx` 로 받는다(시트 「목록」·「조건」).
+- 지금 화면 상태(검색어·필터·정렬·열린 노트)가 주소에 남아 북마크·공유할 수 있다. `/` 로 검색 칸, `Esc` 로 지우기·닫기.
+
+### Obsidian LLM Wiki
+
+장부에 저장된 AI 영상 요약·꿀팁을 Obsidian 지식베이스로 자동 변환하며, `wiki_ingest.py`를 통해 지식 간의 관계를 분석하여 위키 페이지를 합성합니다. 자세한 구조는 [CLAUDE.md](CLAUDE.md)를 참조하세요.
+
+### 장부 구조 (`data/library.db`, v4.0 · user_version 3 = v4.6)
+
+스키마 원본은 `lib/library_schema.sql` 하나다(Python·Node 가 같은 파일을 실행). 문자열은 NFC, 목록은 JSON 배열 문자열, 시각은 ISO 8601 UTC.
+
+| 테이블 | 내용 | 시트 탭 |
+|---|---|---|
+| `videos` | 영상 1건 1행. `record_id`(노션에서 옮긴 행 = 노션 page id, 새 행 = uuid4 = Obsidian `notion_id`) · `video_id`(UNIQUE) · 제목 · 채널 · `topics` · 업로드일 · 조회수 · 구독자 · URL · `summary`(Gemini 요약 마크다운) · `summary_src`(`video` 실제 영상 요약 · `app` 설명란 요약 · 그 밖 노션 시절) · (v4.6) `grade`(keep·exclude·NULL 미판정) · `quality`(신호 JSON) · `summarized_at` — 등급·신호는 시트로 보내지 않는다 | **영상** |
+| `tips` | 꿀팁 링크 1건 1행(카톡 · v4.18 텔레그램 공용). 제목 · URL · `url_key`(중복 판정) · 출처(호스트) · `tags` · 카테고리 · 상태 · 중요도 · 저장일 · 메모 · `body_md`(본문) | **꿀팁** |
+| `videos_dup` | 1단계 적재 때 같은 video_id 로 겹친 노션 페이지 보관본 (지우지 않음) | — |
+| `wiki_extract` | (v4.5) Wiki 합성 추출 결과 — 소스(`record_id`)별 엔티티·개념·관계 JSON, `status`(ok·seed·failed · v4.6-b stale = 재요약 뒤 다시 추출 대기)·`attempts`. `_wiki` 페이지는 이 표로 다시 그린다 | — |
+| `meta` | `switched_at`(장부 원본 확정 시각) · `sheet_wm_videos`·`sheet_wm_tips`(시트에 보낸 마지막 `updated_at`) · `sheet_target` · `sheet_last_ok` · 1단계 적재 기록(`source`·`loaded_at`·`schema_version`·`notion_video_pages`·`notion_tip_pages`) · (v4.18) `tips_bot_offset`·`tips_bot_last_ok`(텔레그램 봇 읽은 위치·마지막 정상 수신, tips 와 같은 트랜잭션) | — |
+
+시트 열 — **영상**: record_id · 업로드일 · 채널 · 제목 · 주제 · 조회수 · 구독자 · URL · 요약 · 저장 · 수정 / **꿀팁**: record_id · 저장일 · 제목 · URL · 출처 · 카테고리 · 태그 · 중요도 · 상태 · 메모 · 본문 · 저장 · 수정 (저장·수정은 KST).
+
 ---
 
-## 📂 프로젝트 구조
+## 🛠️ 기술 스택
+
+| 분류 | 기술 |
+|------|------|
+| **Runtime** | Node.js 22.13+ (운영 26.x, 데몬 `/opt/homebrew/bin/node`, `node:sqlite`), Python 3 (운영 3.14, `/opt/homebrew/bin/python3`) |
+| **Backend** | Node.js HTTP 서버 (`127.0.0.1` 전용) |
+| **Frontend** | Vanilla HTML/CSS/JavaScript (Single File) |
+| **AI** | Google Gemini 2.5 Flash(신규 영상 요약·Wiki 합성) · 3.5 Flash-Lite(토픽 분류·재요약) · gemini-embedding-001(검색) |
+| **데이터 소스** | YouTube Data API v3, 카카오톡 내보내기 CSV, 텔레그램 Bot API(꿀팁 전용 봇 getUpdates) |
+| **저장소** | 로컬 SQLite (`data/library.db`) — v4.0 |
+| **보기용 사본** | 구글 시트 + Apps Script 웹앱 — v4.0 |
+| **Wiki** | Obsidian (로컬 마크다운 지식베이스) |
+| **알림** | Telegram Bot API, Gmail SMTP |
+| **스케줄링** | macOS launchd |
+| **운영** | Claude Code — 실행 PM `pm-wiki`(`./pm-wiki.sh`) + 워커 서브에이전트(`.claude/agents/`) · 훅(`.claude/hooks/`) |
+
+---
+
+## 📁 파일 구조 및 역할
 
 ```
 AI_Wiki_Pipeline/
@@ -259,103 +306,63 @@ AI_Wiki_Pipeline/
 
 ---
 
-## 🛠️ 기술 스택
-
-| 분류 | 기술 |
-|------|------|
-| **Runtime** | Node.js 22.13+ (운영 26.x, 데몬 `/opt/homebrew/bin/node`, `node:sqlite`), Python 3 (운영 3.14, `/opt/homebrew/bin/python3`) |
-| **Backend** | Node.js HTTP 서버 (`127.0.0.1` 전용) |
-| **Frontend** | Vanilla HTML/CSS/JavaScript (Single File) |
-| **AI** | Google Gemini 2.5 Flash(신규 영상 요약·Wiki 합성) · 3.5 Flash-Lite(토픽 분류·재요약) · gemini-embedding-001(검색) |
-| **데이터 소스** | YouTube Data API v3, 카카오톡 내보내기 CSV, 텔레그램 Bot API(꿀팁 전용 봇 getUpdates) |
-| **저장소** | 로컬 SQLite (`data/library.db`) — v4.0 |
-| **보기용 사본** | 구글 시트 + Apps Script 웹앱 — v4.0 |
-| **Wiki** | Obsidian (로컬 마크다운 지식베이스) |
-| **알림** | Telegram Bot API, Gmail SMTP |
-| **스케줄링** | macOS launchd |
-| **운영** | Claude Code — 실행 PM `pm-wiki`(`./pm-wiki.sh`) + 워커 서브에이전트(`.claude/agents/`) · 훅(`.claude/hooks/`) |
-
----
-
-## 🔑 환경 변수 설정 (.env)
-
-프로젝트 루트에 `.env` 파일을 생성하세요. (GitHub에 절대 올리지 않습니다)
-
-```env
-YOUTUBE_API_KEY=AIzaSy...
-GEMINI_API_KEY=AIzaSy...
-GEMINI_API_KEYS=AIzaSy...,AIzaSy...                 # 무료 키 로테이션 (쉼표)
-
-TIPS_BOT_TOKEN=<전용 봇 토큰>                           # (v4.18, 선택) 텔레그램 꿀팁 입구 — 없으면 건너뜀
-TIPS_BOT_CHAT_ID=<허용할 개인 대화 id>                  # (v4.18) telegram_tips_ingest.py --whoami 로 확인
-KAKAO_EXPORT_DIR=~/Downloads                         # KakaoTalk_Chat_*.csv 가 떨어지는 폴더 (없으면 ~/Downloads)
-# (선택, v4.8) 꿀팁 원문 제목 조회 — 없으면 켜짐 · 실행당 60건 · 180초
-# KAKAO_TITLE_LOOKUP=false
-# KAKAO_TITLE_MAX=60
-# KAKAO_TITLE_BUDGET=180
-
-# (v4.0) 구글 시트 미러 — 둘 다 없으면 미러를 건너뛴다 (설치 순서: gas/sheet_mirror.gs 머리 주석)
-SHEET_MIRROR_URL=https://script.google.com/macros/s/.../exec
-SHEET_MIRROR_TOKEN=<openssl rand -hex 24 로 만든 값 — Apps Script 스크립트 속성 MIRROR_TOKEN 과 같게>
-
-# (v4.1) 장부 백업 — 구글 드라이브 데스크톱 앱이 동기화하는 폴더 안. 없으면 로컬 data/backups/ 에만 만든다
-LIBRARY_BACKUP_DIR=~/Library/CloudStorage/GoogleDrive-<계정>/내 드라이브/YouTube_Ledger_Backup
-
-# (v4.5) Wiki 합성 backfill — 옛 소스를 묶어서 다시 추출. 영상 요약과 같은 Gemini 무료 키를 쓰므로 올리지 말 것
-WIKI_BACKFILL_DAILY_MAX=30                          # 하루(태평양시) 호출 상한, 0 = 끔 (없으면 30). (v4.6-b) 대상은 실제 영상 요약 노트만
-WIKI_BACKFILL_BATCH=20                              # 한 호출에 묶는 소스 수 1~40 (없으면 20)
-
-# (v4.6) 실제 영상 요약 — 없으면 아래 기본값. false 면 예전처럼 설명란으로만 요약
-VIDEO_SUMMARY=true
-VIDEO_MAX_SECONDS=1800                              # 이보다 긴 영상은 앞부분만 (Gemini videoMetadata.endOffset)
-VIDEO_DAILY_SECONDS=28800                           # 하루(태평양시) 영상 입력 분량 상한 — 무료 등급 8시간
-
-# (v4.6-b) 기존분 재요약 — 없으면 아래 기본값. false 면 재요약만 끈다 (VIDEO_SUMMARY=false 도 재요약을 끈다)
-RESUMMARY=true
-RESUMMARY_MODEL=gemini-3.5-flash-lite               # 신규 요약(2.5 Flash)과 무료 한도가 모델별로 따로
-RESUMMARY_PER_RUN=5                                 # 정시 실행 1회당 편수 (코드 기본값 — 운영은 실행당 20·하루 40)
-RESUMMARY_DAILY_MAX=20                              # 하루(태평양시) 편수 — 장부 quality.resummary_day 로 센다 (코드 기본값 — 운영은 실행당 20·하루 40)
-RESUMMARY_RESERVE_SECONDS=0                         # (v4.13 기본 0) 재요약이 모델·키별 하루 분량에서 남겨 둘 초 — 분량을 모델·키별로 세므로 보통 0
-RESUMMARY_MAX_5XX=1                                 # (v4.11) 영상 1편에 5xx 이 횟수면 재시도 없이 그 실행 재요약 중단 (0 = 신규와 같은 8회)
-
-# (v4.14) 토픽 분류 모델 — 없으면 gemini-3.5-flash-lite. 예전 분류로 되돌릴 때만 gemini-2.5-flash
-# CLASSIFY_MODEL=gemini-2.5-flash
-
-# (v3.2) 집 안 전용 Wiki 검색 서버 — 이 대역 + 루프백만 접속 허용. 없거나 틀리면 127.0.0.1 전용(fail-closed)
-WIKI_LAN_ALLOW_CIDR=192.168.0.0/24                  # 예시값 — 실제 집 네트워크 대역으로 교체
-WIKI_LAN_ASK_DAILY_MAX=20                           # AI 답변 24시간 총량 (Gemini 무료 한도 보호)
-# WIKI_LAN_PORT=3100                               # (선택) 집 안 검색 서버 포트
-
-# (v4.0) 새로 만든 빈 장부로 처음 돌릴 때만 true. 평소에는 넣지 않는다 — 장부 0건이면 저장 없이 중단하는 안전장치를 끈다
-# LIBRARY_ALLOW_EMPTY=true
-
-TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=1234567890:AAG...
-TELEGRAM_CHAT_ID=1234567890
-
-EMAIL_ENABLED=false
-EMAIL_FROM=your@gmail.com
-EMAIL_TO=recipient@email.com
-EMAIL_APP_PASS=xxxx xxxx xxxx xxxx
-
-# YouTube OAuth 2.0 — 토픽 재생목록 자동 추가용. oauth_setup.js 실행 후 자동 기입
-YOUTUBE_OAUTH_CLIENT_ID=...
-YOUTUBE_OAUTH_CLIENT_SECRET=...
-YOUTUBE_OAUTH_REFRESH_TOKEN=...
-YOUTUBE_MASTER_PLAYLIST_ID=PLxxxxxxxxxxxxxxxxxxxxxxxx
-YOUTUBE_PLAYLIST_SYNC=true                          # false 면 토픽 재생목록 추가·대기 큐 재시도를 건너뛴다 (요약·분류·장부 저장은 그대로). 현재 운영값 false
-```
-
----
-
-## 📦 설치 및 실행
+## 📦 설치 및 실행 가이드
 
 ### 1. 사전 요구사항
 - Node.js 22.13 이상 (`node:sqlite` 를 플래그 없이 쓰는 버전. 데몬은 Homebrew `/opt/homebrew/bin/node`), Python 3 (Homebrew `/opt/homebrew/bin/python3`)
 - YouTube Data API v3 키, Google Gemini API 키
 - 장부 `data/library.db` (원본 — 새로 만들지 않는다. 없으면 백업에서 복원)
 
-### 2. 서버 및 스케줄러 실행
+### 2. 환경 변수 설정 (.env)
+
+프로젝트 루트에 `.env` 파일을 생성하세요. (GitHub에 절대 올리지 않습니다)
+
+값은 이 문서에 적지 않고 변수 이름과 뜻만 둡니다. 필수 칸이 빈 변수는 선택입니다.
+
+| 변수 | 필수 | 설명 |
+|---|---|---|
+| `YOUTUBE_API_KEY` | ✅ | YouTube Data API v3 읽기 키 |
+| `GEMINI_API_KEY` | ✅ | Gemini API 키 |
+| `GEMINI_API_KEYS` |  | 무료 키 로테이션 — 쉼표로 여러 개 |
+| `TELEGRAM_ENABLED` |  | 텔레그램 알림 사용 여부 |
+| `TELEGRAM_BOT_TOKEN` |  | 실행 알림 봇 토큰 |
+| `TELEGRAM_CHAT_ID` |  | 실행 알림을 받을 대화 id |
+| `EMAIL_ENABLED` |  | 이메일 알림 사용 여부 |
+| `EMAIL_FROM` |  | 이메일 보내는 주소 |
+| `EMAIL_TO` |  | 이메일 받는 주소 |
+| `EMAIL_APP_PASS` |  | Gmail 앱 비밀번호 |
+| `YOUTUBE_OAUTH_CLIENT_ID` |  | 토픽 재생목록 자동 추가용 YouTube OAuth 2.0 — `oauth_setup.js` 실행 후 자동 기입 |
+| `YOUTUBE_OAUTH_CLIENT_SECRET` |  | 위와 같음 |
+| `YOUTUBE_OAUTH_REFRESH_TOKEN` |  | 위와 같음 |
+| `YOUTUBE_MASTER_PLAYLIST_ID` |  | 마스터 재생목록('AI 영상목록') id |
+| `YOUTUBE_PLAYLIST_SYNC` |  | `false` 면 토픽 재생목록 추가·대기 큐 재시도를 건너뛴다 (요약·분류·장부 저장은 그대로) |
+| `TIPS_BOT_TOKEN` |  | (v4.18) 텔레그램 꿀팁 입구 전용 봇 토큰 — 없으면 건너뜀 |
+| `TIPS_BOT_CHAT_ID` |  | (v4.18) 허용할 개인 대화 id — `telegram_tips_ingest.py --whoami` 로 확인 |
+| `KAKAO_EXPORT_DIR` |  | `KakaoTalk_Chat_*.csv` 가 떨어지는 폴더 (없으면 `~/Downloads`) |
+| `KAKAO_TITLE_LOOKUP` |  | (v4.8) 꿀팁 원문 제목 조회 — 없으면 켜짐, `false` 면 끔 |
+| `KAKAO_TITLE_MAX` |  | (v4.8) 실행당 제목 조회 상한(건) — 코드 기본값 60 |
+| `KAKAO_TITLE_BUDGET` |  | (v4.8) 제목 조회 전체 시간 상한(초) — 코드 기본값 180 |
+| `SHEET_MIRROR_URL` |  | (v4.0) 구글 시트 미러 Apps Script 웹앱 `/exec` 주소 — 둘 다 없으면 미러를 건너뜀 (설치 순서: `gas/sheet_mirror.gs` 머리 주석) |
+| `SHEET_MIRROR_TOKEN` |  | (v4.0) 미러 인증 토큰 — Apps Script 스크립트 속성 `MIRROR_TOKEN` 과 같은 값 (`openssl rand -hex 24` 로 생성) |
+| `LIBRARY_BACKUP_DIR` |  | (v4.1) 장부 백업 사본 폴더 — 구글 드라이브 데스크톱 앱이 동기화하는 폴더 안. 없으면 로컬 `data/backups/` 에만 만듦 |
+| `WIKI_BACKFILL_DAILY_MAX` |  | (v4.5) Wiki 합성 backfill 하루(태평양시) 호출 상한, 0 = 끔 — 코드 기본값 30. (v4.6-b) 대상은 실제 영상 요약 노트만. 영상 요약과 같은 Gemini 무료 키를 쓰므로 올리지 말 것 |
+| `WIKI_BACKFILL_BATCH` |  | (v4.5) backfill 한 호출에 묶는 소스 수 1~40 — 코드 기본값 20 |
+| `VIDEO_SUMMARY` |  | (v4.6) 실제 영상 요약 — 없으면 켜짐. `false` 면 예전처럼 설명란으로만 요약 |
+| `VIDEO_MAX_SECONDS` |  | (v4.6) 이보다 긴 영상은 앞부분만 (Gemini `videoMetadata.endOffset`) — 코드 기본값 1800 |
+| `VIDEO_DAILY_SECONDS` |  | (v4.6) 하루(태평양시) 영상 입력 분량 상한(초) — 무료 등급 8시간, 코드 기본값 28800 |
+| `RESUMMARY` |  | (v4.6-b) 기존분 재요약 — 없으면 켜짐. `false` 면 재요약만 끈다 (`VIDEO_SUMMARY=false` 도 재요약을 끈다) |
+| `RESUMMARY_MODEL` |  | (v4.6-b) 재요약 모델 — 코드 기본값 `gemini-3.5-flash-lite` (신규 요약 2.5 Flash 와 무료 한도가 모델별로 따로) |
+| `RESUMMARY_PER_RUN` |  | (v4.6-b) 정시 실행 1회당 재요약 편수 — 코드 기본값 5 |
+| `RESUMMARY_DAILY_MAX` |  | (v4.6-b) 하루(태평양시) 재요약 편수 — 장부 `quality.resummary_day` 로 센다. 코드 기본값 20 |
+| `RESUMMARY_RESERVE_SECONDS` |  | (v4.13) 재요약이 모델·키별 하루 분량에서 남겨 둘 초 — 분량을 모델·키별로 세므로 코드 기본값 0 |
+| `RESUMMARY_MAX_5XX` |  | (v4.11) 영상 1편에 5xx 가 이 횟수면 재시도 없이 그 실행 재요약 중단 — 코드 기본값 1 (0 = 신규와 같은 8회) |
+| `CLASSIFY_MODEL` |  | (v4.14) 토픽 분류 모델 — 없으면 `gemini-3.5-flash-lite`. 예전 분류(2.5 Flash)로 되돌릴 때만 지정 |
+| `WIKI_LAN_ALLOW_CIDR` |  | (v3.2) 집 안 전용 Wiki 검색 서버 허용 대역 — 집 안 사설 대역(/16~/32, 쉼표로 여러 개) + 루프백만 접속. 없거나 틀리면 127.0.0.1 전용(fail-closed) |
+| `WIKI_LAN_ASK_DAILY_MAX` |  | (v3.2) 집 안 검색 서버 AI 답변 24시간 총량 (Gemini 무료 한도 보호) — 코드 기본값 20 |
+| `WIKI_LAN_PORT` |  | (v3.2) 집 안 검색 서버 포트 — 없으면 코드 기본값 3100 |
+| `LIBRARY_ALLOW_EMPTY` |  | (v4.0) 새로 만든 빈 장부로 처음 돌릴 때만 `true`. 평소에는 넣지 않는다 — 장부 0건이면 저장 없이 중단하는 안전장치를 끈다 |
+
+### 3. 서버 및 스케줄러 실행
 ```bash
 # 서버 수동 실행
 node server.js
@@ -373,11 +380,11 @@ launchd 데몬 4개 (설치본 = `~/Library/LaunchAgents/`, 원본 = 레포 루�
 | `com.irichgreen.server` | `server.js` (127.0.0.1:3000) | 상주 (로그인 시 시작) | `install-server.sh` |
 | `com.irichgreen.ytsummarizer` | `scheduler.js` (`caffeinate -i` 로 감쌈 — 실행 중 잠자기 방지) | 00 / 06 / 12 / 18시 | `install-scheduler.sh` |
 | `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분 + backfill + 재렌더, v4.16 `caffeinate -i` 로 감쌈) | 매일 17:30 (Gemini 일 한도 리셋 직후) | `install-wiki-ingest.sh` |
-| `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | 상주 | 아래 「6. Wiki 검색」 |
+| `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | 상주 | 아래 「7. Wiki 검색 접속」 |
 
 로그는 `~/Library/Logs/irichgreen/` (스케줄러 상세 로그는 레포 루트 `scheduler.log`).
 
-### 3. 꿀팁 인제스트 (카카오톡 · 텔레그램)
+### 4. 꿀팁 인제스트 (카카오톡 · 텔레그램)
 
 ```bash
 # 카카오톡 PC → '나와의 채팅' → 대화 내보내기 → ~/Downloads 에 CSV 저장 (월 1회 정도)
@@ -404,7 +411,9 @@ launchd 데몬 4개 (설치본 = `~/Library/LaunchAgents/`, 원본 = 레포 루�
 3. `.env` 에 `TIPS_BOT_TOKEN`(토큰) 입력 → `/opt/homebrew/bin/python3 telegram_tips_ingest.py --whoami` → 나온 chat id 를 `.env` 에 `TIPS_BOT_CHAT_ID` 로 입력. 값은 문서·대화에 붙이지 않는다.
 4. 봇 방에 링크를 보내면 다음 정시 실행이 읽어 장부에 넣고 봇 방에 답장한다. 바로 확인: `telegram_tips_ingest.py`(dry-run) → `--apply`.
 
-### 4. 구글 시트 미러 (v4.0)
+### 5. 구글 시트 미러 설치
+
+작동 방식은 「🏛️ 모듈별 상세 구조 › 구글 시트 미러」.
 
 1. 구글 시트를 하나 만들고 확장 프로그램 → Apps Script 에 `gas/sheet_mirror.gs` 를 붙여 넣는다.
 2. 맥에서 토큰을 만들어 `.env` 의 `SHEET_MIRROR_TOKEN` 과 Apps Script 스크립트 속성 `MIRROR_TOKEN` 에 같은 값을 넣는다.
@@ -417,14 +426,12 @@ launchd 데몬 4개 (설치본 = `~/Library/LaunchAgents/`, 원본 = 레포 루�
 /opt/homebrew/bin/python3 sheet_mirror.py --check     # 시트 행 수 = 장부 행 수 인지
 ```
 
-> 시트는 보기 전용 사본이다. 시트를 고쳐도 장부로 돌아가지 않고, 다음 변경 때 덮어써진다. 열을 추가하지 말 것(머리글이 다르면 쓰기를 멈춘다 → `--full`).
+### 6. 장부 백업·복원
 
-### 5. 장부 백업 (v4.1)
-
-장부는 이 맥에만 있는 원본이다. 스케줄러가 매 실행(시트 미러 뒤 · Obsidian 동기화 앞)에 `backup_library.py` 를 부르고, 오늘(KST) 백업이 없는 곳에만 만든다 — 실제로는 00시 실행이 하루 1개를 만든다.
+작동 방식·보관 규칙은 「🏛️ 모듈별 상세 구조 › 장부 백업」.
 
 1. 구글 드라이브 데스크톱 앱에 로그인해 둔다.
-2. `.env` 에 `LIBRARY_BACKUP_DIR` 를 넣는다(위 환경 변수 절). 마지막 폴더는 스크립트가 만들지만, 그 부모(`내 드라이브`)가 없으면 만들지 않고 실패로 알린다.
+2. `.env` 에 `LIBRARY_BACKUP_DIR` 를 넣는다(위 「2. 환경 변수 설정 (.env)」). 마지막 폴더는 스크립트가 만들지만, 그 부모(`내 드라이브`)가 없으면 만들지 않고 실패로 알린다.
 3. 확인:
 
 ```bash
@@ -432,9 +439,6 @@ launchd 데몬 4개 (설치본 = `~/Library/LaunchAgents/`, 원본 = 레포 루�
 /opt/homebrew/bin/python3 backup_library.py             # 오늘 것 만들기 (이미 있으면 건너뜀)
 /opt/homebrew/bin/python3 backup_library.py --status    # 두 곳의 개수·가장 최근 날짜
 ```
-
-- 파일: `library-YYYYMMDD.db.gz`(약 4MB). SQLite 온라인 백업 → `integrity_check` → gzip → 압축을 다시 풀어 sha256 대조. 장부는 읽기 전용으로만 연다.
-- 보관: 최신 7개 + 그보다 옛 주마다 1개씩 4주 = 최대 11개(약 45MB). 이름 형식이 다른 파일은 지우지 않는다.
 
 **복원** (손으로, 스케줄러가 돌지 않는 시간에):
 
@@ -451,29 +455,16 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 > 복원하면 그 날짜 이후 저장된 영상이 장부에서 빠진다. 다음 실행이 그 영상을 신규로 다시 요약할 수 있고, Obsidian 에 남은 노트는 고아 격리 대상이 될 수 있다 — `sync_obsidian.py --orphans-dry-run` 부터 본다. 시트는 `sheet_mirror.py --full` 로 맞춘다.
 
-### 6. Wiki 검색 (v3.2)
+### 7. Wiki 검색 접속
 
-| 입구 | 프로세스 | 바인딩 | 용도 |
-|---|---|---|---|
-| `http://localhost:3000/wiki` | `server.js` | `127.0.0.1:3000` | 이 맥에서 직접 |
-| `http://<맥이름>.local:3100/wiki` | `wiki_lan_server.js` | `0.0.0.0:3100` + 대역 필터 | 집 안 다른 컴퓨터(가족) |
-| MCP `wiki-search` | `wiki_mcp.js` (stdio) | 없음 | Claude 대화 중 |
+작동 방식·입구 표·화면 설명은 「🏛️ 모듈별 상세 구조 › Wiki 검색」.
 
 가족 공유 켜는 순서:
 1. `.env` 에 `WIKI_LAN_ALLOW_CIDR`(집 네트워크 대역)·`WIKI_LAN_ASK_DAILY_MAX` 추가
 2. `cp com.irichgreen.wiki-lan.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.irichgreen.wiki-lan.plist`
 3. macOS 방화벽에서 `node` 수신 연결 허용 (관리자 권한 필요 — 사람이 직접)
 
-> 제약: 맥이 집에 켜져 있고 깨어 있을 때만 접속된다. 읽기 전용(검색·AI 답변)이며, 인제스트 실행 엔드포인트는 이 서버에 없다.
-
-화면(v4.7):
-- 처음 열면 전체 목록(최신순). 왼쪽 필터 — 종류(영상·꿀팁) · 토픽(여러 개, 「하나라도 / 모두」) · 올라온 날짜 · 조회수 · 요약 방식(영상을 보고 만든 요약만) · 채널 · 꿀팁 분류·중요도 · 지난 방문 뒤 새로 들어온 것. 필터 옆 숫자는 다른 조건에 맞춰 바로 바뀐다.
-- 검색어를 넣으면 의미 점수 상위 200건을 관련 결과로 보고 그 안에서 거르고 정렬한다(임베딩 한도에 걸리면 글자 일치).
-- 표 머리줄(제목·채널·토픽·올라온 날·조회수·관련도)을 누르면 정렬, 한 번 더 누르면 뒤집힌다. 표/카드 보기 전환. 줄을 누르면 펼쳐지고 「전체 요약 보기」로 노트 본문과 비슷한 영상 5개를 오른쪽 패널에서 본다.
-- 「엑셀」은 지금 목록(필터·정렬 그대로)을 `ai-llm-wiki-YYYYMMDD.xlsx` 로 받는다(시트 「목록」·「조건」).
-- 지금 화면 상태(검색어·필터·정렬·열린 노트)가 주소에 남아 북마크·공유할 수 있다. `/` 로 검색 칸, `Esc` 로 지우기·닫기.
-
-### 7. 회귀 테스트
+### 8. 회귀 테스트
 
 ```bash
 scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 RESULT: 16/16 통과, 실패하면 exit 1. 네트워크 0회, 실제 장부·Vault 무관
@@ -481,82 +472,85 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 
 ---
 
-## 📓 Obsidian LLM Wiki
+## 📝 버전 히스토리 (Changelog)
 
-장부에 저장된 AI 영상 요약·꿀팁을 Obsidian 지식베이스로 자동 변환하며, `wiki_ingest.py`를 통해 지식 간의 관계를 분석하여 위키 페이지를 합성합니다. 자세한 구조는 [CLAUDE.md](CLAUDE.md)를 참조하세요.
-
----
-
-## 🗄️ 장부 구조 (`data/library.db`, v4.0 · user_version 3 = v4.6)
-
-스키마 원본은 `lib/library_schema.sql` 하나다(Python·Node 가 같은 파일을 실행). 문자열은 NFC, 목록은 JSON 배열 문자열, 시각은 ISO 8601 UTC.
-
-| 테이블 | 내용 | 시트 탭 |
-|---|---|---|
-| `videos` | 영상 1건 1행. `record_id`(노션에서 옮긴 행 = 노션 page id, 새 행 = uuid4 = Obsidian `notion_id`) · `video_id`(UNIQUE) · 제목 · 채널 · `topics` · 업로드일 · 조회수 · 구독자 · URL · `summary`(Gemini 요약 마크다운) · `summary_src`(`video` 실제 영상 요약 · `app` 설명란 요약 · 그 밖 노션 시절) · (v4.6) `grade`(keep·exclude·NULL 미판정) · `quality`(신호 JSON) · `summarized_at` — 등급·신호는 시트로 보내지 않는다 | **영상** |
-| `tips` | 꿀팁 링크 1건 1행(카톡 · v4.18 텔레그램 공용). 제목 · URL · `url_key`(중복 판정) · 출처(호스트) · `tags` · 카테고리 · 상태 · 중요도 · 저장일 · 메모 · `body_md`(본문) | **꿀팁** |
-| `videos_dup` | 1단계 적재 때 같은 video_id 로 겹친 노션 페이지 보관본 (지우지 않음) | — |
-| `wiki_extract` | (v4.5) Wiki 합성 추출 결과 — 소스(`record_id`)별 엔티티·개념·관계 JSON, `status`(ok·seed·failed · v4.6-b stale = 재요약 뒤 다시 추출 대기)·`attempts`. `_wiki` 페이지는 이 표로 다시 그린다 | — |
-| `meta` | `switched_at`(장부 원본 확정 시각) · `sheet_wm_videos`·`sheet_wm_tips`(시트에 보낸 마지막 `updated_at`) · `sheet_target` · `sheet_last_ok` · 1단계 적재 기록(`source`·`loaded_at`·`schema_version`·`notion_video_pages`·`notion_tip_pages`) · (v4.18) `tips_bot_offset`·`tips_bot_last_ok`(텔레그램 봇 읽은 위치·마지막 정상 수신, tips 와 같은 트랜잭션) | — |
-
-시트 열 — **영상**: record_id · 업로드일 · 채널 · 제목 · 주제 · 조회수 · 구독자 · URL · 요약 · 저장 · 수정 / **꿀팁**: record_id · 저장일 · 제목 · URL · 출처 · 카테고리 · 태그 · 중요도 · 상태 · 메모 · 본문 · 저장 · 수정 (저장·수정은 KST).
-
----
-
-## 🔄 버전 관리 (Version History)
-
-본 프로젝트는 **`v[Major].[Minor]`** 형식의 단순화된 버전 규칙을 따릅니다.
+본 프로젝트는 **`v[Major].[Minor].[Patch]`**(semver) 형식으로 버전을 적습니다.
 - **Major**: 핵심 엔진 교체, 아키텍처 개편 등 대규모 변화
-- **Minor**: 기능 개선, 버그 수정, 프롬프트 튜닝 등 마이너한 변화
-- (예외) 기존 버전의 긴급 안정성 수정은 세 번째 자리를 쓴 적이 있다 — v3.2.1. 문서만 고친 변경은 버전을 올리지 않는다.
+- **Minor**: 기능 추가·개선, Phase 완료 (실제로 가장 많이 올라가는 자리 — v4.0.0 ~ v4.19.0)
+- **Patch**: 기존 버전의 긴급 안정성 수정 (v3.2.1 · v2.7.1). 문서만 고친 변경은 버전을 올리지 않는다.
+- 같은 날 두 단계로 나눈 버전은 끝에 `-a`·`-b` 를 붙인다(v4.6.0-a · v4.6.0-b). 본문·CLAUDE.md 의 `v4.19`·`v4.6-b` 같은 짧은 표기는 같은 버전이다.
 
 ### 📌 요약 이력 (Summary Table)
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
-| **v4.19** | 2026-11-04 | **꿀팁 판정 글자에서 URL 빼기 · 인스타 제목·공유 파라미터**: 메시지 속 노션 주소가 `Notion` 태그를 만들지 않음 · `igsh`·`dlrf` 제거 · 인스타 추정 제목 · 「Instagram」 제목 거부 · `recategorize_tips.py --ids=` · 스키마 무변경 |
-| **v4.18** | 2026-11-03 | **꿀팁 두 번째 입구 — 텔레그램 전용 봇 → 장부 tips**: 휴대폰 공유 → 전용 봇 방 → 정시 실행마다 `telegram_tips_ingest.py` 가 카톡과 같은 엔진으로 같은 `tips` 에 넣고 봇 방에 답장(저장·이미 있음·링크 없음). offset·마지막 수신 시각은 장부 `meta`(tips 와 같은 트랜잭션). 허용 chat 하나만, 치명 응답 즉시 중단. 카톡 경로 결과 diff 0 · 스키마 무변경 |
-| **v4.17** | 2026-11-01 | **not_ai 제외는 토픽 분류도 비었을 때만**: 영상 신호 `ai_related=false` 5건 중 진짜 비 AI 1건(정밀도 1/5), 토픽 분류는 5/5 맞음. `computeGrade(signals, topics)` — `!ai_related` AND 토픽 0개일 때만 제외, 토픽이 있으면 `not_ai_minor` 로 알림. 신규는 분류 뒤 재판정, 재요약은 장부 토픽. 장부 무변경 · 소급 안 함 |
-| **v4.16** | 2026-10-31 | **wiki-ingest 잠자기 방지 · brew 업그레이드 뒤 점검 순서**: `com.irichgreen.wiki-ingest`(17:30)도 `/usr/bin/caffeinate -i` 로 감싼다. 10-30 `brew upgrade`(simdjson)로 node 가 dyld 오류로 기동 즉시 죽어 정시 실행 2회가 로그 없이 빠진 일을 계기로 점검 순서를 CLAUDE.md 에. 레포 밖 옛 경로 2곳을 `~/Dev` 로. 코드·장부 무변경 |
-| **v4.15** | 2026-10-16 | **정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤**: `com.irichgreen.ytsummarizer` 를 `/usr/bin/caffeinate -i` 로 감싸 실행 중 유휴 잠자기(배터리 `sleep 1`)를 막는다. 덮개를 닫은 잠자기(10-15 12시 실패 원인)는 못 막는다. 10-16 레포 이관(`~/Dev`)으로 설치본과 달라진 레포 plist 원본 4개·`install-server.sh`·`install-scheduler.sh` sed 패턴·`wiki_mcp.js` 주석을 새 경로로. 코드·장부 무변경 |
-| **v4.14** | 2026-10-15 | **토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite**: 신규 영상 1편에 2.5 Flash 를 요약 1 + 분류 1회 쓰던 것을 요약 1회로 — 2.5 Flash 무료 하루 요청 한도(프로젝트당 20, 28일 최대 36/20)를 영상 요약에 남긴다. 3.5 Flash-Lite 는 하루 500. 비교 시험(최근 신규 20편): 오류·신뢰도 0.6 미만 0, 영상당 토픽 4.4 → 2.5개 — 주로 추상 토픽(생산성 향상 13·자동화 7·에이전트 6)이 빠지고 바이브코딩 4·트렌드 1이 더 맞게 붙음(대표님 결정 A안). `.env CLASSIFY_MODEL` 로 되돌림. 분류 응답 한글이 청크 경계에서 깨질 수 있던 잠복 결함(`chunks += c`) 수정. 장부·스키마 무변경. 회귀 테스트 15종 |
-| **v4.13** | 2026-10-15 | **영상 하루 분량을 모델별·키별로**: `.video_quota.json` 에 모델별(`models`)·키별(`keys`, sha256 앞 8자리) 누계를 두고 둘 다 8시간 안일 때만 요청, 찬 키는 다음 키로. PT 10-14 실측 키 4개 · 모델 2개 합계 약 10.4시간에 영상 429 0건 — 예전 "전체 합계 8시간" 전제가 보수적이었다. 재요약 신규 몫 예약(`RESUMMARY_RESERVE_SECONDS`) 기본 3시간 → 0 — 신규가 많은 날 재요약이 9편에서 멈추던 것(남은 2,981편에 약 10개월)을 하루 20편 상한까지. 장부·스키마 무변경. 회귀 테스트 14종 |
-| **v4.12** | 2026-10-14 | **promo_main 오판 줄이기 — 판매 비중·본론 신호**: 영상 요약 신호에 `promo_share`(판매·모집 멘트가 차지하는 비중 0~1)·`promo_subject`(본론 자체가 제작자 자신의 유료 상품 — 소개·후기·고객 사례)를 더하고, 판매 제외를 `promo_main AND (promo_share ≥ 0.5 OR promo_subject)` 로 좁혔다(오판 3건 = 끝에 자기 상품 잠깐 안내 · 두 모델 모두 promo_main 을 true 로 냄). promo_main 이 true 인데 제외되지 않으면 로그 `(promo_minor …)`. 지금보다 좁기만 하고 장부·스키마 무변경. 회귀 테스트 14종 |
-| **v4.11** | 2026-10-14 | **재요약 5xx 조기 중단**: 재요약(3.5 Flash-Lite)이 503 을 받으면 신규와 같은 8회(키 4개 × 2) 재시도 — 503 이 1~2분 뒤에 와서 1편에 약 13분(10-14 00시). 이제 영상 1편에 5xx `RESUMMARY_MAX_5XX`(기본 1)회면 재시도 없이 그 실행의 재요약을 멈추고, 그 영상은 `quality.resummary_5xx` +1(3회면 건너뜀). 신규 영상 경로·429·네트워크 처리는 그대로. 회귀 테스트 14종 |
-| **v4.10** | 2026-10-14 | **꿀팁 빈 기본값 재분류 · 제목 3차**: `recategorize_tips.py` 가 카테고리 「기타」 + 태그 없음(노션 이관 때 기본값 그대로)을 사람이 고른 값으로 보지 않고 다시 매긴다(`blank_default`, 19건 중 16건 이동). URL 추정 제목 25건 → 원문 제목(`retitle_tips.py`, 비공개 노션 1건 제외) 뒤 재분류. 재분류 28행 · 「기타」 66 → 42. 회귀 테스트 14종 |
-| **v4.9** | 2026-10-13 | **꿀팁 분류 보정**: 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)의 `notion` 이 태그 `Notion` → 「지식관리」로 잡히던 문제(지식관리 17건 중 14건)와 한글 「클로드」·「노션」·「제미나이」 등이 태그로 안 잡히던 문제 수정 — 분류 규칙을 `lib/kakao_parse.classify` 한 곳으로. 기존 꿀팁은 `scripts/recategorize_tips.py` 로 v4.8 규칙이 매긴 행만 다시 분류(사람이 고른 분류 91건 유지), 노션 이관 시절 71행 출처 `https://…` → 호스트만, 노트는 해당 줄만 제자리 수정. 회귀 테스트 14종 |
-| **v4.8** | 2026-10-13 | **카톡 꿀팁 원문 제목 자동 조회**: `kakao_ingest.py` 가 URL 로만 제목을 추정해 「노션 자료 (제목 미확인)」·「유튜브 영상 (제목 미확인)」·URL 조각 제목이 쌓이던 문제 수정. 사용자 글이 없고 GitHub 레포가 아닌 링크는 `lib/title_fetch.py` 로 원문 제목을 조회(노션 공개 페이지 API · 유튜브 oEmbed · og:title) — 장부 쓰기 전, 요청당 8초·재시도 없음, 실패하면 예전 추정 제목. 실행당 60건·180초, `--no-lookup`·`.env KAKAO_TITLE_*`. 실제 꿀팁 148건 사전 조회 143 성공. 회귀 테스트 13종 |
-| **v4.7** | 2026-10-13 | **Wiki 검색 화면 개편**: 처음 열면 전체 목록(필터·정렬은 브라우저), 건수 선택 제거, 토픽 다중 선택(하나라도·모두), 종류·날짜·조회수·채널·요약 방식·꿀팁 분류·새로 들어온 것 필터, 머리줄 정렬, 표/카드, 의미 검색은 상위 200건 안에서, 비슷한 영상(저장 벡터 — Gemini 호출 없음), 노트 전체 보기(`/api/wiki-note`, id 로만), 엑셀 내려받기. iRichGreen Design System DS 1.1.23. 인덱스에 화면 필터용 메타(임베딩 무관). 회귀 테스트 12종 |
-| **v4.6-b** | 2026-10-13 | **기존분 재요약 + 노트 요약 절 제자리 교체 + backfill 재개**: 설명란 요약 약 3,000편(`summary_src != 'video'`)을 정시 실행마다 최대 5편 · 하루 20편씩 실제 영상으로 다시 요약(`lib/resummarize.js`, Gemini 3.5 Flash-Lite — 10-13 비교 5건 등급·신호 일치, 신규 영상 분량 3시간 예약, 실패하면 기존 요약 유지). `sync_obsidian.py` 가 재요약·등급 변경 노트의 요약 절만 교체(관련 항목 절 보존). Wiki backfill 은 실제 영상 요약 노트만(재요약 시 `wiki_extract` stale), 항목 0 `_wiki` 페이지는 안내 문구로. promo_main 에서 무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보 제외, bad_summary 사유 로그. 회귀 테스트 11종 |
-| **v4.6-a** | 2026-10-13 | **실제 영상 요약 + 품질 필터(신규 영상부터)**: 설명란만 보고 "추론해서라도" 쓰던 요약이 빈약한 설명란에서 지어낸 내용이 되던 문제 수정. 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로 넣어(LOW, 30분 넘으면 앞 30분) 요약 + 사실 신호를 받고, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → `exclude`). 삭제·비공개·403·한도는 설명란 요약으로 대체. 장부 user_version 3(`grade`·`quality`·`summarized_at`), 노트 프론트매터 `grade`·`summary_src`, `exclude` 는 Wiki 합성·검색에서만 제외. 회귀 테스트 10종 |
-| **v4.5** | 2026-10-12 | **Wiki 합성 결과 누적**: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서 페이지마다 1~10건만 남던 결함(05-12 도입 때부터) 수정. 추출 결과를 장부 새 표 `wiki_extract`(user_version 2, `scripts/migrate_library.py`)에 소스별로 쌓고 매 실행 전체로 다시 그림(내용 같으면 안 씀). 깨진 응답은 실패로 재시도(3회), 옛 페이지 항목 씨앗, 옛 소스 3천여 건은 20개 묶음 backfill(하루 30회, 약 6일). 회귀 테스트 9종 |
-| **v4.4** | 2026-10-12 | **꿀팁 제목 보완 도구**: 카톡 인제스트가 URL 로만 추정한 꿀팁 제목(「유튜브 영상 (제목 미확인)」·`courses` 등, 46건 누적)을 원문 제목으로 고치는 `scripts/retitle_tips.py`(CSV 입력, dry-run 기본). 장부 `title`·`updated_at`(시트 미러 반영) + 자동 메모 비움, 「AI 꿀팁」 노트 제자리 수정·파일명 변경, Vault `[[링크]]` 치환을 함께 하고 쓰기 전에 장부·파일을 백업. 첫 적용 5건. 회귀 테스트 8종 |
-| **v4.3** | 2026-10-12 | **노션 잔재 정리**: 노션 해지에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`(+ 테스트)와 `.env` 의 `NOTION_*` 3키를 지움. 계속 쓰던 장부 ↔ Vault 대조만 `scripts/verify_library.py` 로 떼어 냄(검사 항목·`RESULT_JSON` 동일, 테스트 16/16). 앱 코드 동작 무변경. |
-| **v4.2** | 2026-10-12 | **실행 실패 알림**: "저장 0 · Skip 0 · 오류 ≥1"(영상을 하나도 확인하지 못한 실행)과 치명적 오류가 텔레그램 없이 지나가던 구멍을 막음. 실행 상태 파일 `.run_state.json` 으로 네트워크가 죽어 못 보낸 실패·끝을 기록하지 못한 실행·9시간 넘게 빈 간격(빠진 정시 실행)을 다음 실행이 `[직전 실행 점검]` 으로 알림. `sendTelegram` 이 성공 여부를 돌려주고 JSON 아닌 응답에 죽지 않음 |
-| **v4.1** | 2026-10-12 | **장부 자동 백업**: 장부(`data/library.db`)를 하루 1회 SQLite 온라인 백업 → 무결성 검사 → gzip 해 로컬 `data/backups/` 와 구글 드라이브 폴더(`.env LIBRARY_BACKUP_DIR`)에 저장(`backup_library.py`). 최신 7개 + 주별 4개 보관. 장부는 읽기 전용으로만 연다. 스케줄러 훅은 reject 없음, 실패는 텔레그램. 회귀 테스트 7종 |
-| **v4.0** | 2026-10-12 | **노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러**: 원본을 노션에서 맥의 SQLite 장부 `data/library.db` 로 옮김(1단계 적재 · 2단계 쓰기/읽기 전환 · 3단계 정리, 단계마다 실데이터 판정). 파이프라인 노션 호출 0. 장부 → 구글 시트(탭 영상·꿀팁) 단방향 미러 `sheet_mirror.py` + Apps Script 웹앱 `gas/sheet_mirror.gs`(변경분만, 인증 오류 즉시 중단). 앱의 노션 코드 의존 제거, `/api/sync-obsidian` 제거, 재구성 시 내용 같은 파일 안 쓰기(Vault 전체 mtime 갱신 해소). 회귀 테스트 6종 |
+| **v4.19.0** | 2026-11-04 | **꿀팁 판정 글자에서 URL 빼기 · 인스타 제목·공유 파라미터**: 메시지 속 노션 주소가 `Notion` 태그를 만들지 않음 · `igsh`·`dlrf` 제거 · 인스타 추정 제목 · 「Instagram」 제목 거부 · `recategorize_tips.py --ids=` · 스키마 무변경 |
+| **v4.18.0** | 2026-11-03 | **꿀팁 두 번째 입구 — 텔레그램 전용 봇 → 장부 tips**: 휴대폰 공유 → 전용 봇 방 → 정시 실행마다 `telegram_tips_ingest.py` 가 카톡과 같은 엔진으로 같은 `tips` 에 넣고 봇 방에 답장(저장·이미 있음·링크 없음). offset·마지막 수신 시각은 장부 `meta`(tips 와 같은 트랜잭션). 허용 chat 하나만, 치명 응답 즉시 중단. 카톡 경로 결과 diff 0 · 스키마 무변경 |
+| **v4.17.0** | 2026-11-01 | **not_ai 제외는 토픽 분류도 비었을 때만**: 영상 신호 `ai_related=false` 5건 중 진짜 비 AI 1건(정밀도 1/5), 토픽 분류는 5/5 맞음. `computeGrade(signals, topics)` — `!ai_related` AND 토픽 0개일 때만 제외, 토픽이 있으면 `not_ai_minor` 로 알림. 신규는 분류 뒤 재판정, 재요약은 장부 토픽. 장부 무변경 · 소급 안 함 |
+| **v4.16.0** | 2026-10-31 | **wiki-ingest 잠자기 방지 · brew 업그레이드 뒤 점검 순서**: `com.irichgreen.wiki-ingest`(17:30)도 `/usr/bin/caffeinate -i` 로 감싼다. 10-30 `brew upgrade`(simdjson)로 node 가 dyld 오류로 기동 즉시 죽어 정시 실행 2회가 로그 없이 빠진 일을 계기로 점검 순서를 CLAUDE.md 에. 레포 밖 옛 경로 2곳을 `~/Dev` 로. 코드·장부 무변경 |
+| **v4.15.0** | 2026-10-16 | **정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤**: `com.irichgreen.ytsummarizer` 를 `/usr/bin/caffeinate -i` 로 감싸 실행 중 유휴 잠자기(배터리 `sleep 1`)를 막는다. 덮개를 닫은 잠자기(10-15 12시 실패 원인)는 못 막는다. 10-16 레포 이관(`~/Dev`)으로 설치본과 달라진 레포 plist 원본 4개·`install-server.sh`·`install-scheduler.sh` sed 패턴·`wiki_mcp.js` 주석을 새 경로로. 코드·장부 무변경 |
+| **v4.14.0** | 2026-10-15 | **토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite**: 신규 영상 1편에 2.5 Flash 를 요약 1 + 분류 1회 쓰던 것을 요약 1회로 — 2.5 Flash 무료 하루 요청 한도(프로젝트당 20, 28일 최대 36/20)를 영상 요약에 남긴다. 3.5 Flash-Lite 는 하루 500. 비교 시험(최근 신규 20편): 오류·신뢰도 0.6 미만 0, 영상당 토픽 4.4 → 2.5개 — 주로 추상 토픽(생산성 향상 13·자동화 7·에이전트 6)이 빠지고 바이브코딩 4·트렌드 1이 더 맞게 붙음(대표님 결정 A안). `.env CLASSIFY_MODEL` 로 되돌림. 분류 응답 한글이 청크 경계에서 깨질 수 있던 잠복 결함(`chunks += c`) 수정. 장부·스키마 무변경. 회귀 테스트 15종 |
+| **v4.13.0** | 2026-10-15 | **영상 하루 분량을 모델별·키별로**: `.video_quota.json` 에 모델별(`models`)·키별(`keys`, sha256 앞 8자리) 누계를 두고 둘 다 8시간 안일 때만 요청, 찬 키는 다음 키로. PT 10-14 실측 키 4개 · 모델 2개 합계 약 10.4시간에 영상 429 0건 — 예전 "전체 합계 8시간" 전제가 보수적이었다. 재요약 신규 몫 예약(`RESUMMARY_RESERVE_SECONDS`) 기본 3시간 → 0 — 신규가 많은 날 재요약이 9편에서 멈추던 것(남은 2,981편에 약 10개월)을 하루 20편 상한까지. 장부·스키마 무변경. 회귀 테스트 14종 |
+| **v4.12.0** | 2026-10-14 | **promo_main 오판 줄이기 — 판매 비중·본론 신호**: 영상 요약 신호에 `promo_share`(판매·모집 멘트가 차지하는 비중 0~1)·`promo_subject`(본론 자체가 제작자 자신의 유료 상품 — 소개·후기·고객 사례)를 더하고, 판매 제외를 `promo_main AND (promo_share ≥ 0.5 OR promo_subject)` 로 좁혔다(오판 3건 = 끝에 자기 상품 잠깐 안내 · 두 모델 모두 promo_main 을 true 로 냄). promo_main 이 true 인데 제외되지 않으면 로그 `(promo_minor …)`. 지금보다 좁기만 하고 장부·스키마 무변경. 회귀 테스트 14종 |
+| **v4.11.0** | 2026-10-14 | **재요약 5xx 조기 중단**: 재요약(3.5 Flash-Lite)이 503 을 받으면 신규와 같은 8회(키 4개 × 2) 재시도 — 503 이 1~2분 뒤에 와서 1편에 약 13분(10-14 00시). 이제 영상 1편에 5xx `RESUMMARY_MAX_5XX`(기본 1)회면 재시도 없이 그 실행의 재요약을 멈추고, 그 영상은 `quality.resummary_5xx` +1(3회면 건너뜀). 신규 영상 경로·429·네트워크 처리는 그대로. 회귀 테스트 14종 |
+| **v4.10.0** | 2026-10-14 | **꿀팁 빈 기본값 재분류 · 제목 3차**: `recategorize_tips.py` 가 카테고리 「기타」 + 태그 없음(노션 이관 때 기본값 그대로)을 사람이 고른 값으로 보지 않고 다시 매긴다(`blank_default`, 19건 중 16건 이동). URL 추정 제목 25건 → 원문 제목(`retitle_tips.py`, 비공개 노션 1건 제외) 뒤 재분류. 재분류 28행 · 「기타」 66 → 42. 회귀 테스트 14종 |
+| **v4.9.0** | 2026-10-13 | **꿀팁 분류 보정**: 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)의 `notion` 이 태그 `Notion` → 「지식관리」로 잡히던 문제(지식관리 17건 중 14건)와 한글 「클로드」·「노션」·「제미나이」 등이 태그로 안 잡히던 문제 수정 — 분류 규칙을 `lib/kakao_parse.classify` 한 곳으로. 기존 꿀팁은 `scripts/recategorize_tips.py` 로 v4.8 규칙이 매긴 행만 다시 분류(사람이 고른 분류 91건 유지), 노션 이관 시절 71행 출처 `https://…` → 호스트만, 노트는 해당 줄만 제자리 수정. 회귀 테스트 14종 |
+| **v4.8.0** | 2026-10-13 | **카톡 꿀팁 원문 제목 자동 조회**: `kakao_ingest.py` 가 URL 로만 제목을 추정해 「노션 자료 (제목 미확인)」·「유튜브 영상 (제목 미확인)」·URL 조각 제목이 쌓이던 문제 수정. 사용자 글이 없고 GitHub 레포가 아닌 링크는 `lib/title_fetch.py` 로 원문 제목을 조회(노션 공개 페이지 API · 유튜브 oEmbed · og:title) — 장부 쓰기 전, 요청당 8초·재시도 없음, 실패하면 예전 추정 제목. 실행당 60건·180초, `--no-lookup`·`.env KAKAO_TITLE_*`. 실제 꿀팁 148건 사전 조회 143 성공. 회귀 테스트 13종 |
+| **v4.7.0** | 2026-10-13 | **Wiki 검색 화면 개편**: 처음 열면 전체 목록(필터·정렬은 브라우저), 건수 선택 제거, 토픽 다중 선택(하나라도·모두), 종류·날짜·조회수·채널·요약 방식·꿀팁 분류·새로 들어온 것 필터, 머리줄 정렬, 표/카드, 의미 검색은 상위 200건 안에서, 비슷한 영상(저장 벡터 — Gemini 호출 없음), 노트 전체 보기(`/api/wiki-note`, id 로만), 엑셀 내려받기. iRichGreen Design System DS 1.1.23. 인덱스에 화면 필터용 메타(임베딩 무관). 회귀 테스트 12종 |
+| **v4.6.0-b** | 2026-10-13 | **기존분 재요약 + 노트 요약 절 제자리 교체 + backfill 재개**: 설명란 요약 약 3,000편(`summary_src != 'video'`)을 정시 실행마다 최대 5편 · 하루 20편씩 실제 영상으로 다시 요약(`lib/resummarize.js`, Gemini 3.5 Flash-Lite — 10-13 비교 5건 등급·신호 일치, 신규 영상 분량 3시간 예약, 실패하면 기존 요약 유지). `sync_obsidian.py` 가 재요약·등급 변경 노트의 요약 절만 교체(관련 항목 절 보존). Wiki backfill 은 실제 영상 요약 노트만(재요약 시 `wiki_extract` stale), 항목 0 `_wiki` 페이지는 안내 문구로. promo_main 에서 무료 자료 배포·구독 유도·끝에 잠깐 하는 자기 홍보 제외, bad_summary 사유 로그. 회귀 테스트 11종 |
+| **v4.6.0-a** | 2026-10-13 | **실제 영상 요약 + 품질 필터(신규 영상부터)**: 설명란만 보고 "추론해서라도" 쓰던 요약이 빈약한 설명란에서 지어낸 내용이 되던 문제 수정. 공개 영상은 Gemini 2.5 Flash 에 YouTube URL 을 영상으로 넣어(LOW, 30분 넘으면 앞 30분) 요약 + 사실 신호를 받고, 등급은 코드 규칙(판매 주목적·일반론·AI 무관 → `exclude`). 삭제·비공개·403·한도는 설명란 요약으로 대체. 장부 user_version 3(`grade`·`quality`·`summarized_at`), 노트 프론트매터 `grade`·`summary_src`, `exclude` 는 Wiki 합성·검색에서만 제외. 회귀 테스트 10종 |
+| **v4.5.0** | 2026-10-12 | **Wiki 합성 결과 누적**: `wiki_ingest.py` 가 개념·엔티티 페이지와 index 를 그 실행분만으로 다시 써서 페이지마다 1~10건만 남던 결함(05-12 도입 때부터) 수정. 추출 결과를 장부 새 표 `wiki_extract`(user_version 2, `scripts/migrate_library.py`)에 소스별로 쌓고 매 실행 전체로 다시 그림(내용 같으면 안 씀). 깨진 응답은 실패로 재시도(3회), 옛 페이지 항목 씨앗, 옛 소스 3천여 건은 20개 묶음 backfill(하루 30회, 약 6일). 회귀 테스트 9종 |
+| **v4.4.0** | 2026-10-12 | **꿀팁 제목 보완 도구**: 카톡 인제스트가 URL 로만 추정한 꿀팁 제목(「유튜브 영상 (제목 미확인)」·`courses` 등, 46건 누적)을 원문 제목으로 고치는 `scripts/retitle_tips.py`(CSV 입력, dry-run 기본). 장부 `title`·`updated_at`(시트 미러 반영) + 자동 메모 비움, 「AI 꿀팁」 노트 제자리 수정·파일명 변경, Vault `[[링크]]` 치환을 함께 하고 쓰기 전에 장부·파일을 백업. 첫 적용 5건. 회귀 테스트 8종 |
+| **v4.3.0** | 2026-10-12 | **노션 잔재 정리**: 노션 해지에 따라 `lib/tips_notion.py`·`scripts/notion_to_sqlite.py`(+ 테스트)와 `.env` 의 `NOTION_*` 3키를 지움. 계속 쓰던 장부 ↔ Vault 대조만 `scripts/verify_library.py` 로 떼어 냄(검사 항목·`RESULT_JSON` 동일, 테스트 16/16). 앱 코드 동작 무변경. |
+| **v4.2.0** | 2026-10-12 | **실행 실패 알림**: "저장 0 · Skip 0 · 오류 ≥1"(영상을 하나도 확인하지 못한 실행)과 치명적 오류가 텔레그램 없이 지나가던 구멍을 막음. 실행 상태 파일 `.run_state.json` 으로 네트워크가 죽어 못 보낸 실패·끝을 기록하지 못한 실행·9시간 넘게 빈 간격(빠진 정시 실행)을 다음 실행이 `[직전 실행 점검]` 으로 알림. `sendTelegram` 이 성공 여부를 돌려주고 JSON 아닌 응답에 죽지 않음 |
+| **v4.1.0** | 2026-10-12 | **장부 자동 백업**: 장부(`data/library.db`)를 하루 1회 SQLite 온라인 백업 → 무결성 검사 → gzip 해 로컬 `data/backups/` 와 구글 드라이브 폴더(`.env LIBRARY_BACKUP_DIR`)에 저장(`backup_library.py`). 최신 7개 + 주별 4개 보관. 장부는 읽기 전용으로만 연다. 스케줄러 훅은 reject 없음, 실패는 텔레그램. 회귀 테스트 7종 |
+| **v4.0.0** | 2026-10-12 | **노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러**: 원본을 노션에서 맥의 SQLite 장부 `data/library.db` 로 옮김(1단계 적재 · 2단계 쓰기/읽기 전환 · 3단계 정리, 단계마다 실데이터 판정). 파이프라인 노션 호출 0. 장부 → 구글 시트(탭 영상·꿀팁) 단방향 미러 `sheet_mirror.py` + Apps Script 웹앱 `gas/sheet_mirror.gs`(변경분만, 인증 오류 즉시 중단). 앱의 노션 코드 의존 제거, `/api/sync-obsidian` 제거, 재구성 시 내용 같은 파일 안 쓰기(Vault 전체 mtime 갱신 해소). 회귀 테스트 6종 |
 | **v3.2.1** | 2026-10-05 | **스케줄러 네트워크 안전장치 — 빈 캐시 중복 저장 차단**: Notion 캐시 첫 조회가 네트워크 오류로 실패하면 재시도 없이 빈 캐시로 진행해 재생목록 앞 15편을 다시 저장하던 결함 수정(08-12 이후 13회·중복 195건). 캐시는 "전부 읽었거나, 던지거나"로 바꾸고 실패한 실행은 영상 처리를 건너뜀(fail-closed), Notion 401/403 은 즉시 종료. YouTube 조회에 일시 오류 지수 백오프 재시도 추가(오류 한 번에 실행이 통째 실패하던 비율 28%). 채널 구독자 수 조회를 채널당 1회·동시 호출(약 450회)에서 50개 배치 순차(9회)로 교체. 회귀 테스트 `scripts/test_scheduler_guards.js` 신설 |
-| **v3.2** | 2026-10-03 | **집 안 전용 Wiki 검색 서버**: 가족이 같은 네트워크의 다른 컴퓨터에서 `http://<맥이름>.local:3100/wiki`로 검색하도록 읽기 전용 서버 `wiki_lan_server.js` 신설. `server.js`(Notion 쓰기 프록시·인제스트 실행 포함)는 `127.0.0.1` 전용으로 유지하고 검색 경로만 분리 노출. 허용 대역(`WIKI_LAN_ALLOW_CIDR`) 밖 403, 미설정 시 루프백 전용(fail-closed), Host 검사, AI 답변 일일 총량으로 Gemini 무료 한도 보호. `launchd` `com.irichgreen.wiki-lan` 추가 |
-| **v3.1** | 2026-09-10 | **Wiki 인제스트 할당량 소모 구조 교정**: Gemini 429를 `quotaId`로 RPD/RPM 분기(분당 한도 한 번에 키를 하루치 폐기하던 손실 제거), 5xx·네트워크 오류 지수 백오프 추가(전체 오류의 24%가 재시도 없이 버려지던 자리), 무료 티어 일 경계를 태평양시로 교정. `--rebuild` 경로로 띄운 wiki_ingest 의 출력을 `wiki-ingest.log` 에 합류시켜 실행 경로 2개를 한 로그에서 판정 가능하게 함 |
-| **v3.0** | 2026-09-06 | **지식 소스 2원화 — 카카오톡 링크 파이프라인 통합**: 카카오톡 '나와의 채팅' CSV → Notion「AI 꿀팁」DB → Obsidian `AI 꿀팁/` 노트 → 기존 Wiki 합성·MOC 를 그대로 공유. `kakao_ingest.py`·`lib/kakao_parse.py`·`lib/tips_notion.py` 신규, `sync_obsidian.py:sync_tips()`, `scheduler.js` 훅(`--apply --if-new`), 텔레그램 통합 알림. 영상 노트와 꿀팁 노트의 격리 원칙 확립. `README.html` 폐지 |
+| **v3.2.0** | 2026-10-03 | **집 안 전용 Wiki 검색 서버**: 가족이 같은 네트워크의 다른 컴퓨터에서 `http://<맥이름>.local:3100/wiki`로 검색하도록 읽기 전용 서버 `wiki_lan_server.js` 신설. `server.js`(Notion 쓰기 프록시·인제스트 실행 포함)는 `127.0.0.1` 전용으로 유지하고 검색 경로만 분리 노출. 허용 대역(`WIKI_LAN_ALLOW_CIDR`) 밖 403, 미설정 시 루프백 전용(fail-closed), Host 검사, AI 답변 일일 총량으로 Gemini 무료 한도 보호. `launchd` `com.irichgreen.wiki-lan` 추가 |
+| **v3.1.0** | 2026-09-10 | **Wiki 인제스트 할당량 소모 구조 교정**: Gemini 429를 `quotaId`로 RPD/RPM 분기(분당 한도 한 번에 키를 하루치 폐기하던 손실 제거), 5xx·네트워크 오류 지수 백오프 추가(전체 오류의 24%가 재시도 없이 버려지던 자리), 무료 티어 일 경계를 태평양시로 교정. `--rebuild` 경로로 띄운 wiki_ingest 의 출력을 `wiki-ingest.log` 에 합류시켜 실행 경로 2개를 한 로그에서 판정 가능하게 함 |
+| **v3.0.0** | 2026-09-06 | **지식 소스 2원화 — 카카오톡 링크 파이프라인 통합**: 카카오톡 '나와의 채팅' CSV → Notion「AI 꿀팁」DB → Obsidian `AI 꿀팁/` 노트 → 기존 Wiki 합성·MOC 를 그대로 공유. `kakao_ingest.py`·`lib/kakao_parse.py`·`lib/tips_notion.py` 신규, `sync_obsidian.py:sync_tips()`, `scheduler.js` 훅(`--apply --if-new`), 텔레그램 통합 알림. 영상 노트와 꿀팁 노트의 격리 원칙 확립. `README.html` 폐지 |
 | **v2.7.1** | 2026-08-28 | **토픽 분류의 일시적 서버 오류(5xx) 재시도 추가**: 요약 경로는 503에 키 로테이션 + 재시도로 대응하는 반면 분류 경로는 429/quota만 재시도 대상이라 503 한 번에 영상이 떨어지던 비대칭을 교정하고, 재시도 소진 시 발생하던 잠복 TypeError 경로를 차단 |
-| **v2.7** | 2026-08-19 | **재생목록 쓰기 성공/실패 계측 및 알림 교정**: `.quota_state.json`이 성공·실패를 구분하지 않아 "시도했으나 전부 실패한 날"을 감지하지 못하던 구멍을 막고, 텔레그램 알림에 당일 배수량·유입량·순감 기준 소진 예상일을 표기 |
-| **v2.6** | 2026-08-17 | **quota 일 경계 태평양시(PT) 교정**: `.quota_state.json`의 날짜 키가 UTC라 KST 09:00에 리셋되는 반면 YouTube 실제 quota는 PT 자정(KST 16:00)에 리셋되어, 그 7시간 동안 스로틀이 무력화되던 문제를 교정 |
-| **v2.5** | 2026-08-17 | **재생목록 대기큐 정합성 및 API 어뷰징 차단**: 중복 적재 원천 차단, 영구 실패 dead-letter 격리(재시도 5회 상한), 연속 실패 10회 시 큐 처리 즉시 중단, 실패 요청의 quota 계상 누락 교정, 텔레그램 큐 적체 알림 추가 |
-| **v2.4** | 2026-07-08 | **주제 분류 API 키 로테이션 적용 및 안정성 강화**: 주제 분류 단계(`classifyTopics`)에서 429 에러(할당량 초과) 발생 시 다음 API Key로 자동 전환(`rotateGeminiKey()`) 후 재시도하는 로직을 추가하여 무중단 인제스트의 안정성을 극대화함 |
-| **v2.3** | 2026-06-02 | **비용 최적화 및 무료 Key 로테이션 적용**: 요약 스케줄러 내 누락되었던 비용 절감 옵션 추가 적용 및 다중 무료 API 키 로테이션 구축으로 비용 0원 가동 환경 마련 |
-| **v2.2** | 2026-05-21 | **API 보안 킬스위치 및 안전장치 강화**: API 키 정지 감지 시 프로세스 즉시 종료, 스케줄러 영구 언로드, 보안 스킬 규정 지정 |
-| **v2.1** | 2026-05-18 | **요약 안정성 극대화 및 지식베이스 정상화**: 요약 짤림 완전 방지, RAG 기술 분류 보강 및 3MB 오류 큐 정리 |
-| **v2.0** | 2026-05-16 | **할당량 최적화 및 안정성 강화**: 배치 크기 하향 및 순차 처리 도입 |
-| **v1.2** | 2026-05-12 | **Karpathy LLM Wiki & 비용 최적화**: Wiki Ingest 구현 및 비용 85% 절감 |
-| **v1.1** | 2026-05-02 | **개발 환경 및 분류 지능화**: CLAUDE.md 도입 및 바이브코딩 매핑 강화 |
-| **v1.0** | 2026-04-10 | 프로젝트 초기화 및 핵심 파이프라인 구축 단계 |
+| **v2.7.0** | 2026-08-19 | **재생목록 쓰기 성공/실패 계측 및 알림 교정**: `.quota_state.json`이 성공·실패를 구분하지 않아 "시도했으나 전부 실패한 날"을 감지하지 못하던 구멍을 막고, 텔레그램 알림에 당일 배수량·유입량·순감 기준 소진 예상일을 표기 |
+| **v2.6.0** | 2026-08-17 | **quota 일 경계 태평양시(PT) 교정**: `.quota_state.json`의 날짜 키가 UTC라 KST 09:00에 리셋되는 반면 YouTube 실제 quota는 PT 자정(KST 16:00)에 리셋되어, 그 7시간 동안 스로틀이 무력화되던 문제를 교정 |
+| **v2.5.0** | 2026-08-17 | **재생목록 대기큐 정합성 및 API 어뷰징 차단**: 중복 적재 원천 차단, 영구 실패 dead-letter 격리(재시도 5회 상한), 연속 실패 10회 시 큐 처리 즉시 중단, 실패 요청의 quota 계상 누락 교정, 텔레그램 큐 적체 알림 추가 |
+| **v2.4.0** | 2026-07-08 | **주제 분류 API 키 로테이션 적용 및 안정성 강화**: 주제 분류 단계(`classifyTopics`)에서 429 에러(할당량 초과) 발생 시 다음 API Key로 자동 전환(`rotateGeminiKey()`) 후 재시도하는 로직을 추가하여 무중단 인제스트의 안정성을 극대화함 |
+| **v2.3.0** | 2026-06-02 | **비용 최적화 및 무료 Key 로테이션 적용**: 요약 스케줄러 내 누락되었던 비용 절감 옵션 추가 적용 및 다중 무료 API 키 로테이션 구축으로 비용 0원 가동 환경 마련 |
+| **v2.2.0** | 2026-05-21 | **API 보안 킬스위치 및 안전장치 강화**: API 키 정지 감지 시 프로세스 즉시 종료, 스케줄러 영구 언로드, 보안 스킬 규정 지정 |
+| **v2.1.0** | 2026-05-18 | **요약 안정성 극대화 및 지식베이스 정상화**: 요약 짤림 완전 방지, RAG 기술 분류 보강 및 3MB 오류 큐 정리 |
+| **v2.0.0** | 2026-05-16 | **할당량 최적화 및 안정성 강화**: 배치 크기 하향 및 순차 처리 도입 |
+| **v1.2.0** | 2026-05-12 | **Karpathy LLM Wiki & 비용 최적화**: Wiki Ingest 구현 및 비용 85% 절감 |
+| **v1.1.0** | 2026-05-02 | **개발 환경 및 분류 지능화**: CLAUDE.md 도입 및 바이브코딩 매핑 강화 |
+| **v1.0.0** | 2026-04-10 | 프로젝트 초기화 및 핵심 파이프라인 구축 단계 |
+
+### 버전별 한 줄 요약
+
+> v4.0 에서 노션을 뺐습니다. 원본 = 장부(`data/library.db`), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없습니다.
+> v4.1: 장부를 하루 1회 로컬(`data/backups/`)과 구글 드라이브에 자동 백업합니다(최신 7개 + 주별 4개).
+> v4.2: 실행이 통째로 실패하거나, 알림을 못 보냈거나, 정시 실행이 빠지면 텔레그램으로 알립니다(못 보낸 알림은 다음 실행이 보냄).
+> v4.3: 노션 해지(2026-10-12)에 따라 노션 모듈·`.env NOTION_*` 를 지웠습니다. 장부 ↔ Vault 대조는 `scripts/verify_library.py` 입니다.
+> v4.4: 카톡 꿀팁의 추정 제목(「제목 미확인」·URL 조각)을 원문 제목으로 고치는 `scripts/retitle_tips.py` 를 넣었습니다 — 장부·Obsidian 노트(파일명 포함)·링크를 함께 바꿉니다.
+> v4.5: Wiki 합성 결과(엔티티·개념)를 장부 `wiki_extract` 에 쌓고 `_wiki` 페이지를 매번 전체로 다시 그립니다.
+> v4.6-a: 신규 영상은 **실제 영상**(YouTube URL)을 Gemini 에 넣어 요약하고, 판매가 주목적·일반론·AI 무관 영상은 등급 `exclude` 로 표시해 Wiki 합성·검색에서만 뺍니다(노트는 그대로). 영상 입력이 안 되면 예전처럼 설명란으로 요약합니다.
+> v4.6-b: 예전에 설명란만 보고 만든 요약 약 3,000편을 **실제 영상으로 천천히 다시 요약**합니다(정시 실행마다 최대 5편, 하루 20편, Gemini 3.5 Flash-Lite — 신규 영상 몫 3시간은 남겨 둠). 노트는 요약 절만 제자리에서 바뀌고, Wiki 합성은 실제 영상 요약 노트만 다시 추출합니다.
+> v4.7: Wiki 검색 화면을 개편했습니다 — 처음 열면 전체 목록이 나오고, 토픽 여러 개·종류·날짜·조회수·채널 등으로 거르고, 머리줄을 눌러 정렬합니다. 비슷한 영상·노트 전체 보기·엑셀 내려받기도 됩니다(회사 디자인 시스템 DS 1.1.23).
+> v4.8: 카톡 꿀팁을 넣을 때 링크의 **원문 제목**을 자동으로 가져옵니다(노션 공개 페이지·유튜브·일반 웹페이지). 못 가져오면 예전처럼 URL 로 추정한 제목과 「원문 확인 필요」 메모가 들어갑니다.
+> v4.9: 꿀팁 분류를 바로잡았습니다 — 노션에 올린 자료가 전부 「지식관리」로 잡히던 문제와 한글 「클로드」·「노션」 등이 태그로 안 잡히던 문제를 고치고, 이미 들어간 꿀팁도 규칙이 매긴 것만 다시 분류했습니다(사람이 고른 분류는 그대로). 옛 꿀팁의 출처 `https://…` 도 호스트만 남겼습니다.
+> v4.10: 노션에서 넘어올 때 기본값(「기타」·태그 없음)이 그대로 남은 꿀팁도 규칙으로 다시 분류하고, URL 로 추정한 제목이 남아 있던 꿀팁 25건에 원문 제목을 넣었습니다 — 「기타」 66 → 42건.
+> v4.11: 기존분 재요약이 Gemini 서버 오류(503)를 받으면 오래 재시도하지 않고 그 실행의 재요약을 바로 멈춥니다(1편에 약 13분 → 1~2분). 같은 영상이 3번 막히면 그 영상은 건너뜁니다.
+> v4.12: 영상 끝에 자기 강의·전자책을 잠깐 알리기만 한 영상이 「판매가 주목적」으로 제외되던 오판을 줄였습니다. 판매 멘트가 영상 절반 이상이거나 영상 본론 자체가 자기 상품(소개·고객 사례)일 때만 판매로 제외합니다.
+> v4.13: 영상 입력 하루 8시간을 모델별·키별로 따로 셉니다. 신규 영상과 재요약이 서로의 분량을 먹지 않아, 재요약이 하루 20편까지 갑니다(전에는 신규가 많은 날 약 9편).
+> v4.14: 영상 토픽 분류를 Gemini 3.5 Flash-Lite 로 옮겼습니다. 2.5 Flash 하루 요청 한도를 영상 요약에 남기고, 분류 프롬프트의 「추상 토픽 남발 금지」를 더 잘 지켜 영상당 토픽이 약 4.4개 → 2.5개로 줄어듭니다(재생목록 추가도 그만큼 줄어 YouTube 할당량에 이득). 되돌리기는 `.env` `CLASSIFY_MODEL=gemini-2.5-flash` 한 줄.
+> v4.15: 정시 실행 동안 맥이 유휴 잠자기에 들지 않게 `caffeinate -i` 로 감쌌습니다(배터리에서 1분 뒤 잠드는 설정이라 덮개를 연 채 자리를 비우면 실행 도중 잠들 수 있었음). 덮개를 닫아 잠든 경우는 막지 못합니다 — 그때는 실패 알림과 다음 실행이 이어 받습니다. 10-16 레포 이관(`~/Dev/AI_Wiki_Pipeline`)에 맞춰 plist 원본·설치 스크립트 경로도 맞췄습니다.
+> v4.16: 17:30 Wiki 인제스트도 `caffeinate -i` 로 감싸 실행 중 잠들지 않게 했습니다. `brew upgrade` 뒤 점검 순서를 CLAUDE.md 에 적었습니다(10-30 업그레이드로 정시 실행 2회가 빠진 일).
+> v4.17: 영상 요약의 「AI 무관(`ai_related=false`)」 신호만으로는 영상을 제외하지 않습니다 — 토픽 분류도 비었을 때만 제외합니다(신호 5건 중 진짜 비 AI 1건, 토픽 분류는 5/5 맞음). 신규 영상은 분류 뒤 등급을 다시 매기고, 재요약은 장부 토픽을 씁니다. 장부 무변경.
+> v4.18: 꿀팁 두 번째 입구 — 휴대폰에서 공유한 링크를 텔레그램 전용 봇 방으로 받습니다. 정시 실행마다 `telegram_tips_ingest.py` 가 봇 방을 읽어 카톡과 같은 엔진으로 같은 장부 `tips` 에 넣고 봇 방에 답장합니다. 읽은 위치는 장부 `meta` 에 두어 스키마 변경이 없고, 카톡 경로는 안전망으로 그대로 둡니다.
+> v4.19: 메시지에 붙은 URL 을 꿀팁 분류 판정 글자에서 뺐습니다(노션 주소만 붙어 있어도 「지식관리」가 되던 오분류). 인스타 공유 파라미터(`igsh`·`dlrf`) 제거, 인스타 추정 제목, 로그인 화면 제목 「Instagram」 거부, 지정 행만 다시 분류하는 `recategorize_tips.py --ids=` 를 더했습니다. 장부 스키마 무변경.
 
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
 
-#### [v4.19] — 2026-11-04 (🏷 꿀팁 판정 글자에서 URL 빼기 · 인스타 제목·공유 파라미터)
+#### [v4.19.0] - 2026-11-04 (🏷 꿀팁 판정 글자에서 URL 빼기 · 인스타 제목·공유 파라미터)
 
 **배경.** `guess_meta` 가 메시지 글 전체를 분류에 넘겨, 메시지에 붙은 노션 주소의 `notion` 이 `Notion` 태그 → 「지식관리」가 됐다(11-03 카톡 적재 4건). 텔레그램 입구도 같은 함수를 쓴다. 인스타 릴스는 로그인 벽 제목 「Instagram」이 그대로 들어갔다.
 
@@ -565,7 +559,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 - **도구.** `recategorize_tips.py --ids=<id>[,…]` — 지정 행을 규칙이 매긴 값으로 보고 다시 매김(`RESULT_JSON.forced`), 없는 id 면 쓰기 전 중단.
 - **테스트.** `test_kakao_ingest.py` 42/42 · `test_title_fetch.py` 44/44 · `test_recategorize_tips.py` 57/57. 회귀 테스트 16종. 장부 스키마·분류 규칙 무변경.
 
-#### [v4.18] — 2026-11-03 (📮 꿀팁 두 번째 입구 — 텔레그램 전용 봇 → 장부 tips)
+#### [v4.18.0] - 2026-11-03 (📮 꿀팁 두 번째 입구 - 텔레그램 전용 봇 → 장부 tips)
 
 **배경.** 꿀팁 링크는 인스타 → 대표님이 카톡 '나와의 채팅'에 옮김 → 맥에서 CSV 수동 내보내기 → 정시 실행으로 들어갔다. 카톡 내보내기는 자동화할 길이 없다(읽기 API 없음 · 데이터 파일 암호화). 휴대폰 공유 → 전용 봇 방 → 자동 적재 길을 더했다.
 - **새 입구.** `telegram_tips_ingest.py` — 전용 봇(실행 알림 봇과 다른 봇)의 `getUpdates` 를 읽어, 허용한 개인 대화(`TIPS_BOT_CHAT_ID`)의 링크만 카톡과 같은 함수(`kakao_ingest.py` 의 `existing_keys`·`resolve_titles`·`plan_rows`·`insert_rows`)로 장부 `tips` 에 넣는다. 카톡 경로는 안전망으로 그대로(중복은 `url_key` 대조).
@@ -576,7 +570,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 - **리팩터.** `kakao_ingest.py` 의 덩어리를 같은 파일 함수 3개로, `lib/kakao_parse.py` 에 `links_from_messages` 를 뗐다 — 같은 CSV 에 대한 RESULT_JSON·tips 행·로그 전후 diff 0.
 - **테스트.** 신규 `test_tips_bot.py` 25/25, `test_scheduler_guards.js` 37/37(+4), `test_kakao_ingest.py` 37/37 그대로. 회귀 테스트 16종.
 
-#### [v4.17] — 2026-11-01 (🎚 AI 무관 신호만으로는 제외하지 않는다 — 토픽 분류도 비었을 때만)
+#### [v4.17.0] - 2026-11-01 (🎚 AI 무관 신호만으로는 제외하지 않는다 - 토픽 분류도 비었을 때만)
 
 **배경.** 실제 영상 요약의 `ai_related=false` 5편 중 진짜 비 AI 는 1편(작가용 워드프로세서)뿐이었다(정밀도 1/5). 나머지 4편은 바이브코더 대상 개발·운영 정보, AI 로 만든 결과물 공유였고 대표님이 손으로 keep 으로 되돌렸다. 같은 5편에서 토픽 분류는 사람 판정과 5/5 맞았다(진짜 비 AI 만 토픽 `[]`).
 
@@ -590,7 +584,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 
 지시서 `docs/tasks/2026-11-01-v417-not-ai-topics.md`.
 
-#### [v4.16] — 2026-10-31 (☕ wiki-ingest 잠자기 방지 · brew 업그레이드 뒤 점검 순서)
+#### [v4.16.0] - 2026-10-31 (☕ wiki-ingest 잠자기 방지 · brew 업그레이드 뒤 점검 순서)
 
 **배경.** v4.15 는 정시 실행만 `caffeinate -i` 로 감쌌다. 17:30 `wiki-ingest` 도 증분 + backfill 로 몇 분씩 도는데 배터리 설정이 `sleep 1`(1분)이라 덮개를 연 채 자리를 비우면 도중에 잠들 수 있었다. 또 10-30 저녁 `brew upgrade`(simdjson) 뒤 node 26.10.0 이 `dyld: Library not loaded` 로 기동 즉시 죽어 정시 실행 2회(10-30 18시·10-31 00시)가 `scheduler.log` 에 한 줄도 없이 빠졌고, 다음 실행의 `[직전 실행 점검]` 간격 경고로만 드러났다.
 
@@ -604,7 +598,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 
 지시서 `docs/tasks/2026-10-31-v416-wiki-ingest-caffeinate.md`.
 
-#### [v4.15] — 2026-10-16 (☕ 정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤)
+#### [v4.15.0] - 2026-10-16 (☕ 정시 실행 중 잠자기 방지 · plist 원본 경로 맞춤)
 
 **배경.** 10-15 12:00 실행이 `ENOTFOUND` 로 통째 실패했다(v4.2 `[실행 실패]` 알림은 정상, 놓친 신규 0). `pmset -g log` 로 보니 11:54 덮개 닫힘(Clamshell Sleep, 배터리 36%) 뒤 잠깐 깨는 사이(DarkWake)에 실행이 시작됐다가 다시 잠들었다. 덮개를 닫은 잠자기는 소프트웨어로 안전하게 막을 방법이 없다(`pmset disablesleep` 은 가방 속 발열 위험). 다만 배터리 설정이 `sleep 1`(1분)이라, 덮개를 연 채 자리를 비워도 15분 안팎의 실행 도중 유휴 잠자기에 들 수 있다 — 이 경우만 막는다.
 
@@ -617,7 +611,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 확인 | 정시 실행 중 `pmset -g assertions \| grep caffeinate` |
 | 지시서 | `docs/tasks/2026-10-16-v415-caffeinate-plist-sync.md` |
 
-#### [v4.14] — 2026-10-15 (🏷️ 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite)
+#### [v4.14.0] - 2026-10-15 (🏷️ 토픽 분류 모델 2.5 Flash → 3.5 Flash-Lite)
 
 **배경.** 신규 영상 1편에 Gemini 2.5 Flash 를 두 번(영상 요약 1 + 토픽 분류 1) 쓴다. 2.5 Flash 무료 하루 요청 한도는 프로젝트(키)당 20인데, AI Studio 28일 최대가 한 프로젝트 36/20 — 키 4개를 돌려 버티는 상태였다. 신규가 몰린 날(10-10, 29편)이면 2.5 Flash 요청만 약 60회다. 분류는 요약 글을 읽고 토픽 목록에서 고르는 가벼운 일이라 한도가 넉넉한 3.5 Flash-Lite(하루 500, 재요약이 이미 쓰는 모델)로 옮긴다.
 
@@ -644,7 +638,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 테스트 | 신규 `scripts/test_classifier.js` 8/8(옛 코드 2/8). 회귀 테스트 15종 |
 | 지시서 | `docs/tasks/2026-10-15-v414-classify-flash-lite.md` |
 
-#### [v4.13] — 2026-10-15 (⏱️ 영상 하루 분량을 모델별·키별로)
+#### [v4.13.0] - 2026-10-15 (⏱️ 영상 하루 분량을 모델별·키별로)
 
 **배경.** 10-15 06시 실행의 재요약이 0편(`daily_video_cap`)이었다. PT 10-14 하루에 신규 영상 14편이 10,590초를 써서 합계 17,524초 — 재요약 한도(8시간 − 신규 몫 3시간 = 18,000초)까지 476초만 남았다. 재요약이 하루 20편 상한의 절반(9편)에서 멈춰 남은 2,981편에 약 10개월이 걸리는 속도였다(설계 5개월).
 
@@ -662,7 +656,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 테스트 | `scripts/test_video_summary.js` 32/32(+4) · `scripts/test_resummarize.js` 11/11(예약 기본값 기대 1곳). 회귀 테스트 14종 |
 | 지시서 | `docs/tasks/2026-10-15-v413-video-quota-per-model-key.md` |
 
-#### [v4.12] — 2026-10-14 (🏷️ promo_main 오판 줄이기 — 판매 비중·본론 신호)
+#### [v4.12.0] - 2026-10-14 (🏷️ promo_main 오판 줄이기 - 판매 비중·본론 신호)
 
 **배경.** 장부의 실제 영상 요약 46편 중 `promo_main` true 는 3건이었고 3건 모두 오판으로 되돌렸다(`-YySYOBbhD8` 무료 키트 10-13 · `RpY-KKZ7QTg` 끝에 자기 전자책 10-14 · `wgrpasYyiIQ` 끝에 자기 유료 강의 10-14). v4.6-b 에서 프롬프트에 "끝·중간에 잠깐 알리는 정도는 false"를 넣었지만 2.5 Flash·3.5 Flash-Lite 모두 "자기 상품을 조금이라도 팔면 true"처럼 답했다. 같은 영상도 모델마다 뒤집혔다.
 
@@ -681,7 +675,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 지시서 | `docs/tasks/2026-10-14-v412-promo-share.md` |
 
 
-#### [v4.11] — 2026-10-14 (⏱️ 재요약 5xx 조기 중단)
+#### [v4.11.0] - 2026-10-14 (⏱️ 재요약 5xx 조기 중단)
 
 **배경.** 10-14 00:00 실행에서 재요약 1편(`RtGvzYeZ9gs`)이 Gemini 3.5 Flash-Lite 503 을 8회(키 4개 × 2) 받고 실패했다. 503 응답이 1~2분 뒤에 와서 00:03:38 → 00:16:20, 약 12분 42초 — 실행 16분 15초의 대부분이었다. 신규 영상(2.5 Flash)의 503 은 약 20초 안에 오고 1~2회 재시도 뒤 성공하는 것과 달랐다. 재요약은 신규보다 뒷순위이고 실패하면 기존 요약을 그대로 두므로(다음 실행이 이어서) 오래 붙잡을 이유가 없다.
 
@@ -696,7 +690,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 지시서 | `docs/tasks/2026-10-14-v411-resummary-5xx-stop.md` |
 
 
-#### [v4.10] — 2026-10-14 (🗂️ 꿀팁 빈 기본값 재분류 · 제목 3차)
+#### [v4.10.0] - 2026-10-14 (🗂️ 꿀팁 빈 기본값 재분류 · 제목 3차)
 
 **배경.** v4.9 뒤 「기타」가 66건이었다. 그중 사람이 고른 값 43건 — 태그가 빈 19건은 「클로드 코드 토큰 3배로 오래 쓰는 무료 도구 3개」처럼 내용이 뻔한데 노션 시절 기본값(기타·태그 없음)이 그대로 남은 것이었다. 또 09-12~10-10 에 들어온 26건은 제목이 URL 추정(`agent reach`·`mobilebasic`·`view` 등)이었다 — v4.8 자동 조회는 새로 들어오는 행만 대상이다.
 
@@ -711,7 +705,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 지시서 | `docs/tasks/2026-10-14-v410-tips-blank-default.md` |
 
 
-#### [v4.9] — 2026-10-13 (🗂️ 꿀팁 분류 보정)
+#### [v4.9.0] - 2026-10-13 (🗂️ 꿀팁 분류 보정)
 
 **배경.** v4.8 사전 검증에서 세 가지가 보였다. ① 노션에 올린 자료는 주소에 `notion` 이 들어 있어 태그 `Notion` → 카테고리 「지식관리」가 됐다(지식관리 17건 중 14건이 클로드·GPT 자료). ② 규칙이 영문만 봐서 한글 「클로드」가 `Claude` 태그에 안 걸렸다(제목에 「클로드」가 있는데 `Claude` 태그가 없는 꿀팁 27건) — v4.8 부터 원문 제목(대개 한글)이 들어오므로 더 중요해졌다. ③ 노션 이관 시절 71행의 출처가 `https://…` 라 「채널별 목차」에서 같은 사이트가 둘로 갈렸다(규칙은 호스트만).
 
@@ -727,7 +721,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 테스트 | 신규 `scripts/test_recategorize_tips.py` 45/45. 회귀 테스트 14종 |
 | 지시서 | `docs/tasks/2026-10-13-v49-tips-recategorize.md` |
 
-#### [v4.8] — 2026-10-13 (🏷️ 카톡 꿀팁 원문 제목 자동 조회)
+#### [v4.8.0] - 2026-10-13 (🏷️ 카톡 꿀팁 원문 제목 자동 조회)
 
 **배경.** `kakao_ingest.py` 는 링크를 열지 않고 URL 로 제목을 추정했다. 노션 공개 페이지는 슬러그에 한글이 없으면 「노션 자료 (…)」, 유튜브는 「유튜브 영상 (제목 미확인)」, 그 밖은 URL 마지막 조각(`claude and n8n`, `view`, `mobilebasic`)이 제목이 됐다. 10-12·10-13 두 차례 `scripts/retitle_tips.py` 로 손으로 고쳤고(2차 43건), 그때 쓴 조회 방법(노션 공개 페이지 API · og:title)이 44건 중 43건에서 통했다.
 
@@ -743,7 +737,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 테스트 | 신규 `scripts/test_title_fetch.py` 43/43, `test_kakao_ingest.py` 37/37(+19). 회귀 테스트 13종 |
 | 지시서 | `docs/tasks/2026-10-13-v48-kakao-title-lookup.md` |
 
-#### [v4.7] — 2026-10-13 (🔎 Wiki 검색 화면 개편)
+#### [v4.7.0] - 2026-10-13 (🔎 Wiki 검색 화면 개편)
 
 **배경.** 검색 화면은 검색어를 넣어야 결과가 나오고(최대 30건), 토픽은 하나만 고를 수 있었다. 3,162건을 훑어보거나 여러 조건으로 거를 방법이 없었다.
 
@@ -758,7 +752,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 테스트 | 신규 `scripts/test_wiki_search.js` 34/34, `test_build_wiki_index.py` 15/15(+4). 회귀 테스트 12종 |
 | 지시서 | `docs/tasks/2026-10-13-v47-wiki-ui.md` |
 
-#### [v4.6-b] — 2026-10-13 (🔁 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)
+#### [v4.6.0-b] - 2026-10-13 (🔁 기존분 재요약 + 노트 요약 절 교체 + backfill 재개)
 
 **배경.** v4.6-a 는 신규 영상부터 실제 영상으로 요약했다. 장부의 옛 요약 약 3,000편은 여전히 설명란만 보고 만든 것이라 일부는 지어낸 내용이고, 그래서 Wiki backfill(옛 소스 재추출)을 정지해 두었다(`.env WIKI_BACKFILL_DAILY_MAX=0`). 10-13 비교에서 Gemini 3.5 Flash-Lite 는 2.5 Flash 와 등급·신호가 5/5 같았고(Python 강의 = not_ai, 컨설팅 모집 = promo_main 포함) 말 내용도 정확히 옮겼다 — 요약은 약 65% 길이. 같은 날 12:00 실행에서 무료 레퍼런스 키트를 나눠 주는 시연 영상이 promo_main 으로 제외됐다(오판).
 
@@ -775,7 +769,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 테스트 | 신규 `scripts/test_resummarize.js` 9/9, `test_video_summary.js` 23/23(+6), `test_scheduler_guards.js` 33/33(+2), `test_sync_obsidian.py` 32/32(+8), `test_wiki_ingest.py` 64/64(+7). 회귀 테스트 11종 |
 | 지시서 | `docs/tasks/2026-10-13-v46b-resummarize.md` |
 
-#### [v4.6-a] — 2026-10-13 (🎬 실제 영상 요약 + 품질 필터, 신규 영상부터)
+#### [v4.6.0-a] - 2026-10-13 (🎬 실제 영상 요약 + 품질 필터, 신규 영상부터)
 
 **배경.** `scheduler.js:geminiSummarize` 는 제목·채널·설명란·태그만 넣고 "정보가 부족해도 추론해서 반드시 작성"을 시켰다. 10-12 시험에서 설명란이 빈약한 `mW5k5CbO4sA` 「AI 데이터 활용」의 장부 요약(데이터 수집·정제·윤리)은 전부 지어낸 내용이었다 — 실제 영상은 VS Code 로 Python 문자열을 다루는 강의. 같은 시험에서 Gemini 에 YouTube URL 을 영상으로 넣으면 실제 내용을 요약했고, 판매 목적·일반론 같은 사실 판단은 맞았지만 모델이 매긴 A/B/C 등급은 컨설팅 판매 영상에도 A 를 줬다.
 
@@ -792,7 +786,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 다음(v4.6-b) | 기존 약 3,000편 재요약(최신부터, 하루 상한) · 노트 요약 절 제자리 교체 · Wiki backfill 재개(지금 정지) |
 | 지시서 | `docs/tasks/2026-10-13-v46a-video-summary.md` |
 
-#### [v4.5] — 2026-10-12 (🧠 Wiki 합성 결과 누적)
+#### [v4.5.0] - 2026-10-12 (🧠 Wiki 합성 결과 누적)
 
 **배경.** `wiki_ingest.py` 는 소스마다 Gemini 로 엔티티·개념을 뽑아 `_wiki/entities`·`concepts` 페이지를 만드는데, 페이지와 `index.md` 를 **그 실행에서 뽑은 것만으로** 통째로 다시 썼다. 추출 결과는 어디에도 저장하지 않았다. 그래서 5월 도입 이후 합성한 소스가 3,619건인데 페이지 56개의 source_count 는 1~10, index 는 마지막 실행의 9행뿐이었다. 응답 JSON 이 깨지면 빈 결과로 성공 처리돼 그 소스가 조용히 빠지는 결함도 있었다. 검색 인덱스·MCP 는 `_` 폴더를 읽지 않아 영향이 없었다.
 
@@ -807,7 +801,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 테스트 | 신규 `scripts/test_wiki_ingest.py` 51/51(가짜 Gemini, 임시 Vault·장부). `test_backup_library.py` 버전 기대값을 스키마 버전으로. 회귀 테스트 9종 |
 | 지시서 | `docs/tasks/2026-10-12-wiki-extract-store.md` |
 
-#### [v4.4] — 2026-10-12 (🏷 꿀팁 제목 보완 도구)
+#### [v4.4.0] - 2026-10-12 (🏷 꿀팁 제목 보완 도구)
 
 **배경.** `kakao_ingest.py` 는 링크를 열지 않고 URL 로만 제목을 추정한다(`lib/kakao_parse.py:guess_meta`). 유튜브 shorts·노션 공개 페이지는 「유튜브 영상 (제목 미확인)」·「노션 자료 (제목 미확인)」, 그 밖은 URL 마지막 조각(`courses`, `linkedin skills claude code setup`)이 제목이 되고, 3월부터 「원문 확인 필요」 메모가 붙은 꿀팁이 46건 쌓였다. 장부만 고치면 시트는 바뀌지만 `sync_obsidian.py` 는 꿀팁 노트를 **새로 만들기만** 하므로 Obsidian 노트·파일명·링크는 옛 제목으로 남는다.
 
@@ -823,7 +817,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 테스트 | 신규 `scripts/test_retitle_tips.py` 49/49(임시 장부·Vault·백업 폴더, 네트워크 0). 회귀 테스트 8종 |
 | 지시서 | `docs/tasks/2026-10-12-retitle-tips.md` |
 
-#### [v4.3] — 2026-10-12 (🧹 노션 잔재 정리)
+#### [v4.3.0] - 2026-10-12 (🧹 노션 잔재 정리)
 
 **배경.** v4.0 부터 파이프라인은 노션을 부르지 않았고, 노션 모듈은 「Notion 데이터 이관」이 끝날 때까지 보관만 했다. 10-12 이관이 끝나 노션을 해지했다. 보관 파일 중 실제로 쓰던 기능은 `notion_to_sqlite.py --verify`(장부 ↔ Vault 대조, 노션 호출 없음) 하나였다.
 
@@ -837,7 +831,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 문서 | 이름 변경 날짜 표기를 실제 실행일 10-12 로 정정(지시서 파일 이름은 그대로) |
 | 지시서 | `docs/tasks/2026-10-12-notion-cleanup.md` |
 
-#### [v4.2] — 2026-10-12 (🚨 실행 실패 알림)
+#### [v4.2.0] - 2026-10-12 (🚨 실행 실패 알림)
 
 **배경.** 10-04 ~ 10-12 실행 35회를 다시 세었다. 프로세스가 죽은 실행은 0회(v3.2.1 재시도가 흡수)였지만, 마스터 인제스트가 ENOTFOUND 로 통째 실패해 "저장 0 · Skip 0 · 오류 1" 로 끝난 실행 2회(10-04 06:00, 10-05 00:00)와 아예 돌지 않은 정시 실행 1회(10-09 12:00)가 **텔레그램 없이** 지나갔다. 완료 알림은 신규·갱신이 있을 때만 보내고, `main().catch` 는 로그만 남겼다. 네트워크가 죽은 실행은 그 자리에서 알림도 못 보내므로 "다음 실행이 알리는" 길이 함께 필요했다.
 
@@ -851,7 +845,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 문서 현행화 (같은 날, 버전 유지) | README 전수 대조: 다이어그램(요약 `geminiSummarize` · 분류 `classifier.js` 분리, 백업·실행 상태 추가), 사이클 표 순서(대기 큐가 인제스트보다 먼저), `YOUTUBE_PLAYLIST_SYNC` 설명, Node 22.13+, launchd 표, 프로젝트 구조 누락 파일, 장부 `meta`·`tips` 열. 레포 `com.irichgreen.wiki-ingest.plist` 를 실제 설치본(17:30 · Homebrew python3 · 증분)과 같게 맞춤 — 그전 원본(03:00 · `/usr/bin/python3` · `--full`)으로 재설치하면 라이브러리가 갈리고 Gemini 무료 한도를 소진했다. 설치·배포 스크립트의 낡은 문구(노션·03:00·00:30) 정리. 지시서 `docs/tasks/2026-10-12-docs-sync.md` |
 | 이름 변경 (2026-10-12, 버전 유지) | 노션을 뺀 뒤에도 이름에 남아 있던 Notion 을 정리: 폴더 `Youtube_Notion_Grap` · GitHub `YouTube_Notion_Grab`(철자도 서로 달랐다) → 둘 다 `AI_Wiki_Pipeline`. 레포 plist 원본 4개 · 설치 스크립트 sed 패턴 · `package.json` 이름 · 문서 경로. 코드 동작 무변경(코드에 레포 절대경로 없음). 레포 밖 맥 설정(설치된 plist · 로그 회전 스크립트 · Claude Code MCP 등록)은 지시서 절차로 함께 옮김. 지시서 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md` |
 
-#### [v4.1] — 2026-10-12 (🛟 장부 자동 백업)
+#### [v4.1.0] - 2026-10-12 (🛟 장부 자동 백업)
 
 **배경.** v4.0 으로 원본이 맥의 장부 파일 하나가 됐다. 10-12 점검에서 타임머신 백업 디스크가 마운트되지 않아 백업 기록이 없었고 iCloud Drive 동기화도 꺼져 있었다 — 장부 사본은 같은 디스크의 `.bak` 하나뿐이었다. 구글 시트 미러는 영상·꿀팁 본문은 담지만 `meta`·`videos_dup` 이 없어 복원용이 아니다.
 
@@ -865,7 +859,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | 테스트 | 신규 `scripts/test_backup_library.py` 50/50(임시 폴더), `test_scheduler_guards.js` 22/22(+3) |
 | 지시서 | `docs/tasks/2026-10-12-library-backup.md` |
 
-#### [v4.0] — 2026-10-12 (🗄️ 노션 탈퇴 — 로컬 장부 + Obsidian + 구글 시트 미러)
+#### [v4.0.0] - 2026-10-12 (🗄️ 노션 탈퇴 - 로컬 장부 + Obsidian + 구글 시트 미러)
 
 **배경.** 2026-10-11 노션을 더 이상 쓰지 않기로 했다. 앱은 방안 A 로 옮긴다: 원본 = 맥의 SQLite 장부 `data/library.db`, 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 세 단계로 나눠 각 단계를 맥 실데이터로 판정한 뒤 넘어갔다.
 
@@ -892,7 +886,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 
 **확인하지 못한 것 → 해소(10-12).** 구글 Workspace 관리 설정에 따라 웹앱 액세스 "모든 사용자"가 막혀 있을 수 있었다(그때 응답이 로그인 화면 HTML → 미러가 auth 로 멈춘다). 10-12 웹앱 배포·첫 전체 전송 후 `--check` 영상 2,988 · 꿀팁 135 일치, 같은 날 06:00 자동 실행의 변경분 전송도 정상이었다.
 
-#### [v3.2.1] — 2026-10-05 (🛡️ 스케줄러 네트워크 안전장치)
+#### [v3.2.1] - 2026-10-05 (🛡️ 스케줄러 네트워크 안전장치)
 
 **배경.** `ytsummarizer.log`(회전본 포함, 2026-08-12 ~ 10-05, 실행 219회)를 집계했다. 실행 통째 실패(`저장 0 · Skip 0 · 오류 1`)가 62회(28%)였고(`ENOTFOUND` 41 · `ETIMEDOUT` 17 · 기타 4), Notion 캐시가 0건인 채 진행한 실행이 23회였다. 그중 13회는 영상 15편을 다시 저장해 **중복 195건**이 생겼다. 결과가 `저장 15 · Skip 0 · 오류 0` 이라 알림에서는 성공으로 보였고, 한 번 터질 때마다 이미 저장된 영상에 Gemini 호출 약 45회가 쓰였다.
 
@@ -912,7 +906,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 
 **확인하지 못한 것.** 야간(00시·06시) `ENOTFOUND` 의 직접 원인. 원인과 무관하게 동작하는 방어(재시도·연결 수 축소·fail-closed)만 넣었다. Notion 중복 195건 정리는 별도 작업이다.
 
-#### [v3.2] — 2026-10-03 (🏠 집 안 전용 Wiki 검색 서버)
+#### [v3.2.0] - 2026-10-03 (🏠 집 안 전용 Wiki 검색 서버)
 
 **배경.** Wiki 검색 화면은 `server.js`(포트 3000)가 서빙하는데 이 서버는 `127.0.0.1` 에만 바인딩한다. 집 안의 다른 컴퓨터(가족)에서는 접속할 수 없었다.
 
@@ -930,7 +924,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 
 **검증.** 바인딩 `*:3100` / 기존 `127.0.0.1:3000` 분리 유지, `server.js` 전용 경로 6종(`/api/master-ingest`·`/api/sync-obsidian`·`/api/config`·`/v1/pages`·`/index.html`·`/.env`) 전부 404, 위조 `Host`·타 출처 `Origin` 403, 벡터 검색 정상, AI 답변 정상 1회, LAN 주소·`.local` 이름 접속 200. 방화벽 수신 허용(관리자 권한)과 가족 PC 실접속 확인은 사용자가 별도로 수행한다.
 
-#### [v3.1] — 2026-09-10 (🔑 Wiki 인제스트 할당량 소모 구조 교정)
+#### [v3.1.0] - 2026-09-10 (🔑 Wiki 인제스트 할당량 소모 구조 교정)
 
 **계기.** `wiki-ingest.log` 의 WIKI_RESULT 29회 누적이 processed 212 / errors 165 — **오류율 44%**. 원인을 추측하지 않고 로그에서 전량 분류했다.
 
@@ -951,7 +945,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 
 **검증.** `wiki_ingest.py --limit=6` → processed 6 / **errors 0** (RPD 429 2건을 키 교체로 흡수). `sync_obsidian.py --rebuild` → `wiki-ingest.log` 에 `───── via sync_obsidian.py (subprocess) ─────` 블록과 `WIKI_RESULT` 기록 확인.
 
-#### [v3.0] — 2026-09-06 (📎 지식 소스 2원화 — 카카오톡 링크 파이프라인 통합)
+#### [v3.0.0] - 2026-09-06 (📎 지식 소스 2원화 - 카카오톡 링크 파이프라인 통합)
 
 **왜 메이저 버전인가.** v1~v2 는 "YouTube 영상 → Notion → Obsidian" 한 줄 파이프라인의 안정화·최적화였다. v3.0 은 **두 번째 지식 소스(카카오톡에 저장한 AI 자료 링크)를 같은 Obsidian LLM Wiki 로 합류**시키는 아키텍처 확장이다. Notion 이전 단계는 소스별로 분리되고, Notion 이후 단계(노트 생성 → Wiki 합성 → MOC → 알림)는 공유한다. 합성 로직을 두 벌 만들지 않는 것이 핵심 설계 판단이다.
 
@@ -980,7 +974,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 - 첫 적재 중 사고 1건: `--orphans-dry-run` 검증 실행이 꿀팁 5건을 신규로 잡으면서 `wiki_ingest.py` 를 **제한 없이** 띄웠다(기존 동작). 25건 호출 후 수동 중단, 상태 손실 없음. 대량 적재 시 `sync_tips()` 단독 → `wiki_ingest.py --limit=20` 분할 규칙을 CLAUDE.md 에 남겼다.
 - 변경 없음: YouTube 인제스트·quota·대기 큐·OAuth·고아 격리 안전장치·Wiki 합성 로직.
 
-#### [v2.7.1] — 2026-08-28 (🔁 토픽 분류의 일시적 서버 오류(5xx) 재시도 추가)
+#### [v2.7.1] - 2026-08-28 (🔁 토픽 분류의 일시적 서버 오류(5xx) 재시도 추가)
 - **503 한 번에 영상이 떨어지던 비대칭 교정**: 요약 단계는 8회 재시도 + API Key 로테이션으로 `503 UNAVAILABLE`을 흡수하는데, 분류 단계(`classifyTopics`)의 재시도 조건은 **429/quota만** 포함해 그 외 오류는 즉시 `throw`되었음. 2026-08-28 06:00 실행에서 동일한 503으로 요약은 통과하고 분류만 실패(`classifyTopics failed after 1 attempts`)해 영상 1건이 6시간 뒤 실행으로 밀려남. `5xx`·`UNAVAILABLE`·`overloaded`·`high demand`를 재시도 대상에 추가함.
 - **지수 백오프 적용**: 일시적 서버 오류는 고정 1초가 아닌 2→4→8→15초(상한) 지수 백오프로 대기 (CLAUDE.md 보안 원칙 2). 최대 8회 기준 최악 누적 74초이며 실제 장애 상황에서만 발생함.
 - **401/403 즉시 중단 명시화**: 인증·권한 오류는 재시도 대상에서 명시적으로 제외해 실패 요청 연쇄를 원천 차단 (보안 원칙 1). 기존에는 조건에 우연히 걸리지 않아 중단되던 것을 코드로 못박음.
@@ -988,18 +982,18 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 - **잠복 TypeError 경로 차단**: 마지막 시도가 `continue`로 끝나면 `cls`가 `undefined`인 채 루프를 빠져나와 바로 다음 줄 `cls.topics`에서 `TypeError`로 죽는 경로가 있었음. 재시도 조건의 `clsAttempt < maxClsAttempts` 가드와 루프 직후 `if (!cls) throw` 가드 2개로 차단함.
 - `lib/classifier.js`(`maxRetries` 기본값·프롬프트·`allowedSet` 필터)·요약 경로·quota·대기큐 로직은 변경 없음.
 
-#### [v2.7] — 2026-08-19 (📊 재생목록 쓰기 성공/실패 계측 및 알림 교정)
+#### [v2.7.0] - 2026-08-19 (📊 재생목록 쓰기 성공/실패 계측 및 알림 교정)
 - **"전부 실패한 날"을 감지하지 못하던 구멍 차단**: 큐 적체 경고의 발화 조건이 `.quota_state.json`의 `date !== today` 하나뿐이었는데, v2.5에서 실패 요청도 `consumeQuota(50)`을 타게 되면서 **실패만 해도 `date`가 당일로 갱신**되어 경고가 무력화되던 문제를 교정. 이 구조 탓에 2026-08-17의 197건 연속 `403 playlistItemsNotAccessible` 상황에서 원인을 지목하는 경고가 한 건도 발송되지 않았음. quota state에 `ok`/`fail` 카운터를 추가하고, **인증은 되는데 쓰기만 전부 실패**하는 계정 불일치 시나리오를 별도 분기로 경고하도록 변경.
 - **성공/실패 계측 도입**: `lib/youtube_oauth.js`의 `consumeQuota(units, outcome)`로 확장하여 `playlistItems.insert`의 성공·실패 경로에서 각각 계상. 읽기(`list`)는 계상 대상에서 제외해 `used`에만 반영. 기존 상태 파일에 `ok`/`fail`이 없으면 0으로 채워 **하위호환을 유지**하며, 날짜 경계에서 `used`와 함께 리셋됨.
 - **알림 문구 3분기 + 순감 기준 소진 예상일**: 텔레그램 완료 요약이 잔량만 표시하고 배수량을 세지 않아 정상 배수(2026-08-18 190건)가 드러나지 않던 문제를 교정. 당일 배수량·유입량을 함께 표기하고, 소진 예상일을 `(잔량 ÷ 190)`이 아닌 **`(잔량 ÷ 순감)` 기준**으로 계산하도록 변경 — 유입을 무시하던 기존 계산은 실제(약 16.8일)보다 낙관적인 11.8일을 표시했음. 순증 중일 때는 예상일 대신 경고를 표기.
 - 임계값(9,500)·소비량(50/1유닛)·일 경계(PT)·대기큐 안전장치는 변경 없음.
 
-#### [v2.6] — 2026-08-17 (🕐 quota 일 경계 태평양시(PT) 교정)
+#### [v2.6.0] - 2026-08-17 (🕐 quota 일 경계 태평양시(PT) 교정)
 - **일 경계 UTC → PT 교정**: `lib/youtube_oauth.js`의 `todayKey()`가 UTC 날짜를 쓰던 탓에 로컬 카운터가 KST 09:00에 0으로 리셋되는 반면, YouTube 실제 quota는 태평양시 자정(= KST 16:00)에 리셋되어 **KST 09:00~16:00 구간에서 `checkQuotaAvailable()`이 무조건 통과**하던 문제를 교정. 실패 요청도 50유닛을 소비하므로(v2.5) 이 구간에서는 이미 소진된 quota에 계속 요청을 밀어넣는 상태였음. `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' })` 기반으로 변경하여 DST(PDT/PST) 전환도 자동 처리.
 - **텔레그램 오경보 제거**: `scheduler.js`의 quota 미갱신 경고가 동일한 UTC 키로 비교하던 탓에 KST 09:00~16:00 사이에는 정상 동작 중에도 `🛑 오늘 YouTube 쓰기 0건`이 발송되던 문제를 교정. `todayKey()`를 export하여 스케줄러와 quota 추적기가 **같은 날짜 키를 공유**하도록 일원화함.
 - 임계값(9,500)·소비량(50/1유닛)·대기큐 안전장치는 변경 없음.
 
-#### [v2.5] — 2026-08-17 (🧹 재생목록 대기큐 정합성 및 API 어뷰징 차단)
+#### [v2.5.0] - 2026-08-17 (🧹 재생목록 대기큐 정합성 및 API 어뷰징 차단)
 - **중복 적재 원천 차단**: `scheduler.js`·`migrate_classify.js`의 `appendPending()`이 무조건 `push`하던 탓에 동일 `(videoId, playlistId)` 조합이 최대 28회까지 중복 적재되어 대기큐의 46.7%가 중복으로 채워지던 문제를 교정. 적재 전 동일 조합 존재 여부를 검사하여 재적재를 차단함.
 - **영구 실패 dead-letter 격리**: `flushPendingQueue()`의 "기타 오류" 분기가 `403 playlistItemsNotAccessible` 같은 영구 실패까지 큐에 되돌려 영원히 재시도하던 구조를 개선. 영구 실패 사유(`playlistItemsNotAccessible`, `playlistNotFound`, `videoNotFound`, `forbidden`)는 `pending_playlist_adds.dead.json`으로 격리하고, 일시적 오류도 `retryCount` 5회를 넘기면 함께 격리하여 **어떤 실패도 무한 순환하지 않도록** 보장함.
 - **연속 실패 차단기(Circuit Breaker)**: 계정·권한 문제로 실패가 연쇄될 때 수백 건의 403 요청을 난사하던 동작을 차단. 연속 10회 실패 시 큐 처리를 즉시 중단하고 잔여 항목을 보존함 (CLAUDE.md 보안 원칙 1 — 연쇄 요청 금지 준수).
@@ -1007,20 +1001,20 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 - **큐 적체 알림 추가**: 대기큐가 3개월간 5,392건까지 누적되도록 아무 경보가 없던 문제를 보완. 텔레그램 완료 요약에 잔량·소진 예상일을 상시 표기하고, 1,000건 이상 적체 시와 `.quota_state.json`이 당일 갱신되지 않은 경우(= 당일 YouTube 쓰기 0건) 경고를 함께 발송함.
 - **재실행 가능한 큐 정리 스크립트**: `scripts/clean_pending_queue.js` 신규 추가. 중복 제거(최초 `ts` 보존), `playlists.json` 미등록 재생목록 및 영구 실패 항목의 dead-letter 격리를 수행하며, 기본 `--dry-run`·`--apply` 시 타임스탬프 백업 생성.
 
-#### [v2.4] — 2026-07-08
+#### [v2.4.0] - 2026-07-08 (🔑 주제 분류 API 키 로테이션)
 - **주제 분류 API 키 로테이션 적용 및 안정성 강화**: 주제 분류 단계(`classifyTopics`)에서 429 에러(할당량 초과) 발생 시 다음 API Key로 자동 전환(`rotateGeminiKey()`) 후 재시도하도록 개선하여 특정 API Key의 한도 초과 상황에서도 스케줄러의 무중단 인제스트 무결성을 확보함.
 
-#### [v2.3] — 2026-06-02
+#### [v2.3.0] - 2026-06-02 (💸 비용 최적화 · 무료 키 로테이션)
 - **Gemini 2.5 Flash 비용 최적화 옵션 추가 적용**: `scheduler.js`에서 Gemini 2.5 Flash를 통한 요약 수행 시 누락되었던 `thinkingConfig: { thinkingBudget: 0 }`를 추가하여, 보이지 않는 백그라운드 추론 토큰 과금(Thinking Quota)으로 인해 비용이 과다 청구되던 현상을 원천 방지(비용 약 85% 이상 절감).
 - **무료 API Key 로테이션 적용**: 결제 카드가 연결되지 않은 4개의 순수 무료 API 키(`anvaksa@gmail.com`, `irichgreen.ai@gmail.com` 등)를 생성하여 `.env` 내 `GEMINI_API_KEYS`에 멀티 등록. 429 에러(무료 한도 초과) 발생 시 자동으로 다음 키로 교환 작동하도록 스케줄러 동작을 보완하여 **비용 0원 무과금 가동 환경**을 구축함.
 
-#### [v2.2] — 2026-05-21
+#### [v2.2.0] - 2026-05-21 (🛑 API 킬스위치 · 안전장치 강화)
 - **API 403 Suspended 에러 킬스위치(Kill-switch) 구현**: Gemini API 키가 차단(`suspended`)되었을 때 무한 루프를 돌며 API 호출을 시도하지 않고, 즉시 텔레그램으로 경보를 보낸 뒤 `process.exit(1)` 및 `sys.exit(1)`로 안전하게 프로세스를 강제 종료하는 안전장치 추가.
 - **백업용 지수 백오프(Exponential Backoff)**: 일시적인 오류(429, 5xx)에 대해 단순 고정 3초 대기 대신 점진적으로 대기 간격을 늘리는 지수 백오프 알고리즘 적용 (`scheduler.js`, `wiki_config.py`).
 - **백그라운드 자동 스케줄러 완전 정지 및 plist 삭제**: 백그라운드 오작동으로 인한 구글 계정의 비정상 활동 감지 리스크를 차단하기 위해 launchd 스케줄러(`ytsummarizer`, `wiki-ingest`)를 완전 언로드 및 설정 파일(plist) 2종을 영구 삭제 처리.
 - **보안 및 안전 최우선 지침 지정**: `SKILL_SAFETY.md`를 생성하여 AI 에이전트의 API 남용과 비정상 호출을 차단하는 가이드를 스킬로 지정하고, `CLAUDE.md`에도 이 보안 최우선 개발 원칙을 명문화함.
 
-#### [v2.1] — 2026-05-18
+#### [v2.1.0] - 2026-05-18 (🩹 요약 무결성 · 지식베이스 정상화)
 - **요약 무결성 검증 (`validateSummary`)**: Notion 저장 전 4대 필수 섹션(영상 개요, 핵심 내용, 주요 인사이트, 활용 포인트)의 유실 여부를 자동 판별하는 검증 로직 도입.
 - **자동 Fallback 재시도**: 검증 실패 시 짧고 밀도 높은 `fallbackPrompt`를 태워 최대 2회까지 자동으로 요약을 재생성하는 자가 치유(Self-healing) 기능 구축.
 - **Gemini 용량 확장**: maxOutputTokens를 `2000`에서 `4000`으로 상향하여 한국어 요약 도중 문장이 뚝 끊기는 절단 문제 차단.
@@ -1029,23 +1023,23 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 - **오류 큐 대청소 (`clean_pending_queue.js`)**: 회복 불가능한 API 403 오류로 3MB 수준까지 불어났던 9,514개의 무한 실패 대기 항목을 깨끗이 정리 및 경량화.
 - **Obsidian 짤림 파일 일괄 자가 복구**: 과거에 잘렸던 Obsidian 로컬 마크다운 파일 13개를 디텍션하여 선제적으로 삭제하고, Notion 최신 완전본으로 동기화(sync_obsidian.py)하여 Karpathy LLM Wiki 지식 합성까지 물 흐르듯 가동 성공.
 
-#### [v2.0] — 2026-05-16
+#### [v2.0.0] - 2026-05-16 (⚙️ 할당량 최적화 · 순차 처리)
 - **할당량 최적화**: `scheduler.js`의 `MAX_NEW_PER_RUN`을 15개로 하향 조정하여 Gemini API 할당량 대응.
 - **순차 처리 도입**: 병렬 처리를 순차 처리로 변경하여 안정적인 API 호출 확보.
 - **지연 시간 추가**: 요청 사이에 2초의 지용 시간(setTimeout)을 추가하여 Rate Limit 방지.
 - **아키텍처 시각화**: Mermaid 다이어그램 도입으로 전체 시스템 데이터 흐름 가시화.
 
-#### [v1.2] — 2026-05-12
+#### [v1.2.0] - 2026-05-12 (🧠 Karpathy Wiki · 비용 85% 절감)
 - **Karpathy Wiki 파이프라인**: `wiki_ingest.py`를 통해 Obsidian 문서를 분석하여 Wiki 페이지 자동 합성 기능 구현.
 - **비용 최적화 (핵심)**: Gemini API 호출부에 `thinkingBudget: 0` 설정을 적용하여 토큰 비용 약 85% 절감.
 - **자동 스케줄링**: `launchd`를 통해 매일 03:00에 Wiki 인제스트 자동 실행 설정.
 
-#### [v1.1] — 2026-05-02
+#### [v1.1.0] - 2026-05-02 (🧭 개발 환경 · 분류 지능화)
 - **개발 환경 정비**: `CLAUDE.md` 도입 및 Claude Code 환경 최적화.
 - **분류 지능화**: AI 코딩 콘텐츠를 "AI 바이브코딩"으로 매핑 강화하여 분류 정확도 향상.
 - **웹 UI 고도화**: 마스터 인제스트 모드 실시간 처리 결과 테이블 연동.
 
-#### [v1.0] — 2026-04-10
+#### [v1.0.0] - 2026-04-10 (🎬 프로젝트 초기화)
 - **프로젝트 초기화**: YouTube -> Notion -> Obsidian 기본 파이프라인 구축.
 - **NFC 정규화**: Notion 태그 한글 깨짐 방지를 위한 NFC 정규화 전수 적용.
 - **마스터 인제스트**: "AI 영상목록" 하나로 자동 분류 및 배분 시스템 구축.
