@@ -65,7 +65,7 @@ for r, c in zip(rows, cells):
         e.append(f'제목 {len(c[2])}자: {c[0][:30]}')
 check('C2 요약표 한 줄 3칸 · 제목 120자 이하', e)
 
-tv = [re.match(rf'\*\*\[({VER})\]', c[0])[1] if len(c) == 3 and re.match(rf'\*\*\[({VER})\]', c[0]) else '?' + c[0][:20] for c in cells]
+tv = [re.match(rf'\*\*\[({VER})\]', c[0])[1] if len(c) == 3 and re.match(rf'\*\*\[({VER})\]', c[0]) else ('?' + c[0][:20] if c else '?빈 행') for c in cells]
 check('C3 요약표 버전 엄격 내림차순', [f'버전 아님: {v}' for v in tv if v[0] == '?'] or desc(tv))
 
 e = []

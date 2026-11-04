@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **대표님과 직접 대화하는 메인 세션은 PM(pm-wiki) 이다 — 세션을 시작하면 `.claude/pm/PM_ROLE.md` 를 읽고 따른다** (2026-11-04 대표님 결정 · Claude Desktop(Code 탭)에서 이 저장소로 연 세션 · `./pm-wiki.sh` 로 띄워도 같다). 워커 서브에이전트(`implementer` · `verifier` · `investigator` · `scribe`)는 이 줄을 따르지 않는다.
 
-**현재 버전: v4.19.2** (2026-11-04) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.19.3** (2026-11-04) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -649,6 +649,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-11-04 (v4.19.3 — README 회귀 17종 표기 · 이력 테스트 쪼갠 행 처리)** — v4.19.2 검수 ⚠️ 2건: README 본문 「회귀 테스트 16종」 4곳(Coding Style · 파일 구조 2 · 실행 가이드) → 17종·17/17, `scripts/test_readme_changelog.py` C3 가 `|` 로 끝나지 않는 쪼갠 행에서 IndexError 로 죽던 것을 실패 줄로(사본 재현 옛 IndexError · 새 5/9 rc=1). 코드·장부 무변경. PM 직접 수정.
 - **2026-11-04 (v4.19.2 — 이력 구조 감지 장치 + 규칙 문서)** — `scripts/test_readme_changelog.py` 신규(C1~C9: README 상세 블록 0 · 요약표 3칸/120자 · 내림차순 · 링크·앵커 · 월 파일 구조 · 앵커 중복 0 · 표↔월 파일 집합 · README.html 없음, 읽기만·`CHANGELOG_TEST_ROOT` 로 사본 시험) · `run_all_tests.sh` 회귀 17종 · 「산출물 규칙」 버전 이력 줄을 새 규칙 2줄로(문서만 고친 커밋도 PATCH) · scribe·verifier·PM_ROLE 의 README 위치 문구 · `gate_subagent_stop.sh` 8-b(README·docs/changelog 만 바꾼 변경도 이력 구조 검사). 코드·장부·`settings.json` 무변경. 지시서 `docs/tasks/2026-11-04-changelog-guard-rules.md`.
 - **2026-11-04 (v4.19.1 — 상세 이력을 월별 파일로 · 요약표 3칸)** — README 상세 이력 37블록을 `docs/changelog/YYYY-MM.md` 8개로 옮기고(앵커 38, 본문 diff 0) 요약표를 3칸 링크 표로 바꿨다. README 141707 → 47277 바이트, 「버전별 한 줄 요약」은 `docs/changelog/README.md` 끝으로. 코드·장부 무변경. 지시서 `docs/tasks/2026-11-04-changelog-monthly-split.md`.
 - **2026-11-04 (문서, 버전 유지)** — README v2.3.0 이력 불릿의 개인 Gmail 주소 2개를 「서로 다른 구글 계정별 1개씩」으로 바꿨다(공개 레포 개인정보, CC-1104-E 검수 중 발견). 코드·장부 무변경. 옛 커밋 이력에는 남아 있다(이력 재작성은 하지 않음).

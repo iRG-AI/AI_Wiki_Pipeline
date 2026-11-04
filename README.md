@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡·텔레그램 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.19.2** (2026-11-04)
+**현재 버전: v4.19.3** (2026-11-04)
 
 YouTube 재생목록의 영상을 **Gemini AI**가 실제 영상을 보고 요약·분류하고, 카카오톡 '나와의 채팅'과 텔레그램 전용 봇 방에 공유해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -15,7 +15,7 @@ YouTube 재생목록의 영상을 **Gemini AI**가 실제 영상을 보고 요�
 
 * **Agentic Tool**: Claude Code (Claude Desktop Code 탭) — 실행 PM `pm-wiki` + 워커 서브에이전트(implementer · verifier · investigator · scribe, `.claude/agents/`) · 훅 게이트(`.claude/hooks/`) · Cowork(claude.ai 프로젝트 — 정시 실행 관찰·상담)
 * **사용 AI 모델**: Claude Opus(PM · 검수 · 조사) · Claude Sonnet(구현) · Claude Haiku(문서 기록) — 파이프라인이 런타임에 쓰는 Gemini 모델은 「🛠️ 기술 스택」
-* **Coding Style**: **Vibe Coding** — 작업지시서(`docs/tasks/`) → 구현 → 기준표 검수 → 회귀 테스트 16종 → push. 보안·계정 보호 1순위, dry-run 기본, 실패 시 멈춤(fail-closed)
+* **Coding Style**: **Vibe Coding** — 작업지시서(`docs/tasks/`) → 구현 → 기준표 검수 → 회귀 테스트 17종 → push. 보안·계정 보호 1순위, dry-run 기본, 실패 시 멈춤(fail-closed)
 
 ---
 
@@ -294,9 +294,9 @@ AI_Wiki_Pipeline/
 │   ├── recategorize_tips.py           # (v4.9) 꿀팁 분류 보정 — 규칙이 매긴 카테고리·태그(+ v4.10 「기타」·태그 없음) 다시 매김 · 출처 호스트만 (dry-run 기본)
 │   ├── migrate_library.py             # (v4.5·v4.6) 장부 스키마 이전 1·2 → 3 (dry-run 기본, 백업 먼저)
 │   ├── clean_pending_queue.js         # 대기 큐 중복 제거 + dead-letter 격리
-│   ├── run_all_tests.sh               # 회귀 테스트 16종 한 번에 (마지막 줄 RESULT: 16/16 통과)
+│   ├── run_all_tests.sh               # 회귀 테스트 17종 한 번에 (마지막 줄 RESULT: 17/17 통과)
 │   ├── fake_gas_server.js             # (테스트) gas/sheet_mirror.gs 를 그대로 올린 가짜 Apps Script 서버
-│   └── test_*.{js,py}                 # 회귀 테스트 16종 (네트워크 0회)
+│   └── test_*.{js,py}                 # 회귀 테스트 17종 (네트워크 0회)
 ├── legacy_scripts/                    # (v4.0) 은퇴한 노션 전제 스크립트 보관 (실행 대상 아님)
 ├── docs/tasks/                        # pm-wiki 작업지시서 (날짜-슬러그.md, 워커가 실행) + patches/
 ├── docs/cowork-project-instructions.md # 안내문 — 옛 Cowork 지침 사본(v2.5)은 git 이력에, 운영 지침은 claude.ai 프로젝트 설정
@@ -467,7 +467,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ### 8. 회귀 테스트
 
 ```bash
-scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 RESULT: 16/16 통과, 실패하면 exit 1. 네트워크 0회, 실제 장부·Vault 무관
+scripts/run_all_tests.sh             # 17종 (all | js | py) — 마지막 줄 RESULT: 17/17 통과, 실패하면 exit 1. 네트워크 0회, 실제 장부·Vault 무관
 ```
 
 ---
@@ -486,6 +486,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 
 | 버전 | 날짜 | 제목 |
 | :-- | :--- | :--- |
+| **[v4.19.3](docs/changelog/2026-11.md#v4-19-3)** | 2026-11-04 | **🧹 README 회귀 17종 표기 · 이력 테스트 쪼갠 행 처리** |
 | **[v4.19.2](docs/changelog/2026-11.md#v4-19-2)** | 2026-11-04 | **🧪 이력 구조 감지 장치 + 규칙 문서 · CC-1104-G** |
 | **[v4.19.1](docs/changelog/2026-11.md#v4-19-1)** | 2026-11-04 | **📚 상세 이력을 월별 파일로 · 요약표 3칸 · CC-1104-F** |
 | **[v4.19.0](docs/changelog/2026-11.md#v4-19-0)** | 2026-11-04 | **🏷 꿀팁 판정 글자에서 URL 빼기 · 인스타 제목·공유 파라미터** |
@@ -527,7 +528,7 @@ scripts/run_all_tests.sh             # 16종 (all | js | py) — 마지막 줄 R
 | **[v1.0.0](docs/changelog/2026-04.md#v1-0-0)** | 2026-04-10 | **🎬 프로젝트 초기화** |
 
 ### 🔍 상세 변경 내역
-- [2026-11](docs/changelog/2026-11.md) — v4.17.0 ~ v4.19.2
+- [2026-11](docs/changelog/2026-11.md) — v4.17.0 ~ v4.19.3
 - [2026-10](docs/changelog/2026-10.md) — v3.2.0 ~ v4.16.0
 - [2026-09](docs/changelog/2026-09.md) — v3.0.0 ~ v3.1.0
 - [2026-08](docs/changelog/2026-08.md) — v2.5.0 ~ v2.7.1
