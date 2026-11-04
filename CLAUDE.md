@@ -624,12 +624,12 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 | 주체 | 어디서 | 하는 일 | 하지 않는 일 |
 |---|---|---|---|
-| **pm-wiki** (실행 PM) | Claude Code 메인 세션 — Claude Desktop(Code 탭)에서 이 저장소로 연 세션 또는 `./pm-wiki.sh` (Opus, 지침 `.claude/pm/PM_ROLE.md`) | 지시서 작성 → 워커 호출 → 검수 판정 → (대표님 승인 뒤) `git push` · 작은 수정(한 파일 20줄 안팎, 확인 방법이 뻔한 것)은 직접 고치고 테스트를 직접 돌림 · 인수인계 `.claude/pm/local/HANDOFF.md` | 작은 수정 밖의 코드·문서 직접 수정 · 워커가 도는 동안 파일 수정 |
+| **pm-wiki** (실행 PM) | Claude Code 메인 세션 — Claude Desktop(Code 탭)에서 이 저장소로 연 세션 또는 `./pm-wiki.sh` (Opus, 지침 `.claude/pm/PM_ROLE.md`) | 지시서 작성 → 워커 호출 → 검수 판정 → `git push`(검수 통과 뒤 승인 없이, 2026-11-04~) · 작은 수정(한 파일 20줄 안팎, 확인 방법이 뻔한 것)은 직접 고치고 테스트를 직접 돌림 · 인수인계 `.claude/pm/local/HANDOFF.md` | 작은 수정 밖의 코드·문서 직접 수정 · 워커가 도는 동안 파일 수정 |
 | **워커** | pm-wiki 의 서브에이전트 `.claude/agents/` | `implementer`(Sonnet) 실행 · `verifier`(Opus, 읽기 전용) 검수 · `investigator`(Opus, 읽기 전용) 조사·설계 · `scribe`(Haiku) 문서 기록 | 지시서 범위 밖 변경 · `git push` |
 | **Cowork(CW)** | claude.ai 프로젝트 「AI Wiki Pipeline」 | 정시 실행 판정·관찰, 대표님 상담(등급 오판 등 결정 자료), 조사·설계 메모, 다른 프로젝트 연계 | 레포·장부·데몬 쓰기 |
 
-- 일의 흐름: 대표님 지시 또는 XP 요청서 → pm-wiki 가 `docs/tasks/` 지시서(워커 한 번에 끝나는 크기 — 고칠 파일 10개 초과면 2~3개로) → implementer → verifier(기준표 ✅/❌) → 미달이면 같은 implementer 에 재지시(지시서당 3회까지) → 통과 보고 → push 승인. 작은 수정은 pm-wiki 가 직접 고치고 `scripts/run_all_tests.sh` 를 직접 돌린다(기록은 커밋 메시지 · 이 파일 「변경 이력」).
-- (2026-11-04~) 승인은 **대표님의 작업 요청 메시지 자체**다 — 그 요청 범위 안의 지시서·워커 실행은 따로 승인받지 않는다(XP 요청서는 대표님이 진행하라고 한 메시지부터). 지시서가 요청 범위를 넘거나 고를 안이 갈리면 그 점만 묻는다. 범위 밖 변경·지시서에 없는 장부 쓰기·외부 발송·launchd/`.env`/OAuth·운영 상태 파일 손수정·`git push` 는 멈추고 묻는다.
+- 일의 흐름: 대표님 지시 또는 XP 요청서 → pm-wiki 가 `docs/tasks/` 지시서(워커 한 번에 끝나는 크기 — 고칠 파일 10개 초과면 2~3개로) → implementer → verifier(기준표 ✅/❌) → 미달이면 같은 implementer 에 재지시(지시서당 3회까지) → push → 통과 보고. 작은 수정은 pm-wiki 가 직접 고치고 `scripts/run_all_tests.sh` 를 직접 돌린다(기록은 커밋 메시지 · 이 파일 「변경 이력」).
+- (2026-11-04~) 승인은 **대표님의 작업 요청 메시지 자체**다 — 그 요청 범위 안의 지시서·워커 실행은 따로 승인받지 않는다(XP 요청서는 대표님이 진행하라고 한 메시지부터). 지시서가 요청 범위를 넘거나 고를 안이 갈리면 그 점만 묻는다. 범위 밖 변경·지시서에 없는 장부 쓰기·외부 발송·launchd/`.env`/OAuth·운영 상태 파일 손수정은 멈추고 묻는다. `git push` 는 검수 통과·회귀 통과 뒤 PM 이 승인 없이 한다(2026-11-04 대표님 결정, `--force` 금지).
 - CW ↔ pm-wiki 는 XP 보드 `~/Documents/Claude/XP/`(`open/`·`done/`, 번호 `XP-<발주코드>-<MMDD>-<순번>`, `from: cw-wiki · to: pm-wiki` 또는 반대). CW 는 Claude Code 세션이 아니라 메시지를 받지 못한다 — 파일로만 주고받는다.
 - (2026-11-03~) XP 보드 규칙 v2 의 정본은 `~/Documents/Claude/XP/README.md` — 세션 시작 때 `open/` 확인, 새 요청서는 `~/Documents/Claude/XP/new_xp.sh <발주코드>`(WIKI 등)로만 만들고, 파일명·번호는 바꾸지 않으며(상태는 본문 「상태」 줄에만), 상대에게는 경로 대신 번호로 말한다. 11-03 이전 `XP-MMDD-A` 파일은 번호 그대로.
 - 훅(`.claude/settings.json`): `guard_run_window.sh`(PreToolUse) — 장부 쓰기·launchd 조작은 매시 분 50~59·00~20, 코드·plist 편집은 정시 실행·wiki-ingest 창과 실행 중에 막는다. `record_base.sh`(SubagentStart) + `gate_subagent_stop.sh`(SubagentStop) — 워커가 끝나기 전에 공개 레포 규칙(개인 절대경로·맥 이름·`.env` 값)·gitignore·`README.html`·plist/셸 문법·회귀 15종을 검사하고, 미통과면 3회까지 돌려보낸다(`/tmp/cc-gate-AI_Wiki_Pipeline-<세션>.log`).
@@ -643,10 +643,11 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 - `AGENTS.md`는 **git 추적 대상**이다(2026-09-08~). `CLAUDE.md`와 함께 갱신하고, 두 문서가 어긋나면 **`CLAUDE.md`가 이긴다**.
 - 문서에 **개인 절대경로를 새로 쓰지 않는다**(2026-09-09~). 앞으로 추가·수정하는 줄은 `<REPO_ROOT>/...` 또는 `~/...` 표기를 쓴다. 기존 표기는 소급 정리하지 않는다.
 - 작업지시서는 `docs/tasks/YYYY-MM-DD-<슬러그>.md`(번호 `[CC-MMDD-X]`) — pm-wiki 가 쓰고 워커가 실행한다(「운영 체계」 절). Cowork 는 XP 요청서로 pm-wiki 에 발주한다.
-- `git push`는 사용자 확인 후.
+- `git push`는 검수·회귀 통과 뒤 PM 이 승인 없이 한다(2026-11-04~, `--force` 금지).
 
 ## 변경 이력
 
+- **2026-11-04 (운영 체계, 버전 유지)** — push 자동화(대표님 결정 11-04 「이제부터 승인 없이 푸시」): 검수·회귀 통과 뒤 PM 이 승인 없이 `git push`. `.claude/settings.json` `ask: Bash(git push*)` 삭제 → `allow` 에 `git push`·`git push origin main`(`--force`·`-f` deny 그대로). 「운영 체계」 표·승인 줄·산출물 규칙 · `.claude/pm/PM_ROLE.md` §0·§2 문구 교체. 코드·장부 무변경.
 - **2026-11-04 (v4.19 — 꿀팁 판정 글자에서 URL 빼기 · 인스타 제목·공유 파라미터)** — 배경: `guess_meta` 가 메시지 글 전체를 `classify` 에 넘겨, 메시지 속 노션 주소에서 `Notion` 태그→「지식관리」가 붙었다(11-03 카톡 적재 4건). 수정: `lib/kakao_parse.py`(메시지 글은 URL 을 뺀 `extra` 로 판정 · `STRIP_PARAMS` 에 `igsh`·`dlrf` · 인스타 추정 제목), `lib/title_fetch.py`(「Instagram」·「Login • Instagram」 거부), `scripts/recategorize_tips.py --ids=`. `classify` 규칙·태그·카테고리 목록·스키마 무변경. 테스트 `test_kakao_ingest.py` 42/42 · `test_title_fetch.py` 44/44 · `test_recategorize_tips.py` 57/57. 회귀 테스트 16종. 지시서 `docs/tasks/2026-11-04-v419-tips-classify-instagram.md`.
 - **2026-11-04 (운영 체계, 버전 유지)** — PM 진행 방식 개정 이식(ERP 11-04 본보기): Claude Desktop 에서 이 저장소로 연 메인 세션이 PM(머리 포인터 1줄 → `.claude/pm/PM_ROLE.md`, `./pm-wiki.sh` 는 그대로) · 작은 수정(한 파일 20줄 안팎)은 PM 이 직접 · 대표님의 작업 요청 메시지가 그 범위의 승인 · 지시서는 워커 한 번에 끝나는 크기로 · 진행은 Pinboard(응답에 작업 보드 표 없음) · `.claude/settings.json` `permissions.additionalDirectories` 에 XP 폴더(Desktop 에는 `--add-dir` 이 없다). HANDOFF 인수인계 · Cowork 발주 흐름은 그대로. 코드·장부 무변경. 지시서 `docs/tasks/2026-11-04-pm-desktop-port.md`.
 - **2026-11-03 (운영 체계, 버전 유지)** — XP 보드 규칙 v2(대표님 승인 11-03) 포인터: 정본 `~/Documents/Claude/XP/README.md`, 새 요청서는 `new_xp.sh <발주코드>` 로만, 번호 `XP-<발주코드>-<MMDD>-<순번>`, 상대에게는 번호로. 「운영 체계」 절 · `.claude/pm/PM_ROLE.md` §6 의 옛 `[XP-MMDD-A]` 표기 교체. 코드·장부 무변경. 지시서 `docs/tasks/2026-11-03-xp-board-v2-pointer.md`.

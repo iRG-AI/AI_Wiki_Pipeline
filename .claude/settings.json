@@ -10,6 +10,8 @@
       "Bash(git rev-parse*)",
       "Bash(git add *)",
       "Bash(git commit -m *)",
+      "Bash(git push)",
+      "Bash(git push origin main)",
       "Bash(scripts/run_all_tests.sh*)",
       "Bash(/opt/homebrew/bin/node scripts/test_*)",
       "Bash(/opt/homebrew/bin/python3 scripts/test_*)",
@@ -29,9 +31,6 @@
       "mcp__pinboard__update",
       "mcp__plugin_claude-mem_mcp-search__work_state_write",
       "mcp__plugin_claude-mem_mcp-search__work_state_read"
-    ],
-    "ask": [
-      "Bash(git push*)"
     ],
     "deny": [
       "Bash(git push --force*)",
