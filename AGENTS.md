@@ -649,6 +649,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-11-04 (문서, 버전 유지)** — README v2.3.0 이력 불릿의 개인 Gmail 주소 2개를 「서로 다른 구글 계정별 1개씩」으로 바꿨다(공개 레포 개인정보, CC-1104-E 검수 중 발견). 코드·장부 무변경. 옛 커밋 이력에는 남아 있다(이력 재작성은 하지 않음).
 - **2026-11-04 (문서 양식, 버전 유지)** — README 를 전역 README 표준 9절 순서로 개편(⚡ Vibe Coding with AI 신설 · 🏛️ 모듈별 상세 구조로 시트 미러·백업·Wiki 검색·Obsidian·장부 구조 설명 모음 · 📦 설치 및 실행 가이드는 실행 방법만 · `.env` 예시 블록 → 변수명 표(값 없음) · 버전 머리 `#### [vX.Y.Z] - YYYY-MM-DD (…)`). 내용·머메이드·버전 본문 무변경. 지시서 `docs/tasks/2026-11-04-readme-standard-layout.md`.
 - **2026-11-04 (운영 체계, 버전 유지)** — `.claude/hooks/guard_run_window.sh` 오탐 수정: `--apply`·`--full`·`migrate_library` 는 heredoc 본문·따옴표 안 글자를 빼고 실제 명령 글자일 때만 장부 쓰기로 본다(셸로 넘기는 heredoc 은 그대로 검사). 배경: 같은 날 README 편집 heredoc·HANDOFF 편집·이력 줄 추가가 분 10~19 에 막혀 implementer 가 우회했다. 장부 직접 쓰기(sqlite3 CLI·Python 연결)·`launchctl` 판정은 명령 전체로 그대로. 시험 19건(막을 것 11 · 통과할 것 8, 옛 훅은 통과 4건을 막음) · 회귀 16/16. 코드·장부 무변경.
 - **2026-11-04 (문서 현행화, 버전 유지)** — README 전수 대조(investigator) 35곳: v4.18 텔레그램 꿀팁 입구(제목·개요·기능·흐름도·사이클 표 3b·구조·장부 meta) · v4.6 실제 영상 요약·v4.6-b 재요약(흐름도·사이클 2a) · v4.14 분류 모델 · v4.5 `wiki_extract`·backfill · 회귀 16종 · push 규칙 · 마스터 모드 통계 갱신 서술 정정 · `.env` `KAKAO_EXPORT_DIR`·`WIKI_LAN_PORT` · 재요약 운영값 주석 · 머메이드 실명 일반화 · 「7. 회귀 테스트」 절. 버전 이력 절·코드·장부 무변경. 지시서 `docs/tasks/2026-11-04-readme-sync.md`.
