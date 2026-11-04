@@ -105,13 +105,15 @@ def title_text(url, title):
 BLANK_DEFAULT = ('기타', [])   # (v4.10) 카테고리 기타 + 태그 없음 = 빈 기본값 — 사람이 고른 값으로 보지 않는다
 
 
-def decide(row):
-    """장부 행 → {'category','tags','source','rule_made','blank_default','source_mismatch'} (새 값)."""
+def decide(row, force=False):
+    """장부 행 → {'category','tags','source','rule_made','blank_default','forced','source_mismatch'} (새 값).
+    force(v4.19 --ids): 지정한 행은 규칙이 매긴 값으로 보고 지금 규칙으로 다시 매긴다."""
     url, cat, tags, src = row['url'], nfc(row['category']), [nfc(t) for t in row['tags']], nfc(row['source'])
     t = title_text(url, row['title'])
     v48 = (cat, tags) in (classify_v48(url, t), classify_v48(url))
     blank = not v48 and (cat, tags) == BLANK_DEFAULT
-    rule_made = v48 or blank
+    forced = force and not (v48 or blank)
+    rule_made = v48 or blank or force
     new_cat, new_tags = kp.classify(url, t) if rule_made else (cat, tags)
     new_src, mismatch = src, False
     if re.match(r'https?://', src, re.I):
@@ -121,7 +123,7 @@ def decide(row):
         else:
             mismatch = True
     return {'category': new_cat, 'tags': new_tags, 'source': new_src, 'rule_made': rule_made, 'blank_default': blank,
-            'source_mismatch': mismatch}
+            'forced': forced, 'source_mismatch': mismatch}
 
 
 # ── 노트 편집 ──
@@ -184,11 +186,14 @@ def tip_notes(tips_dir):
 
 
 # ── 계획 ──
-def build_plan(conn, vault):
+def build_plan(conn, vault, ids=()):
     tips_dir = os.path.join(vault, so.TIPS_FOLDER)
     notes = tip_notes(tips_dir)
     plan, skipped, mismatch, manual = [], [], [], 0
     rows = conn.execute('SELECT record_id, title, url, source, tags, category FROM tips ORDER BY created_at, record_id').fetchall()
+    missing = sorted(set(ids) - {r['record_id'] for r in rows})
+    if missing:
+        raise Invalid(f'--ids 가 장부에 없음: {missing}')
     for r in rows:
         row = dict(r)
         try:
@@ -197,7 +202,7 @@ def build_plan(conn, vault):
             skipped.append({'record_id': row['record_id'], 'reason': 'tags JSON 아님'})
             continue
         old = {'category': nfc(row['category']), 'tags': [nfc(t) for t in row['tags']], 'source': nfc(row['source'])}
-        d = decide(row)
+        d = decide(row, row['record_id'] in ids)
         new = {k: d[k] for k in ('category', 'tags', 'source')}
         if d['source_mismatch']:
             mismatch.append({'record_id': row['record_id'], 'source': old['source'], 'url_host': kp.host_of(row['url'])})
@@ -205,7 +210,7 @@ def build_plan(conn, vault):
             manual += 1
         if new == old:
             continue
-        item = {'record_id': row['record_id'], 'title': nfc(row['title']), 'old': old, 'new': new, 'blank_default': d['blank_default'],
+        item = {'record_id': row['record_id'], 'title': nfc(row['title']), 'old': old, 'new': new, 'blank_default': d['blank_default'], 'forced': d['forced'],
                 'raw': {'category': r['category'], 'tags': r['tags'], 'source': r['source']}, 'file': None, 'note_text': None}
         files = notes.get(row['record_id'], [])
         try:
@@ -298,13 +303,14 @@ def summarize(plan, skipped, mismatch, manual, total):
         source_changed=sum(1 for p in plan if p['old']['source'] != p['new']['source']),
         blank_default=sum(1 for p in plan if p.get('blank_default') and (p['old']['category'], p['old']['tags']) != (p['new']['category'], p['new']['tags'])),
         notes=sum(1 for p in plan if p['file']), skipped_note=len(skipped), source_mismatch=len(mismatch),
-        manual_kept=manual, moves=dict(sorted(moves.items(), key=lambda x: -x[1])))
+        forced=sum(1 for p in plan if p.get('forced')), manual_kept=manual, moves=dict(sorted(moves.items(), key=lambda x: -x[1])))
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     apply_ = '--apply' in argv
     no_rebuild = '--no-rebuild' in argv
+    ids = set()
     db_path, vault = ldb.DB_PATH, so.VAULT
     i = 0
     while i < len(argv):
@@ -317,6 +323,10 @@ def main(argv=None):
             else:
                 vault = argv[i + 1]
             i += 2
+            continue
+        if a.startswith('--ids='):
+            ids = {x for x in a[6:].split(',') if x}
+            i += 1
             continue
         if a not in ('--apply', '--no-rebuild'):
             return emit(2, ok=False, error=f'모르는 인자 {a}')
@@ -331,7 +341,7 @@ def main(argv=None):
         return emit(2, ok=False, error=str(e)[:300])
     try:
         try:
-            plan, skipped, mismatch, manual, total = build_plan(conn, vault)
+            plan, skipped, mismatch, manual, total = build_plan(conn, vault, ids)
         except (Invalid, OSError) as e:
             log(f'❌ 검증 실패 — 아무것도 쓰지 않았습니다: {e}')
             return emit(2, ok=False, error=str(e)[:300])

@@ -120,6 +120,7 @@ def main():
     check('네트워크 요청 0건', not calls, calls[:3])
     check('노션 래퍼(tips_notion)를 import 하지 않음', 'tips_notion' not in sys.modules)
 
+    v419_section()
     lookup_section()
     ok = all(results)
     print(f'\n{sum(results)}/{len(results)} PASS')
@@ -130,6 +131,23 @@ YT = 'https://youtu.be/abcdefghijk'
 HOST = 'https://hongik.pages.dev'
 GH = 'https://github.com/x/tool'
 SLUG = 'https://example.org/guides/claude-and-n8n'
+
+def v419_section():
+    """(v4.19) 판정 글자에서 URL 빼기 · 인스타 공유 파라미터·추정 제목"""
+    import kakao_parse as kp
+    n = 'https://a.notion.site/x-3ee50157ef1380e69c02d2aaef50a334'
+    g = kp.guess_meta(n, f'{n}', '클로드 확장팩 35개')
+    check('(a) 메시지 글의 노션 주소가 Notion 태그를 만들지 않는다', (g['category'], g['tags']) == ('모델/LLM', ['Claude']), g)
+    g = kp.guess_meta(n, f'노션 템플릿 모음 {n}')
+    check('(b) 사람이 쓴 「노션」 글은 Notion 태그 유지', g['tags'] == ['Notion'] and g['title'] == '노션 템플릿 모음', g)
+    a, b = 'https://www.instagram.com/reel/De_qY6Tz_KN/?dlrf=x', 'https://www.instagram.com/reel/De_qY6Tz_KN/?igsh=y'
+    check('(c) igsh·dlrf 제거 · 같은 릴스 같은 url_key',
+          kp.clean_url(a) == kp.clean_url(b) == 'https://www.instagram.com/reel/De_qY6Tz_KN/' and kp.url_key(a) == kp.url_key(b), kp.clean_url(a))
+    g = kp.guess_meta('https://www.instagram.com/reel/De_qY6Tz_KN/')
+    check('(d) 인스타 릴스 추정 제목·메모', (g['title'], g['memo'], g['title_src']) == ('인스타 릴스 (제목 미확인)', '원문 확인 필요', 'guess'), g)
+    g = kp.guess_meta('https://instagram.com/p/Abc123/')
+    check('(d) 인스타 게시물 추정 제목', g['title'] == '인스타 게시물 (제목 미확인)' and g['memo'] == '원문 확인 필요', g)
+
 
 def lookup_section():
     """(v4.8) 원문 제목 조회"""

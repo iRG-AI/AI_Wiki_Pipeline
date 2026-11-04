@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.18** (2026-11-03)
+**현재 버전: v4.19** (2026-11-04)
 
 YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카오톡 '나와의 채팅'에 저장해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -26,6 +26,7 @@ YouTube 재생목록의 영상을 **Gemini AI**로 자동 요약하고, 카카�
 > v4.16: 17:30 Wiki 인제스트도 `caffeinate -i` 로 감싸 실행 중 잠들지 않게 했습니다. `brew upgrade` 뒤 점검 순서를 CLAUDE.md 에 적었습니다(10-30 업그레이드로 정시 실행 2회가 빠진 일).
 > v4.17: 영상 요약의 「AI 무관(`ai_related=false`)」 신호만으로는 영상을 제외하지 않습니다 — 토픽 분류도 비었을 때만 제외합니다(신호 5건 중 진짜 비 AI 1건, 토픽 분류는 5/5 맞음). 신규 영상은 분류 뒤 등급을 다시 매기고, 재요약은 장부 토픽을 씁니다. 장부 무변경.
 > v4.18: 꿀팁 두 번째 입구 — 휴대폰 공유 → 텔레그램 전용 봇 방. 정시 실행마다 `telegram_tips_ingest.py` 가 봇의 `getUpdates` 를 읽어 카톡과 같은 엔진(`kakao_ingest.py` 의 `existing_keys`·`resolve_titles`·`plan_rows`·`insert_rows`)으로 같은 장부 `tips` 에 넣는다. 읽은 위치(offset)·마지막 정상 수신 시각은 장부 `meta` 키 2개(tips 와 같은 트랜잭션), 스키마 무변경. 카톡 경로는 그대로(안전망).
+> v4.19: 꿀팁 판정 글자에서 메시지 속 URL 을 뺐다(`guess_meta` — 노션 주소가 `Notion` 태그→「지식관리」가 되던 오분류, 사람이 쓴 「노션」 글은 그대로) · 인스타 공유 파라미터 `igsh`·`dlrf` 제거 · 인스타 추정 제목 「인스타 릴스/게시물 (제목 미확인)」 · 제목 「Instagram」·「Login • Instagram」 거부 · `recategorize_tips.py --ids=` (지정 행을 규칙 값으로 보고 다시 매김, `RESULT_JSON.forced`). 장부 스키마 무변경.
 > 2026-10-12: 저장소·폴더 이름을 `AI_Wiki_Pipeline` 으로 바꿨습니다(옛 이름 `YouTube_Notion_Grab` — 옛 주소는 GitHub 이 새 주소로 넘겨 줍니다).
 > v3.0부터 지식 소스는 **YouTube 영상 + 카카오톡 링크** 두 갈래이고, 장부 이후 단계(Obsidian 노트 → Wiki 합성 → MOC)는 두 소스가 공유합니다.
 
@@ -486,6 +487,7 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 
 | 버전 | 날짜 | 주요 내용 요약 |
 | :-- | :--- | :--- |
+| **v4.19** | 2026-11-04 | **꿀팁 판정 글자에서 URL 빼기 · 인스타 제목·공유 파라미터**: 메시지 속 노션 주소가 `Notion` 태그를 만들지 않음 · `igsh`·`dlrf` 제거 · 인스타 추정 제목 · 「Instagram」 제목 거부 · `recategorize_tips.py --ids=` · 스키마 무변경 |
 | **v4.18** | 2026-11-03 | **꿀팁 두 번째 입구 — 텔레그램 전용 봇 → 장부 tips**: 휴대폰 공유 → 전용 봇 방 → 정시 실행마다 `telegram_tips_ingest.py` 가 카톡과 같은 엔진으로 같은 `tips` 에 넣고 봇 방에 답장(저장·이미 있음·링크 없음). offset·마지막 수신 시각은 장부 `meta`(tips 와 같은 트랜잭션). 허용 chat 하나만, 치명 응답 즉시 중단. 카톡 경로 결과 diff 0 · 스키마 무변경 |
 | **v4.17** | 2026-11-01 | **not_ai 제외는 토픽 분류도 비었을 때만**: 영상 신호 `ai_related=false` 5건 중 진짜 비 AI 1건(정밀도 1/5), 토픽 분류는 5/5 맞음. `computeGrade(signals, topics)` — `!ai_related` AND 토픽 0개일 때만 제외, 토픽이 있으면 `not_ai_minor` 로 알림. 신규는 분류 뒤 재판정, 재요약은 장부 토픽. 장부 무변경 · 소급 안 함 |
 | **v4.16** | 2026-10-31 | **wiki-ingest 잠자기 방지 · brew 업그레이드 뒤 점검 순서**: `com.irichgreen.wiki-ingest`(17:30)도 `/usr/bin/caffeinate -i` 로 감싼다. 10-30 `brew upgrade`(simdjson)로 node 가 dyld 오류로 기동 즉시 죽어 정시 실행 2회가 로그 없이 빠진 일을 계기로 점검 순서를 CLAUDE.md 에. 레포 밖 옛 경로 2곳을 `~/Dev` 로. 코드·장부 무변경 |
@@ -526,6 +528,15 @@ launchctl load ~/Library/LaunchAgents/com.irichgreen.ytsummarizer.plist
 ---
 
 ### 📝 상세 변경 내역 (Detailed Change Log)
+
+#### [v4.19] — 2026-11-04 (🏷 꿀팁 판정 글자에서 URL 빼기 · 인스타 제목·공유 파라미터)
+
+**배경.** `guess_meta` 가 메시지 글 전체를 분류에 넘겨, 메시지에 붙은 노션 주소의 `notion` 이 `Notion` 태그 → 「지식관리」가 됐다(11-03 카톡 적재 4건). 텔레그램 입구도 같은 함수를 쓴다. 인스타 릴스는 로그인 벽 제목 「Instagram」이 그대로 들어갔다.
+
+- **판정 글자.** 메시지 글은 URL 을 뺀 글만 쓴다. 사람이 쓴 「노션 템플릿」 같은 글은 그대로 `Notion` 태그.
+- **인스타.** 공유 파라미터 `igsh`·`dlrf` 제거(같은 릴스는 같은 `url_key`), 추정 제목 「인스타 릴스 (제목 미확인)」·「인스타 게시물 (제목 미확인)」, 제목 「Instagram」·「Login • Instagram」은 원문 제목으로 받지 않는다.
+- **도구.** `recategorize_tips.py --ids=<id>[,…]` — 지정 행을 규칙이 매긴 값으로 보고 다시 매김(`RESULT_JSON.forced`), 없는 id 면 쓰기 전 중단.
+- **테스트.** `test_kakao_ingest.py` 42/42 · `test_title_fetch.py` 44/44 · `test_recategorize_tips.py` 57/57. 회귀 테스트 16종. 장부 스키마·분류 규칙 무변경.
 
 #### [v4.18] — 2026-11-03 (📮 꿀팁 두 번째 입구 — 텔레그램 전용 봇 → 장부 tips)
 

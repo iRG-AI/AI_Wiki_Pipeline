@@ -35,10 +35,10 @@ _BAD_EXACT = {
     'notion', 'notion – the all-in-one workspace for your notes, tasks, wikis, and databases.',
     'youtube', 'google drive', 'google docs', 'google 드라이브', 'google 문서', 'naver blog', '네이버 블로그',
     'login', 'log in', 'sign in', '로그인', 'just a moment...', 'attention required!', 'access denied',
-    '403 forbidden', '404 not found', 'page not found', 'not found', 'error', 'untitled', '제목 없음',
+    '403 forbidden', '404 not found', 'page not found', 'not found', 'error', 'untitled', '제목 없음', 'instagram',
 }
 # 이 말로 시작하면 버린다(로그인·차단 화면)
-_BAD_PREFIX = ('sign in', 'log in', '로그인', 'google 드라이브 - 로그인', 'google drive - sign in', 'just a moment',
+_BAD_PREFIX = ('sign in', 'log in', '로그인', 'google 드라이브 - 로그인', 'google drive - sign in', 'just a moment', 'login • instagram',
                'notion —', 'notion –', 'notion -')   # 노션 HTML 의 일반 제목 「Notion | Where teams and agents work together」
 # 끝에 붙는 사이트 이름(대소문자 무시)
 _SUFFIXES = (' : 네이버 블로그', ' - youtube', ' - google drive', ' - google docs', ' - google 드라이브', ' - google 문서')

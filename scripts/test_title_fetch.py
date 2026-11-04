@@ -122,6 +122,8 @@ def main():
     check('HTML 아님(PDF) → not_html', tf.lookup_title('https://example.com/a.pdf', Opener(Resp(b'%PDF', 'application/pdf'))) == (None, 'not_html'))
     check('로그인 화면 → bad_title', tf.lookup_title('https://drive.google.com/x',
           Opener(Resp('<title>Google Drive - Sign in</title>'))) == (None, 'bad_title'))
+    check('(v4.19) 인스타 일반 제목·로그인 화면 → bad_title', all(tf.lookup_title('https://www.instagram.com/reel/x/',
+          Opener(Resp(f'<title>{t}</title>'))) == (None, 'bad_title') for t in ('Instagram', 'Login • Instagram')))
     check('Cloudflare 대기 화면 → bad_title', tf.lookup_title('https://example.com/a',
           Opener(Resp('<title>Just a moment...</title>'))) == (None, 'bad_title'))
 

@@ -25,7 +25,7 @@ from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode, unquote
 STRIP_PARAMS = {
     'fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term',
     'pvs', 'si', 'mcp_token', '_phid', '_phsrc', 'source', 'shareKey', 'navType',
-    'pli', 'usp', 'gclid', 'igshid',
+    'pli', 'usp', 'gclid', 'igshid', 'igsh', 'dlrf',
 }
 
 # 추정 제목에 붙는 메모 표지 (scripts/retitle_tips.py AUTO_MEMOS 와 같은 문구 — 바꾸지 말 것)
@@ -189,6 +189,9 @@ def guess_meta(url, message='', fetched_title=None):
     elif 'youtube.com' in host or 'youtu.be' in host:
         title = '유튜브 영상 (제목 미확인)'
         memo = NEED_TITLE_MARK
+    elif host == 'instagram.com' or host.endswith('.instagram.com'):
+        title = '인스타 릴스 (제목 미확인)' if re.match(r'/reels?/', urlsplit(url).path) else '인스타 게시물 (제목 미확인)'
+        memo = NEED_TITLE_MARK
     else:
         slug = _slug_title(url)
         title = slug[:80] if slug else host
@@ -200,11 +203,12 @@ def guess_meta(url, message='', fetched_title=None):
         title_src = 'fetched'
         memo = ''
 
-    category, tags = classify(url, message, fetched_title)
-
-    # 메시지에 URL 외 텍스트가 있으면 제목 후보로 우선 (사용자가 직접 붙인 메모)
+    # 메시지 글은 URL 을 뺀 글만 판정·제목 후보로 쓴다 (v4.19 — 메시지 속 노션 주소가 Notion 태그가 되지 않게)
     extra = re.sub(r'https?://\S+', '', message or '').strip()
     extra = re.sub(r'\s+', ' ', extra)
+    category, tags = classify(url, extra, fetched_title)
+
+    # 사용자가 직접 붙인 글이 있으면 제목 후보로 우선
     if 4 <= len(extra) <= 80:
         title = extra
         title_src = 'message'

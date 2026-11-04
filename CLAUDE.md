@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **대표님과 직접 대화하는 메인 세션은 PM(pm-wiki) 이다 — 세션을 시작하면 `.claude/pm/PM_ROLE.md` 를 읽고 따른다** (2026-11-04 대표님 결정 · Claude Desktop(Code 탭)에서 이 저장소로 연 세션 · `./pm-wiki.sh` 로 띄워도 같다). 워커 서브에이전트(`implementer` · `verifier` · `investigator` · `scribe`)는 이 줄을 따르지 않는다.
 
-**현재 버전: v4.18** (2026-11-03) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.19** (2026-11-04) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -26,6 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > v4.16: 17:30 Wiki 인제스트(`com.irichgreen.wiki-ingest`)도 `/usr/bin/caffeinate -i` 로 감싼다(v4.15 와 같은 이유). `brew upgrade` 뒤 점검 순서를 「launchd 데몬」 절에 적었다(10-30 simdjson 업그레이드로 node 가 기동 즉시 죽어 정시 실행 2회가 로그 없이 빠진 사건). 코드·장부 무변경.
 > v4.17: `computeGrade` 의 `not_ai` 제외를 「`ai_related=false` AND 토픽 분류 0개」로 좁혔다(v4.12 promo 의 AND 와 같은 방향). 신규는 분류 뒤 `regrade`, 재요약은 장부 `topics` 를 후보에 실어 넘긴다. 장부·프롬프트·스키마 무변경.
 > v4.18: 꿀팁 두 번째 입구 — 휴대폰 공유 → 텔레그램 전용 봇 방. 정시 실행마다 `telegram_tips_ingest.py` 가 봇의 `getUpdates` 를 읽어 카톡과 같은 엔진(`kakao_ingest.py` 의 `existing_keys`·`resolve_titles`·`plan_rows`·`insert_rows`)으로 같은 장부 `tips` 에 넣는다. 읽은 위치(offset)·마지막 정상 수신 시각은 장부 `meta` 키 2개(tips 와 같은 트랜잭션), 스키마 무변경. 카톡 경로는 그대로(안전망).
+> v4.19: 꿀팁 판정 글자에서 메시지 속 URL 을 뺐다(`guess_meta` — 노션 주소가 `Notion` 태그→「지식관리」가 되던 오분류, 사람이 쓴 「노션」 글은 그대로) · 인스타 공유 파라미터 `igsh`·`dlrf` 제거 · 인스타 추정 제목 「인스타 릴스/게시물 (제목 미확인)」 · 제목 「Instagram」·「Login • Instagram」 거부 · `recategorize_tips.py --ids=` (지정 행을 규칙 값으로 보고 다시 매김, `RESULT_JSON.forced`). 장부 스키마 무변경.
 
 > 2026-10-16에 `~/Documents/Claude/Projects/AI_Wiki_Pipeline` → `~/Dev/AI_Wiki_Pipeline` 로 이관했습니다(Google Drive 백업 밖 · 옛 자리에 링크). launchd 4개(server · wiki-ingest · wiki-lan · ytsummarizer)도 새 경로로 바꿨습니다(원본 `*.plist.bak.20261016`).
 > 2026-08-17에 `~/Documents/Claude/` → `~/Documents/Claude/Projects/` 로 이관했습니다.
@@ -93,9 +94,9 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 /opt/homebrew/bin/python3 scripts/test_verify_library.py     # 16/16  장부 ↔ Vault 대조 (임시 장부·Vault)
 /opt/homebrew/bin/python3 scripts/test_retitle_tips.py       # 49/49  꿀팁 제목 보완 (임시 장부·Vault·백업 폴더)
 /opt/homebrew/bin/python3 scripts/test_wiki_ingest.py        # 64/64  Wiki 추출 누적·재렌더·backfill(v4.6-b 영상 요약 소스만·stale)·씨앗·품질 제외·항목 0 안내 페이지 + 장부 스키마 이전 v1·v2 → v3 (가짜 Gemini)
-/opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 37/37  카톡 → 장부 tips · (v4.8) 원문 제목 조회 대상·교체·실패 무해·끄기·상한 (가짜 조회)
-/opt/homebrew/bin/python3 scripts/test_title_fetch.py        # 43/43  (v4.8) 링크 제목 조회 — 노션 id·API·oEmbed·og:title·실패 사유·제목 정리 (가짜 응답)
-/opt/homebrew/bin/python3 scripts/test_recategorize_tips.py  # 52/52  (v4.9·v4.10) 꿀팁 분류 규칙(노션 주소·한글 표기) + 기존 꿀팁 재분류·출처 정리 + 빈 기본값 (임시 장부·Vault·백업 폴더)
+/opt/homebrew/bin/python3 scripts/test_kakao_ingest.py       # 42/42 (v4.19 +5)  카톡 → 장부 tips · (v4.8) 원문 제목 조회 대상·교체·실패 무해·끄기·상한 (가짜 조회)
+/opt/homebrew/bin/python3 scripts/test_title_fetch.py        # 44/44 (v4.19 +1)  (v4.8) 링크 제목 조회 — 노션 id·API·oEmbed·og:title·실패 사유·제목 정리 (가짜 응답)
+/opt/homebrew/bin/python3 scripts/test_recategorize_tips.py  # 57/57 (v4.19 +5 --ids)  (v4.9·v4.10) 꿀팁 분류 규칙(노션 주소·한글 표기) + 기존 꿀팁 재분류·출처 정리 + 빈 기본값 (임시 장부·Vault·백업 폴더)
 /opt/homebrew/bin/python3 scripts/test_sync_obsidian.py      # 32/32  장부 → Vault (임시 Vault) · (v4.6-b) 재요약 노트 요약 절 제자리 교체
 /opt/homebrew/bin/python3 scripts/test_sheet_mirror.py       # 45/45  시트 미러 (가짜 Apps Script 서버가 gas/sheet_mirror.gs 를 그대로 실행)
 /opt/homebrew/bin/python3 scripts/test_build_wiki_index.py   # 15/15  재구성 같은 내용 안 쓰기 · 검색 인덱스 프론트매터 한정 · grade: exclude 제외 · (v4.7) 화면 필터용 메타
@@ -122,6 +123,7 @@ node scripts/clean_pending_queue.js --apply
 # 꿀팁 분류 보정 (v4.9) — 규칙이 매긴 카테고리·태그(+ v4.10 빈 기본값 「기타」·태그 없음)를 지금 규칙으로 · 출처 https:// 접두 정리. 기본 dry-run, --apply 는 정시 실행 창 밖에서
 /opt/homebrew/bin/python3 scripts/recategorize_tips.py
 /opt/homebrew/bin/python3 scripts/recategorize_tips.py --apply
+/opt/homebrew/bin/python3 scripts/recategorize_tips.py --ids=<record_id>[,<record_id>…]   # (v4.19) 지정 행을 규칙 값으로 보고 다시 매김 (dry-run 기본, --apply 병용)
 
 # launchd 제어 (6시간 자동 실행)
 launchctl start com.irichgreen.ytsummarizer
@@ -268,7 +270,7 @@ YouTube "AI 영상목록" (마스터 모드)
 
 ### 카카오톡 → 장부 tips → Obsidian (v3.0 → v4.0)
 
-- **(v4.18) 두 번째 입구 — 텔레그램 전용 봇.** 인스타 등에서 휴대폰 공유 → 전용 봇 방(실행 알림 봇과 별개). 같은 `tips` 표·같은 엔진이고 카톡 CSV 경로는 안전망으로 그대로 둔다(중복은 `url_key` 대조). `scheduler.js:runTipsBot` 이 카톡 훅 다음 · 시트 미러 앞에서 `telegram_tips_ingest.py --apply` 를 부른다(reject 없음). `.env`: `TIPS_BOT_TOKEN` · `TIPS_BOT_CHAT_ID`(허용할 개인 대화 하나 — 그 밖 발신자는 건수만 세고 버림). 토큰이 없으면 `skipped=not_configured` 로 요청 없이 끝난다. 상태는 장부 `meta` 의 `tips_bot_offset`·`tips_bot_last_ok` — tips INSERT 와 같은 트랜잭션이라 커밋 뒤에만 offset 이 오른다(새 상태 파일 없음). 답장은 커밋 뒤에 보내고 실패해도 적재를 되돌리지 않는다. 입구가 막히면(`auth`·`conflict`·`bad_request`) 또는 마지막 정상 수신이 18시간을 넘으면 알림 봇이 `⚠️ [텔레그램 꿀팁 입구]` 를 따로 보낸다. **webhook 을 걸거나 같은 봇을 다른 곳에서 읽으면 `getUpdates` 가 409(conflict)로 막힌다.** 이 입구도 `kakao_ingest.py:plan_rows` → `guess_meta` 를 쓰므로 분류 규칙은 카톡과 같다(메시지 안의 URL 이 판정 글자에 섞이는 점 포함 — 별도 결정 대기).
+- **(v4.18) 두 번째 입구 — 텔레그램 전용 봇.** 인스타 등에서 휴대폰 공유 → 전용 봇 방(실행 알림 봇과 별개). 같은 `tips` 표·같은 엔진이고 카톡 CSV 경로는 안전망으로 그대로 둔다(중복은 `url_key` 대조). `scheduler.js:runTipsBot` 이 카톡 훅 다음 · 시트 미러 앞에서 `telegram_tips_ingest.py --apply` 를 부른다(reject 없음). `.env`: `TIPS_BOT_TOKEN` · `TIPS_BOT_CHAT_ID`(허용할 개인 대화 하나 — 그 밖 발신자는 건수만 세고 버림). 토큰이 없으면 `skipped=not_configured` 로 요청 없이 끝난다. 상태는 장부 `meta` 의 `tips_bot_offset`·`tips_bot_last_ok` — tips INSERT 와 같은 트랜잭션이라 커밋 뒤에만 offset 이 오른다(새 상태 파일 없음). 답장은 커밋 뒤에 보내고 실패해도 적재를 되돌리지 않는다. 입구가 막히면(`auth`·`conflict`·`bad_request`) 또는 마지막 정상 수신이 18시간을 넘으면 알림 봇이 `⚠️ [텔레그램 꿀팁 입구]` 를 따로 보낸다. **webhook 을 걸거나 같은 봇을 다른 곳에서 읽으면 `getUpdates` 가 409(conflict)로 막힌다.** 이 입구도 `kakao_ingest.py:plan_rows` → `guess_meta` 를 쓰므로 분류 규칙은 카톡과 같다(v4.19: 메시지 글은 URL 을 뺀 글만 판정에 쓴다).
 
 ```
 카톡 '나와의 채팅' 내보내기 (수동, 월 1회) → ~/Downloads/KakaoTalk_Chat_*.csv
@@ -282,7 +284,7 @@ YouTube "AI 영상목록" (마스터 모드)
 
 - `.env`: `KAKAO_EXPORT_DIR`(읽기는 `lib/env_util.py`). 노션을 부르지 않는다(v4.8 제목 조회의 노션 공개 페이지 API 는 계정·토큰 없는 읽기다). (선택, v4.8) `KAKAO_TITLE_LOOKUP`(없으면 켜짐, `false` 면 끔) · `KAKAO_TITLE_MAX`(실행당 조회 상한, 기본 60) · `KAKAO_TITLE_BUDGET`(조회 전체 시간 상한초, 기본 180).
 - 꿀팁 기본값(노션 시절과 같음): 제목이 비면 URL, 카테고리 `기타`, 상태 `미확인`, 중요도 `중`. 카테고리 값 목록은 `lib/kakao_parse.py` 상단. `tags` 는 JSON 배열, `source` 는 **호스트만**(`github.com`). (v4.9) 노션 이관 시절 행의 `https://…` 출처는 `recategorize_tips.py` 로 호스트만 남겼다 — 「채널별 목차」가 출처로 묶는다.
-- **(v4.9) 카테고리·태그는 `lib/kakao_parse.classify` 한 곳에서 매긴다.** 판정 글자 = URL + 사용자가 붙인 글 + 조회한 원문 제목(URL 추정 제목은 넣지 않는다 — 「노션 자료」의 「노션」이 태그가 되지 않게). 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)는 **호스트를 빼고** 판정한다 — 노션에 올린 자료일 뿐 노션 이야기가 아니다(v4.8 까지 노션 주소 꿀팁이 모두 `Notion` → 「지식관리」였다). `notion.com`(노션 회사 사이트)은 그대로 `Notion`. 한글 표기 별칭: 클로드(코드)·제미나이/제미니·지피티/오픈AI·노션·옵시디언·안티그래비티·올라마·허깅페이스. 「커서」는 일반 명사라 넣지 않는다. **태그 이름·순서·카테고리 값 목록은 바꾸지 않는다**(장부·노트 `keywords`·검색 필터가 쓴다). 사람이 고른 분류(노션 시절 행 · 9-03~9-06 정리분)는 규칙으로 덮지 않는다 — `recategorize_tips.py` 는 v4.8 규칙 값과 같은 행만 고친다. **(v4.10) 단 카테고리 「기타」 + 태그 없음은 사람이 고른 값이 아니라 빈 기본값**(노션 이관 때 기본값 그대로 — 08-14·09-03·09-06 의 19건이 그랬다)으로 보고 다시 매긴다. 태그가 하나라도 있거나 「기타」가 아니면 지금처럼 보존.
+- **(v4.9) 카테고리·태그는 `lib/kakao_parse.classify` 한 곳에서 매긴다.** 판정 글자 = URL + 사용자가 붙인 글(메시지에서 URL 을 뺀 글 — v4.19) + 조회한 원문 제목(URL 추정 제목은 넣지 않는다 — 「노션 자료」의 「노션」이 태그가 되지 않게). 노션 페이지 주소(`notion.site`·`notion.so`·`app.notion.com`)는 **호스트를 빼고** 판정한다 — 노션에 올린 자료일 뿐 노션 이야기가 아니다(v4.8 까지 노션 주소 꿀팁이 모두 `Notion` → 「지식관리」였다). `notion.com`(노션 회사 사이트)은 그대로 `Notion`. 한글 표기 별칭: 클로드(코드)·제미나이/제미니·지피티/오픈AI·노션·옵시디언·안티그래비티·올라마·허깅페이스. 「커서」는 일반 명사라 넣지 않는다. **태그 이름·순서·카테고리 값 목록은 바꾸지 않는다**(장부·노트 `keywords`·검색 필터가 쓴다). 사람이 고른 분류(노션 시절 행 · 9-03~9-06 정리분)는 규칙으로 덮지 않는다 — `recategorize_tips.py` 는 v4.8 규칙 값과 같은 행만 고친다. **(v4.10) 단 카테고리 「기타」 + 태그 없음은 사람이 고른 값이 아니라 빈 기본값**(노션 이관 때 기본값 그대로 — 08-14·09-03·09-06 의 19건이 그랬다)으로 보고 다시 매긴다. 태그가 하나라도 있거나 「기타」가 아니면 지금처럼 보존.
 - `kakao_ingest.py`의 `--since` 기본값은 `2026-03-01`. 그 이전 카톡 링크 103건은 쇼핑·개인 링크라 AI 자료가 아니다.
 - **꿀팁 노트는 YouTube 로직과 격리된다.** `get_existing_vault_info()`가 `AI 꿀팁/` 폴더를 걷지 않으므로 고아 격리 분모·tags 동기화에 섞이지 않는다. 노트 프론트매터는 `link_url`이며 **`video_url`을 절대 쓰지 않는다** — 쓰는 순간 고아 격리 대상이 된다. `tags` 키도 쓰지 않는다(`keywords`) — `build_obsidian_wiki`가 tags 없는 파일을 폴더명 MOC(`_MOC/AI 꿀팁 MOC.md`)로 묶는다.
 - 폴더는 **평면 구조**다. `wiki_ingest`·`build_obsidian_wiki`가 최상위 폴더 바로 아래 파일만 읽으므로 카테고리 하위 폴더를 만들면 위키에서 사라진다. 카테고리는 프론트매터 `category`로만 둔다.
@@ -645,6 +647,7 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-11-04 (v4.19 — 꿀팁 판정 글자에서 URL 빼기 · 인스타 제목·공유 파라미터)** — 배경: `guess_meta` 가 메시지 글 전체를 `classify` 에 넘겨, 메시지 속 노션 주소에서 `Notion` 태그→「지식관리」가 붙었다(11-03 카톡 적재 4건). 수정: `lib/kakao_parse.py`(메시지 글은 URL 을 뺀 `extra` 로 판정 · `STRIP_PARAMS` 에 `igsh`·`dlrf` · 인스타 추정 제목), `lib/title_fetch.py`(「Instagram」·「Login • Instagram」 거부), `scripts/recategorize_tips.py --ids=`. `classify` 규칙·태그·카테고리 목록·스키마 무변경. 테스트 `test_kakao_ingest.py` 42/42 · `test_title_fetch.py` 44/44 · `test_recategorize_tips.py` 57/57. 회귀 테스트 16종. 지시서 `docs/tasks/2026-11-04-v419-tips-classify-instagram.md`.
 - **2026-11-04 (운영 체계, 버전 유지)** — PM 진행 방식 개정 이식(ERP 11-04 본보기): Claude Desktop 에서 이 저장소로 연 메인 세션이 PM(머리 포인터 1줄 → `.claude/pm/PM_ROLE.md`, `./pm-wiki.sh` 는 그대로) · 작은 수정(한 파일 20줄 안팎)은 PM 이 직접 · 대표님의 작업 요청 메시지가 그 범위의 승인 · 지시서는 워커 한 번에 끝나는 크기로 · 진행은 Pinboard(응답에 작업 보드 표 없음) · `.claude/settings.json` `permissions.additionalDirectories` 에 XP 폴더(Desktop 에는 `--add-dir` 이 없다). HANDOFF 인수인계 · Cowork 발주 흐름은 그대로. 코드·장부 무변경. 지시서 `docs/tasks/2026-11-04-pm-desktop-port.md`.
 - **2026-11-03 (운영 체계, 버전 유지)** — XP 보드 규칙 v2(대표님 승인 11-03) 포인터: 정본 `~/Documents/Claude/XP/README.md`, 새 요청서는 `new_xp.sh <발주코드>` 로만, 번호 `XP-<발주코드>-<MMDD>-<순번>`, 상대에게는 번호로. 「운영 체계」 절 · `.claude/pm/PM_ROLE.md` §6 의 옛 `[XP-MMDD-A]` 표기 교체. 코드·장부 무변경. 지시서 `docs/tasks/2026-11-03-xp-board-v2-pointer.md`.
 - **2026-11-03 (v4.18 — 꿀팁 두 번째 입구: 텔레그램 전용 봇 → 장부 tips)** — 배경: 꿀팁 링크 흐름이 인스타 → 카톡 '나와의 채팅' → 맥 CSV 수동 내보내기라 자동화할 길이 없었다(읽기 API 없음 · 데이터 파일 암호화). 수정: `telegram_tips_ingest.py` 신규(위 카톡 절), `kakao_ingest.py` 에서 `existing_keys`·`plan_rows`·`insert_rows(conn, plan, meta=())` 를 같은 파일 함수로 떼고(카톡 결과 전후 diff 0), `lib/kakao_parse.py` 에 `links_from_messages`(`parse_links` 가 부름), `scheduler.js:runTipsBot` + 완료 텔레그램 `📮` 줄 + 입구 이상 알림. 장부 스키마(user_version 3)·카톡 결과·plist·`.env` 무변경. 테스트: 신규 `test_tips_bot.py` 25/25, `test_scheduler_guards.js` 37/37(+4), `test_kakao_ingest.py` 37/37 그대로. 회귀 테스트 16종. 지시서 `docs/tasks/2026-11-03-v418-telegram-tips-bot.md`.

@@ -228,6 +228,25 @@ try:
 finally:
     shutil.rmtree(root, ignore_errors=True)
 
+print('▶ --ids (v4.19)')
+root, vault, db, bk = make_env()
+try:
+    before_db = open(db, 'rb').read()
+    code, res, out = run(['--db', db, '--vault', vault, '--ids=tip-c3'])
+    check('--ids dry-run: c3(사람이 고른 값)도 다시 매김 · forced 1 · rows 4', code == 0 and res['rows'] == 4 and res['forced'] == 1, str(res))
+    code, res0, _ = run(['--db', db, '--vault', vault])
+    check('옵션 없으면 무변경(rows 3 · forced 0)', res0['rows'] == 3 and res0['forced'] == 0, str(res0))
+    code, res, out = run(['--db', db, '--vault', vault, '--ids=tip-nope', '--apply', '--no-rebuild'])
+    check('없는 id → 종료 2 · 장부 쓰기 0 · 백업 없음', code == 2 and open(db, 'rb').read() == before_db and not os.path.exists(bk), str(res))
+    code, res, out = run(['--db', db, '--vault', vault, '--ids=tip-c3', '--apply', '--no-rebuild'])
+    r = db_rows(db)
+    check('--ids apply: c3 규칙 값(기타 · 태그 없음) · 목록 밖 d4 보존',
+          code == 0 and r['tip-c3']['category'] == '기타' and json.loads(r['tip-c3']['tags']) == [] and r['tip-d4']['updated_at'] == TS, str(res))
+    code, res, _ = run(['--db', db, '--vault', vault, '--ids=tip-c3'])
+    check('두 번째 실행 rows 0', res['rows'] == 0 and res['forced'] == 0, str(res))
+finally:
+    shutil.rmtree(root, ignore_errors=True)
+
 print('▶ 입력 오류')
 code, res, _ = run(['--bogus'])
 check('모르는 인자 → 종료 2', code == 2 and not res['ok'])
