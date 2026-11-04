@@ -5,6 +5,7 @@
 # /tmp/cc-gate-AI_Wiki_Pipeline-<세션>.log 에 PASS-THROUGH 를 남긴다 — verifier 가 그 로그로 대조한다.
 # 등록: .claude/settings.json → hooks.SubagentStop (timeout 900). 의존: git, jq, scripts/run_all_tests.sh
 # 이력: 2026-10-31 v1 — iRichGreen_ERP gate v3 를 이 레포 규칙(공개 레포·회귀 15종·plist)으로 옮김
+# 2026-11-04 — README·docs/changelog 변경이면 이력 구조 검사(v4.19.2)
 # 2026-11-01 — 로그·기준점·카운터 경로에 프로젝트 이름(다른 프로젝트 세션 로그 오독 방지, pm-cnc 알림)
 
 set -u
@@ -94,6 +95,12 @@ if printf '%s\n' "$changed" | grep -Eq '\.(js|py|sql|gs)$' && [ -x scripts/run_a
   tlog="/tmp/cc-gate-AI_Wiki_Pipeline-${sid}-tests.log"
   if ! scripts/run_all_tests.sh all >"$tlog" 2>&1; then
     fail="${fail}- scripts/run_all_tests.sh 실패. 끝부분:\n$(tail -n 25 "$tlog" 2>/dev/null)\n(전체: ${tlog})\n"
+  fi
+elif printf '%s\n' "$changed" | grep -Eq '^README\.md$|^docs/changelog/'; then
+  # 8-b. README·docs/changelog 만 바꿨으면 이력 구조 검사만 (1초 안쪽, v4.19.2)
+  dlog="/tmp/cc-gate-AI_Wiki_Pipeline-${sid}-docs.log"
+  if ! /opt/homebrew/bin/python3 scripts/test_readme_changelog.py >"$dlog" 2>&1; then
+    fail="${fail}- scripts/test_readme_changelog.py 실패(README 요약표·docs/changelog 구조). 끝부분:\n$(tail -n 15 "$dlog" 2>/dev/null)\n"
   fi
 fi
 

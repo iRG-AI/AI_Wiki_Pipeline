@@ -6,7 +6,7 @@
 
 - **대표님과 직접 대화하는 메인 세션은 PM(pm-wiki) 이다 — 세션을 시작하면 `.claude/pm/PM_ROLE.md` 를 읽고 따른다** (2026-11-04 대표님 결정 · Claude Desktop(Code 탭)에서 이 저장소로 연 세션 · `./pm-wiki.sh` 로 띄워도 같다). 워커 서브에이전트(`implementer` · `verifier` · `investigator` · `scribe`)는 이 줄을 따르지 않는다.
 
-**현재 버전: v4.19** (2026-11-04) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.19.2** (2026-11-04) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > v4.0: 노션을 뺐다. 원본 = 로컬 장부 `data/library.db`(SQLite), 읽는 곳 = Obsidian, 보는 곳 = 구글 시트(단방향 미러). 파이프라인에 노션 호출이 없다.
 > v4.1: 장부 하루 1회 백업(`backup_library.py` → `data/backups/` + 구글 드라이브).
@@ -88,7 +88,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
-# 회귀 테스트 16종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+# 회귀 테스트 17종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
 /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 37/37  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해 · (v4.18) 텔레그램 꿀팁 훅
 /opt/homebrew/bin/node scripts/test_video_summary.js         # 35/35  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 · (v4.11) 5xx 상한 · (v4.12) 판매 비중·본론 신호 · (v4.13) 모델·키별 분량 · (v4.17) not_ai 토픽 조건 (가짜 요청)
 /opt/homebrew/bin/node scripts/test_classifier.js            # 8/8    (v4.14) 토픽 분류 — 모델 기본값·CLASSIFY_MODEL·모델별 thinking·요청 주소·한글 청크 경계·allowedSet·오류 문구 (가짜 https)
@@ -105,8 +105,9 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 /opt/homebrew/bin/node scripts/test_wiki_search.js           # 34/34  (v4.7) 검색 화면 API — 전체 목록·전체 점수·비슷한 노트·노트 본문 + 집 안 서버 경로 (임시 인덱스·Vault, 가짜 Gemini)
 /opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
 /opt/homebrew/bin/python3 scripts/test_tips_bot.py           # 25/25  (v4.18) 텔레그램 꿀팁 입구 — 저장·dup·허용 밖·offset·치명 응답·429·5xx·답장 실패·토큰 미노출 (가짜 urlopen·임시 장부)
+/opt/homebrew/bin/python3 scripts/test_readme_changelog.py   # 9/9    (v4.19.2) README 요약표 ↔ docs/changelog 월별 파일 구조 (읽기만)
 
-# (2026-10-31) 회귀 테스트 16종 한 번에 — 마지막 줄 RESULT: 16/16 통과, 실패하면 exit 1
+# (2026-10-31) 회귀 테스트 17종 한 번에 — 마지막 줄 RESULT: 17/17 통과, 실패하면 exit 1
 scripts/run_all_tests.sh             # all | js | py
 # (2026-10-31) 실행 PM 세션 띄우기 (Opus + 워커 서브에이전트, 「운영 체계」 절)
 ./pm-wiki.sh                         # --rc 면 Remote Control
@@ -640,7 +641,8 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 ## 산출물 규칙
 
 - 커밋 전 **`README.md`만** 갱신한다. **`README.html`은 v3.0에서 폐지 — 다시 만들지 않는다.** (2026-09-06)
-- `README.md` 버전 이력은 요약 표 1행 + 상세 변경 내역 1절을 함께 쓴다. 메이저는 아키텍처 확장(소스·저장소·합성 엔진 추가), 마이너는 기능·안정성.
+- 버전 이력 (v4.19.1~, ERP·asset_manage 방식): README 「📝 버전 히스토리」 = 요약 이력 표(3칸 `| **[vX.Y.Z](docs/changelog/YYYY-MM.md#vX-Y-Z)** | 날짜 | **제목** |`, 버전 내림차순) + 월별 파일 링크뿐. 상세는 `docs/changelog/YYYY-MM.md` 맨 위에 헤딩 바로 윗줄 앵커 `<a id="vX-Y-Z"></a>` 와 함께. 규칙 정본 `docs/changelog/README.md`, 감지 `scripts/test_readme_changelog.py`.
+- 버전 부여: 단일 줄 · HEAD 기준(`git log --oneline -1`) · 새 행이 요약표 맨 위가 아니면 번호가 틀린 것 · push 한 번호는 고쳐 쓰지 않는다. 메이저 = 아키텍처 확장(소스·저장소·합성 엔진 추가), 마이너 = 기능·동작·안정성, **패치 = 수정·문서·테스트 — 문서만 고친 커밋도 PATCH 를 올린다(2026-11-04~, 그 전 「버전 유지」 이력 줄은 그대로 둔다).** `-a`·`-b` 접미사는 새로 만들지 않는다. MAJOR, 또는 소스·저장소·실행 경로·예약 작업을 바꾸는 MINOR 는 같은 커밋에서 README 본문도 맞춘다.
 - `CLAUDE.md`는 구조·제약이 바뀔 때 갱신하고 하단 이력에 날짜와 함께 남긴다.
 - `AGENTS.md`는 **git 추적 대상**이다(2026-09-08~). `CLAUDE.md`와 함께 갱신하고, 두 문서가 어긋나면 **`CLAUDE.md`가 이긴다**.
 - 문서에 **개인 절대경로를 새로 쓰지 않는다**(2026-09-09~). 앞으로 추가·수정하는 줄은 `<REPO_ROOT>/...` 또는 `~/...` 표기를 쓴다. 기존 표기는 소급 정리하지 않는다.
@@ -649,6 +651,8 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 
 ## 변경 이력
 
+- **2026-11-04 (v4.19.2 — 이력 구조 감지 장치 + 규칙 문서)** — `scripts/test_readme_changelog.py` 신규(C1~C9: README 상세 블록 0 · 요약표 3칸/120자 · 내림차순 · 링크·앵커 · 월 파일 구조 · 앵커 중복 0 · 표↔월 파일 집합 · README.html 없음, 읽기만·`CHANGELOG_TEST_ROOT` 로 사본 시험) · `run_all_tests.sh` 회귀 17종 · 「산출물 규칙」 버전 이력 줄을 새 규칙 2줄로(문서만 고친 커밋도 PATCH) · scribe·verifier·PM_ROLE 의 README 위치 문구 · `gate_subagent_stop.sh` 8-b(README·docs/changelog 만 바꾼 변경도 이력 구조 검사). 코드·장부·`settings.json` 무변경. 지시서 `docs/tasks/2026-11-04-changelog-guard-rules.md`.
+- **2026-11-04 (v4.19.1 — 상세 이력을 월별 파일로 · 요약표 3칸)** — README 상세 이력 37블록을 `docs/changelog/YYYY-MM.md` 8개로 옮기고(앵커 38, 본문 diff 0) 요약표를 3칸 링크 표로 바꿨다. README 141707 → 47277 바이트, 「버전별 한 줄 요약」은 `docs/changelog/README.md` 끝으로. 코드·장부 무변경. 지시서 `docs/tasks/2026-11-04-changelog-monthly-split.md`.
 - **2026-11-04 (문서, 버전 유지)** — README v2.3.0 이력 불릿의 개인 Gmail 주소 2개를 「서로 다른 구글 계정별 1개씩」으로 바꿨다(공개 레포 개인정보, CC-1104-E 검수 중 발견). 코드·장부 무변경. 옛 커밋 이력에는 남아 있다(이력 재작성은 하지 않음).
 - **2026-11-04 (문서 양식, 버전 유지)** — README 를 전역 README 표준 9절 순서로 개편(⚡ Vibe Coding with AI 신설 · 🏛️ 모듈별 상세 구조로 시트 미러·백업·Wiki 검색·Obsidian·장부 구조 설명 모음 · 📦 설치 및 실행 가이드는 실행 방법만 · `.env` 예시 블록 → 변수명 표(값 없음) · 버전 머리 `#### [vX.Y.Z] - YYYY-MM-DD (…)`). 내용·머메이드·버전 본문 무변경. 지시서 `docs/tasks/2026-11-04-readme-standard-layout.md`.
 - **2026-11-04 (운영 체계, 버전 유지)** — `.claude/hooks/guard_run_window.sh` 오탐 수정: `--apply`·`--full`·`migrate_library` 는 heredoc 본문·따옴표 안 글자를 빼고 실제 명령 글자일 때만 장부 쓰기로 본다(셸로 넘기는 heredoc 은 그대로 검사). 배경: 같은 날 README 편집 heredoc·HANDOFF 편집·이력 줄 추가가 분 10~19 에 막혀 implementer 가 우회했다. 장부 직접 쓰기(sqlite3 CLI·Python 연결)·`launchctl` 판정은 명령 전체로 그대로. 시험 19건(막을 것 11 · 통과할 것 8, 옛 훅은 통과 4건을 막음) · 회귀 16/16. 코드·장부 무변경.

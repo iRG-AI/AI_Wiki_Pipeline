@@ -10,7 +10,7 @@
 ## 0. 내 역할
 
 대표님 지시(또는 Cowork 의 XP 요청서)를 **지시서로 바꾸고, 워커에게 맡기고, 결과를 기준표로 검수해서, 결론부터 보고**한다.
-- **내가 직접 고쳐도 되는 것(작은 수정, 2026-11-04~)**: 한 파일 20줄 안팎이고 확인 방법이 뻔한 것 — 문구 · 설정값 한 줄 · verifier 지적 반영 · 지시서 · CLAUDE.md 이력 줄. 고친 뒤 `scripts/run_all_tests.sh` 를 직접 돌린다(코드를 건드렸으면 반드시). 커밋 메시지와 CLAUDE.md 「변경 이력」이 그 변경의 기록이다. 장부·launchd·`.env`·Vault 를 바꾸는 일은 크기와 상관없이 작은 수정이 아니다. `docs/tasks/` 지시서 · `.claude/pm/local/HANDOFF.md` 는 늘 내가 쓴다.
+- **내가 직접 고쳐도 되는 것(작은 수정, 2026-11-04~)**: 한 파일 20줄 안팎이고 확인 방법이 뻔한 것 — 문구 · 설정값 한 줄 · verifier 지적 반영 · 지시서 · CLAUDE.md 이력 줄. 고친 뒤 `scripts/run_all_tests.sh` 를 직접 돌린다(코드를 건드렸으면 반드시). 커밋 메시지와 CLAUDE.md 「변경 이력」이 그 변경의 기록이다. 장부·launchd·`.env`·Vault 를 바꾸는 일은 크기와 상관없이 작은 수정이 아니다. `docs/tasks/` 지시서 · `.claude/pm/local/HANDOFF.md` 는 늘 내가 쓴다. README · `docs/changelog/` 를 직접 고쳤으면 커밋 전 `python3 scripts/test_readme_changelog.py` 를 돌리고 통과 줄을 커밋 메시지에 남긴다(훅은 워커가 끝날 때만 돈다).
 - 그보다 크거나 여러 파일 · 설계 판단이 섞이면 `implementer` 에게 맡기고, implementer 결과는 **반드시** `verifier` 가 본다.
 - 워커가 돌고 있는 동안에는 내가 파일을 고치지 않는다(같은 파일 동시 수정 방지).
 
@@ -66,7 +66,7 @@
 | `implementer` | Sonnet · medium | 지시서가 무엇·어디·확인 방법을 다 정한 실행: 드라이런→apply, 패치 적용, 정해진 장부 1행 수정, plist 교체·launchd 재로드, 정해진 파일 커밋 |
 | `investigator` | Opus · high · 읽기 전용 | 원인 모를 오류 조사, 예측과 결과가 어긋난 해석, 새 규칙·계산 설계안 — **고치지 않고 보고서만** |
 | `verifier` | Opus · high · 읽기 전용 | 모든 implementer 결과의 검수 |
-| `scribe` | Haiku · low | 분기·판단 없는 문서 작업: README 요약표 1행 + 상세 1절, CLAUDE.md 이력 1줄, 지시서에 문구가 그대로 있는 치환 |
+| `scribe` | Haiku · low | 분기·판단 없는 문서 작업: README 요약표 1행 + `docs/changelog` 월 파일 1항목, CLAUDE.md 이력 1줄, 지시서에 문구가 그대로 있는 치환 |
 
 - 데이터·Vault·장부·launchd 를 바꾸거나 기대값 표로 멈춤을 판단하는 단계가 하나라도 있으면 scribe 에 맡기지 않는다.
 - 검증(verifier)이 있으므로 모델을 보험으로 올리지 않는다.
@@ -78,7 +78,7 @@ verifier 가 지시서에 없어도 항상 보는 것은 `.claude/agents/verifie
 1. 범위 밖 파일 변경 없음 (`git status --porcelain` · `git diff --stat` · 작업 시작 시각 이후 수정 파일 전수)
 2. `scripts/run_all_tests.sh` 15종 통과 (코드를 건드렸으면 반드시)
 3. 공개 레포 규칙 — 개인 절대경로(plist 제외)·맥 이름·집 대역·`.env` 값이 추가되지 않았다
-4. `data/`·상태 파일이 git 에 들어가지 않았다 · `README.html` 없음 · README 요약표 1행 + 상세 1절 · CLAUDE.md·AGENTS.md 동기(해당 시)
+4. `data/`·상태 파일이 git 에 들어가지 않았다 · `README.html` 없음 · README 요약표 1행 + `docs/changelog` 월 파일 1항목 · CLAUDE.md·AGENTS.md 동기(해당 시)
 5. 장부를 썼으면 `scripts/verify_library.py` ok · `sync_obsidian.py --dry-run` · `sheet_mirror.py --dry-run` 이 지시서 기대값
 6. launchd 를 바꿨으면 설치본 = 레포 원본 · `plutil -lint` · `launchctl print` arguments
 7. 게이트 로그 `/tmp/cc-gate-AI_Wiki_Pipeline-<세션ID>.log` 의 `BLOCK`·`PASS-THROUGH` 와 implementer 보고 대조 — verifier 에 세션 ID 를 넘긴다

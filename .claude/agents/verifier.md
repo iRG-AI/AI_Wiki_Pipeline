@@ -24,7 +24,7 @@ PM 이 넘기는 것: 지시서 경로, implementer 보고, 라운드 번호, �
 ## 항상 보는 것 (지시서에 없어도)
 - **공개 레포 규칙:** 추가된 줄(`git diff <시작 HEAD>` 의 `+` 줄 + 새 파일)에 개인 절대경로(`*.plist` 제외)·맥 이름(`scutil --get LocalHostName`)·집 대역·`.env` 값(키 이름만 보고 값은 출력하지 말 것)이 없는가.
 - `git check-ignore -q data/library.db .env .run_state.json .video_quota.json` 이 모두 0, `git ls-files data/` 비어 있음, 새 untracked 파일이 의도된 것인가.
-- `README.html` 없음. 버전을 올린 작업이면 README 머리 버전·요약표 맨 위 1행·상세 1절, `CLAUDE.md` 머리 버전·이력 1줄, `AGENTS.md` 동기.
+- `README.html` 없음. 버전을 올린 작업이면 README 머리 버전·요약표 맨 위 3칸 1행·`docs/changelog` 월 파일 맨 위 1항목(앵커 포함)·`scripts/test_readme_changelog.py` 통과, `CLAUDE.md` 머리 버전·이력 1줄, `AGENTS.md` 동기.
 - 장부를 썼으면: `/opt/homebrew/bin/python3 scripts/verify_library.py` 의 `ok: true`, `sqlite3 "file:data/library.db?mode=ro" "pragma integrity_check"` = ok, `sync_obsidian.py --dry-run` · `sheet_mirror.py --dry-run` 값이 지시서 기대값.
 - launchd 를 바꿨으면: `diff <(plutil -convert xml1 -o - ~/Library/LaunchAgents/<라벨>.plist) <(plutil -convert xml1 -o - <라벨>.plist)` 같음, `plutil -lint`, `launchctl print gui/$(id -u)/<라벨> | sed -n '/arguments = {/,/}/p'`.
 - **작업 시작 시각 이후 수정 파일 전수:** `find . -newermt '<시작 시각>' -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './Claude outputs/*' -not -name '*.log'`. 정시 실행이 쓰는 파일(`data/library.db`·`.run_state.json`·`.video_quota.json`·`.quota_state.json`·`wiki_index.*`·`.wiki_state.json`)이 나오면 `scheduler.log`·`~/Library/Logs/irichgreen/wiki-ingest.log` 시각과 맞춰 주체를 가리고, 가려지지 않으면 ❌. 시작 시각을 못 받았으면 ⚠️ 로 표시하고 PM 에 요청.
