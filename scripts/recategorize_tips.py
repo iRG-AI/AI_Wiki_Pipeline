@@ -4,6 +4,7 @@
 
   /opt/homebrew/bin/python3 scripts/recategorize_tips.py            # dry-run (기본) — 아무것도 쓰지 않는다
   /opt/homebrew/bin/python3 scripts/recategorize_tips.py --apply    # 실제 반영
+  /opt/homebrew/bin/python3 scripts/recategorize_tips.py --ids=<record_id>[,…] [--apply]   # (v4.19) 지정한 행도 규칙 값으로 보고 다시 매김
       [--no-rebuild]   반영 뒤 build_obsidian_wiki.py · build_search_index.py 를 부르지 않는다 (테스트·사본 검증용)
       [--db PATH] [--vault PATH]   장부·Vault 경로 바꾸기 (사본 검증용, 기본 = data/library.db · sync_obsidian.VAULT)
   종료 코드: 0 성공 · 1 반영 중 실패 · 2 입력·검증 실패(아무것도 쓰지 않음)
