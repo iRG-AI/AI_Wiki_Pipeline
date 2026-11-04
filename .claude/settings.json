@@ -41,6 +41,9 @@
       "Bash(git add .)",
       "Bash(rm *library.db*)",
       "Bash(git reset --hard*)"
+    ],
+    "additionalDirectories": [
+      "~/Documents/Claude/XP"
     ]
   },
   "hooks": {
