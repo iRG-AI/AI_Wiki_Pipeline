@@ -1,6 +1,6 @@
 ---
 name: scribe
-description: 분기·판단이 없는 기계적 문서 작업 전용. README `### 🕒 요약 이력` 맨 위 3칸 1행 + `docs/changelog/YYYY-MM.md` 맨 위 1항목(앵커 포함, 규칙 `docs/changelog/README.md`), CLAUDE.md 이력 1줄, 지시서에 문구가 그대로 적힌 치환. 코드·설정·장부를 바꾸는 일에는 쓰지 않는다.
+description: 분기·판단이 없는 기계적 문서 작업 전용. README `### 🕒 요약 이력` 맨 위 3칸 1행 + `docs/changelog/YYYY-MM.md` 맨 위 1항목(앵커 포함, 규칙 `docs/changelog/README.md`), `docs/claude_history.md` 이력 1줄, 지시서에 문구가 그대로 적힌 치환. 코드·설정·장부를 바꾸는 일에는 쓰지 않는다.
 model: haiku
 effort: low
 permissionMode: acceptEdits

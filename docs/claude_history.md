@@ -2,6 +2,8 @@
 
 `CLAUDE.md` 에서 옮긴 운영 이력이다. 규칙은 `CLAUDE.md` 가 정본이다. 새 이력 줄은 이 파일 맨 위(이 머리 아래)에 쓴다(2026-11-06~). 버전별 상세는 `docs/changelog/`.
 
+- **2026-11-06 (v4.19.5 — CLAUDE.md 다이어트 2단계: 경위 이동)** — 머리 버전별 한 줄 요약 17줄 + 「핵심 파일 역할」 표 32행(11행은 경고·임계값·가드가 있어 루트에 남김)을 `docs/claude_md_background.md` 로 바이트 그대로 옮기고 루트에 포인터 2줄. CLAUDE.md 104565 → 91964 바이트, 3단계(폴더별 분리)는 안 함. scribe 3행·verifier 27행 문구 교체. 코드·장부·훅 무변경. 지시서 `docs/tasks/2026-11-06-claude-md-diet-2-background.md`.
+
 - **2026-11-06 (v4.19.4 — CLAUDE.md 다이어트 1단계: 변경 이력 이동)** — CLAUDE.md 「변경 이력」 43334바이트를 `docs/claude_history.md` 로 글자 그대로 옮기고 루트에는 포인터 1줄. 새 이력 줄은 그 파일 맨 위(CLAUDE.md 「운영 체계」·「산출물 규칙」, PM_ROLE, scribe 문구 교체). CLAUDE.md 147697 → 104565 바이트. 코드·장부 무변경. 지시서 `docs/tasks/2026-11-06-claude-md-diet-1-history.md`. ERP 본보기 `docs/pm_claude_md_diet_port_1106.md`.
 
 - **2026-11-04 (v4.19.3 — README 회귀 17종 표기 · 이력 테스트 쪼갠 행 처리)** — v4.19.2 검수 ⚠️ 2건: README 본문 「회귀 테스트 16종」 4곳(Coding Style · 파일 구조 2 · 실행 가이드) → 17종·17/17, `scripts/test_readme_changelog.py` C3 가 `|` 로 끝나지 않는 쪼갠 행에서 IndexError 로 죽던 것을 실패 줄로(사본 재현 옛 IndexError · 새 5/9 rc=1). 코드·장부 무변경. PM 직접 수정.
