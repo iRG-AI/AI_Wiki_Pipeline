@@ -30,7 +30,16 @@ try:
     os.makedirs(os.path.join(SKILLS, 'abc-skill'))
     open(PROF, 'w').write('프로필')
     FAIL, SLOW = os.path.join(tmp, 'fail'), os.path.join(tmp, 'slow')
-    open(FAKE, 'w').write(f'#!/bin/sh\necho x >> "{MARK}"\ncat >/dev/null\nif [ -f "{SLOW}" ]; then echo partial-err >&2; exec sleep 5; fi\nif [ -f "{FAIL}" ]; then printf "boom\\nline2" >&2; exit 3; fi\ncat "{FAKE_OUT}"\n')
+    IN, RANK_OUT, RANKFAIL, FAILONCE, DYN, ARGS = (os.path.join(tmp, n) for n in ('in.txt', 'rank_out.json', 'rankfail', 'failonce', 'dyn', 'args'))
+    DYNPY = os.path.join(tmp, 'dyn.py')
+    open(DYNPY, 'w').write("import json,re,sys\ns=open(sys.argv[1]).read()\nm=re.search(r'### \\[(\\w+)\\]|- \\[(\\w+)\\]',s)\nr=m.group(1) or m.group(2)\n"
+        "P=[{'kind':'action','area':'invest','title':f'T-{r}-{i}','why':'w','evidence':[r],'effort':'낮음','action_prompt':'p'} for i in range(1,9)]\n"
+        "print(json.dumps({'is_error':False,'result':'{}','structured_output':{'proposals':P,'note':'n-'+r}}))\n")
+    open(FAKE, 'w').write(f'#!/bin/sh\necho x >> "{MARK}"\nprintf "%s|" "$@" >> "{ARGS}"\necho >> "{ARGS}"\ncat > "{IN}"\n'
+        f'if [ -f "{SLOW}" ]; then echo partial-err >&2; exec sleep 5; fi\nif [ -f "{FAIL}" ]; then printf "boom\\nline2" >&2; exit 3; fi\n'
+        f'if [ -f "{FAILONCE}" ]; then rm "{FAILONCE}"; echo once >&2; exit 3; fi\n'
+        f'if grep -q "순위 매기기" "{IN}"; then if [ -f "{RANKFAIL}" ]; then exit 3; fi; cat "{RANK_OUT}"; exit 0; fi\n'
+        f'if [ -f "{DYN}" ]; then {sys.executable} "{DYNPY}" "{IN}"; exit 0; fi\ncat "{FAKE_OUT}"\n')
     os.chmod(FAKE, os.stat(FAKE).st_mode | stat.S_IEXEC)
     os.environ['CLAUDE_BIN'], os.environ['SKILL_REVIEW_SKILLS_DIR'] = FAKE, SKILLS
 
@@ -227,8 +236,113 @@ try:
     SEND_RESULT[0] = True
     reset_today()
 
+
+    print('--- ⑱⑲ 투자 분야 · 상한 5')
+    inv = dict(ok_skill('inv-skill'), area='invest')
+    check('⑱ invest 통과 · 모르는 분야 버림', sr.validate(inv, {'v1'}) is None and sr.validate(dict(inv, area='art'), {'v1'}) == 'enum')
+    reset_today(); fake([ok_skill(f'sk-{i}') for i in range(6)])
+    code, r, _ = run()
+    check('⑲ 6건 응답 → 5건 저장 · 1건 over_limit', r['proposals'] == 5 and r['dropped'] == 1
+          and json.load(open(r['file']))['dropped'][0]['reason'] == 'over_limit', r)
+    reset_today(); SENT.clear()
+
+    print('--- ⑳~㉕ backfill')
+    check('⑨ 장부 sha256 전후 동일(backfill 행 추가 전)', sha(DB) == db_sha)
+    conn = sqlite3.connect(DB)
+    for i in range(1, 86):
+        tt = iso(now - timedelta(minutes=i * 10))
+        conn.execute("INSERT INTO videos(record_id,video_id,title,summary,created_at,updated_at) VALUES(?,?,?,?,?,?)", (f'b{i}', f'bid{i}', f'bt{i}', 'S', tt, tt))
+    conn.commit(); conn.close()
+    db_sha = sha(DB)
+    open(FAKE_OUT, 'w').write(json.dumps({'is_error': False, 'result': '{}', 'structured_output': {'proposals': [dict(ok_skill('bf-one', ('b1',)), area='invest')], 'note': 'N'}}))
+    n0 = calls(); open(ARGS, 'w').close()
+    code, r, _ = run('--backfill=30')
+    d = json.load(open(r['file'])) if r['file'] else {}
+    check('⑳ 영상 88(85+v1·v2·v4) → 묶음 3 · 호출 3 · 후보 1(묶음 밖 evidence 버림)', r['batches'] == 3 and calls() - n0 == 3 and r['candidates'] == 1
+          and d.get('mode') == 'backfill' and d.get('considered', {}).get('videos') == 88 and d.get('considered', {}).get('tips') == 1, r)
+    args = open(ARGS).read().splitlines()
+    check('호출마다 도구 0 · MCP 엄격 · 재시도 0', len(args) == 3 and all('--tools||' in x and '--strict-mcp-config' in x for x in args), args)
+    check('㉔ trial 폴더 · 정식 파일 없음 · 알림 0', os.sep + 'trial' + os.sep in r['file'] and not os.path.exists(today) and not SENT and r['notified'] is None, r)
+    open(os.path.join(OUT, '20990101.json'), 'w').write(json.dumps({'through': 'X', 'proposals': []}))
+    run('--backfill=30')
+    check('㉔ 기준점 파일 불변', json.load(open(os.path.join(OUT, '20990101.json')))['through'] == 'X')
+    os.remove(os.path.join(OUT, '20990101.json'))
+
+    open(DYN, 'w').write('')
+    n0 = calls()
+    open(RANK_OUT, 'w').write(json.dumps({'is_error': False, 'result': '{}', 'structured_output': {'pick': [5, 2, 2, 99, 0, -1, 'x', 24], 'note': 'RK'}}))
+    code, r, _ = run('--backfill=30')
+    d = json.load(open(r['file']))
+    check('㉑ 후보 24 → 순위 호출 1회(총 4) · 고른 순서 · 범위 밖·중복 무시 · 내용 무변경',
+          calls() - n0 == 4 and [p['title'] for p in d['proposals']][:2] == ['T-b1-5', 'T-b1-2'] and len(d['proposals']) == 3 and d['proposals'][2]['title'].endswith('-8') and not d['proposals'][2]['title'].startswith('T-b1-')
+          and d['proposals'][0]['action_prompt'] == 'p' and d['proposals'][0]['id'].endswith('-1') and d['note'] == 'RK', (calls() - n0, d.get('proposals')))
+    open(RANKFAIL, 'w').write('')
+    code, r, _ = run('--backfill=30')
+    d = json.load(open(r['file']))
+    check('㉒ 순위 호출 실패 → 앞 15건 · batch_errors 기록', code == 0 and len(d['proposals']) == 15 and d['proposals'][0]['title'] == 'T-b1-1'
+          and any(x.startswith('순위') for x in d['batch_errors']), d.get('batch_errors'))
+    os.remove(RANKFAIL); os.remove(DYN)
+
+    open(FAKE_OUT, 'w').write(json.dumps({'is_error': False, 'result': '{}', 'structured_output': {'proposals': [], 'note': ''}}))
+    open(FAILONCE, 'w').write(''); n0 = calls()
+    code, r, _ = run('--backfill=30')
+    check('㉓ 1회 실패는 계속(호출 3 · 성공 묶음 2)', code == 0 and calls() - n0 == 3 and r['batches'] == 2 and r['batch_errors'] == 1, r)
+    open(FAIL, 'w').write(''); n0 = calls()
+    before_files = sorted(os.listdir(os.path.join(OUT, 'trial')))
+    code, r, _ = run('--backfill=30')
+    check('㉓ 연속 2회 실패 → 호출 2에서 멈춤 · ok:false · 파일 없음', code == 1 and not r['ok'] and calls() - n0 == 2
+          and sorted(os.listdir(os.path.join(OUT, 'trial'))) == before_files, r)
+    os.remove(FAIL)
+
+    n0 = calls(); before_files = sorted(os.listdir(os.path.join(OUT, 'trial')))
+    code, r, out = run('--backfill=30', '--dry-run')
+    check('㉕ --backfill --dry-run → 호출 0 · 쓰기 0 · 묶음 3 표시', code == 0 and calls() == n0 and 'batches=3' in out
+          and sorted(os.listdir(os.path.join(OUT, 'trial'))) == before_files, out)
+    check('backfill 도 장부 불변', sha(DB) == db_sha)
+
+    print('--- 꿀팁 분산 · no_targets · tip_review 제한')
+    conn = sqlite3.connect(DB)
+    for i in range(2, 51):
+        tt = iso(now - timedelta(minutes=60 + i))
+        conn.execute("INSERT INTO tips(record_id,title,created_at,updated_at) VALUES(?,?,?,?)", (f'tp{i}', 'x', tt, tt))
+    conn.commit(); conn.close(); db_sha = sha(DB)
+    seen_prompts = []
+    real_cc = sr.call_claude
+    sr.call_claude = lambda prompt, schema=sr.SCHEMA, key='proposals': (seen_prompts.append(prompt), {'proposals': []})[1]
+    code, r, _ = run('--backfill=30')
+    sr.call_claude = real_cc
+    per = [sum(1 for l in x.splitlines() if l.startswith('- [tp') or l.startswith('- [tip1]')) for x in seen_prompts]
+    check('꿀팁 50건 → 묶음 3에 돌아가며 (17·17·16)', per == [17, 17, 16] and r['batches'] == 3, per)
+    n0 = calls()
+    code, r, _ = run('--backfill=0')
+    check('대상 0 → 호출 0 · no_targets', code == 1 and r['error'] == 'no_targets' and calls() == n0, r)
+    code, r, out = run('--backfill=30', '--dry-run')
+    check('dry-run RESULT 의 batches = 실제 묶음 수', r['batches'] == 3 and r['batch_errors'] == 0, r)
+    big = [{'id': 'tip1', 'verdict': 'skipped', 'reason': 'r' * 500}, {'id': 'tp2', 'verdict': 'proposed', 'reason': 'ok'}]
+    cl = sr.clean_tip_review(big, {'tip1'})
+    check('tip_review: id 중복 1개 · reason 200자 · 대상 수 이하', len(cl) == 1 and len(cl[0]['reason']) == 200)
+    open(FAKE_OUT, 'w').write(json.dumps({'is_error': False, 'result': '{}', 'structured_output': {'proposals': [], 'note': ''}}))
+    code, r, _ = run('--backfill=30')
+    check('RESULT: candidates_total 키 · batch_errors 건수', code == 0 and r['candidates_total'] == 0 and r['batch_errors'] == 0, r)
+
+    print('--- ㉖~㉘ 꿀팁 우선')
+    reset_today()
+    out_tr = {'proposals': [ok_skill()], 'tip_review': [{'id': 'tip1', 'verdict': 'proposed', 'reason': 'r'}, {'id': 'zzz', 'verdict': 'skipped', 'reason': 'x'},
+              {'id': 'tip1', 'verdict': 'maybe', 'reason': 'x'}, 'bad', {'id': ['tip1'], 'verdict': 'proposed', 'reason': 'x'},
+              {'id': {'a': 1}, 'verdict': 'skipped', 'reason': 'x'}, {'id': 'tip1', 'verdict': 'skipped', 'reason': 'dup'}]}
+    open(FAKE_OUT, 'w').write(json.dumps({'is_error': False, 'result': '{}', 'structured_output': out_tr}))
+    code, r, _ = run('--days=1')
+    pr = open(IN, encoding='utf-8').read()
+    check('㉖ 프롬프트에 우선 문구 · 꿀팁 절 제목', '영상보다 우선한다' in pr and '## 대표님이 직접 남긴 꿀팁 (우선)' in pr and 'tip_review' in pr)
+    check('㉗ tip_review 저장 · 대상 밖 id·틀린 항목 버림', json.load(open(r['file']))['tip_review'] == [{'id': 'tip1', 'verdict': 'proposed', 'reason': 'r'}], r)
+    fake([ok_skill()])
+    code, r, _ = run('--days=1')
+    check('㉗ tip_review 없음 → 빈 배열 · 실패 아님', code == 0 and json.load(open(r['file']))['tip_review'] == [], r)
+    rp = sr.rank_prompt('p', [ok_skill('a-x', ('tip1',)), ok_skill('b-x', ('v1',))], {'tip1'})
+    check('㉘ 순위 프롬프트: 꿀팁근거 예/아니오 · 우선 문구', '꿀팁근거: 예' in rp and '꿀팁근거: 아니오' in rp and '우선합니다' in rp)
+
     print('--- ⑨ 장부 불변')
-    check('장부 sha256 전후 동일', sha(DB) == db_sha)
+    check('장부 sha256 전후 동일(backfill 이후 기준)', sha(DB) == db_sha)
 
 finally:
     shutil.rmtree(tmp, ignore_errors=True)

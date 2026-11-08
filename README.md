@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡·텔레그램 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.20.0** (2026-11-09)
+**현재 버전: v4.21.0** (2026-11-09)
 
 YouTube 재생목록의 영상을 **Gemini AI**가 실제 영상을 보고 요약·분류하고, 카카오톡 '나와의 채팅'과 텔레그램 전용 봇 방에 공유해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -38,7 +38,7 @@ YouTube 재생목록의 영상을 **Gemini AI**가 실제 영상을 보고 요�
 - 🔎 **Wiki 검색 (v3.2)** — 이 맥·집 안 다른 컴퓨터·Claude(MCP)에서 의미 검색 + AI 답변
 - 📱 **텔레그램 알림** — 장부 저장·재요약·카톡·텔레그램 꿀팁·시트·Obsidian 결과 통합 전송
 - 🚨 **실행 실패 알림 (v4.2)** — 영상을 하나도 확인하지 못한 실행·치명적 오류는 바로, 네트워크가 죽어 못 보낸 알림·도중에 멈춘 실행·빠진 정시 실행은 다음 실행이 알림 (`.run_state.json`)
-- 🧭 **매일 Wiki 검토 (v4.20)** — 매일 08:30 새로 들어온 영상·꿀팁을 Claude 가 읽고 스킬/적용 제안 0~3건 → 텔레그램 알림 → 제안함 화면에서 승인(스킬 설치)·보류·거절
+- 🧭 **매일 Wiki 검토 (v4.20)** — 매일 08:30 새로 들어온 영상·꿀팁을 Claude 가 읽고 스킬/적용 제안 0~5건(투자 포함·꿀팁 우선) → 텔레그램 알림 → 제안함 화면에서 승인(스킬 설치)·보류·거절
 - ⏰ **launchd 자동 스케줄링** — 웹 서버·집 안 검색 서버 상주, 스케줄러 00/06/12/18시 · Wiki 인제스트 17:30 (둘 다 `caffeinate -i` 로 감싸 실행 중 유휴 잠자기 방지)
 
 ---
@@ -205,7 +205,9 @@ flowchart TD
 
 ### 매일 Wiki 검토 → 제안함 (v4.20)
 
-launchd 가 매일 08:30 `skill_review.py` 를 돌린다. 장부(읽기 전용)에서 지난 검토 이후 들어온 영상(제외 등급 빼고)·꿀팁을 모아 `claude -p`(도구·MCP 없음)에 넘기고, 제안 0~3건을 `data/proposals/YYYYMMDD.json` 에 남긴다. 제안이 있거나 실패하면 실행 알림 봇이 텔레그램으로 알린다. 대표님은 `http://localhost:3000/wiki#tab=proposals` 에서 승인(`~/.claude/skills/wiki-<slug>/SKILL.md` 설치, 이미 있으면 덮어쓰지 않음)·보류·거절한다. 프로필은 `data/review_profile.md`(gitignore). 시험: `skill_review.py --dry-run`, `--days=7`.
+launchd 가 매일 08:30 `skill_review.py` 를 돌린다. 장부(읽기 전용)에서 지난 검토 이후 들어온 영상(제외 등급 빼고)·꿀팁을 모아 `claude -p`(도구·MCP 없음)에 넘기고, 제안 0~5건을 `data/proposals/YYYYMMDD.json` 에 남긴다. 제안이 있거나 실패하면 실행 알림 봇이 텔레그램으로 알린다. 대표님은 `http://localhost:3000/wiki#tab=proposals` 에서 승인(`~/.claude/skills/wiki-<slug>/SKILL.md` 설치, 이미 있으면 덮어쓰지 않음)·보류·거절한다. 프로필은 `data/review_profile.md`(gitignore). 시험: `skill_review.py --dry-run`, `--days=7`.
+
+(v4.21) 분야에 투자·자산(`invest`)을 더하고 하루 상한을 5건으로 올렸다. 꿀팁(대표님이 직접 남긴 자료)을 영상보다 우선해 보고, 꿀팁마다 제안에 썼는지(`tip_review`)를 파일에 남긴다. `skill_review.py --backfill=30` 은 지난 영상을 40편씩 묶고 꿀팁은 묶음마다 고르게 나눠 훑고(묶음당 후보 ≤8, 15건 넘으면 순위 호출 1회 — 번호만 골라 내용은 바뀌지 않음) `trial/` 에 최대 15건을 남긴다(기준점·알림 무영향, `--dry-run` 병용 가능).
 
 ### Obsidian LLM Wiki
 
@@ -272,7 +274,7 @@ AI_Wiki_Pipeline/
 ├── build_search_index.py              # 검색 인덱스(임베딩) 증분 빌드 (프론트매터의 notion_id 기준, v4.6 grade: exclude 제외)
 ├── wiki_lan_server.js                 # (v3.2) 집 안 전용 읽기 전용 Wiki 검색 서버 (포트 3100)
 ├── wiki.html                          # Wiki 검색 화면 (server.js·wiki_lan_server.js 공용, v4.7 전체 목록·필터·정렬·엑셀·노트 보기)
-├── skill_review.py                    # (v4.20) 매일 Wiki 검토 — 새 영상·꿀팁 → Claude 제안 0~3건 → data/proposals/ · 텔레그램 (--dry-run / --days / --no-notify)
+├── skill_review.py                    # (v4.20) 매일 Wiki 검토 — 새 영상·꿀팁 → Claude 제안 0~5건 → data/proposals/ · 텔레그램 (--dry-run / --days / --backfill / --no-notify)
 ├── wiki_mcp.js                        # Wiki 검색 stdio MCP (search_wiki, read_note)
 ├── com.irichgreen.*.plist             # launchd 원본 (server · ytsummarizer · wiki-ingest · wiki-lan) — 설치본과 같게 유지
 ├── install-*.sh                       # launchd 설치 스크립트 (server · scheduler · wiki-ingest)
@@ -497,6 +499,7 @@ scripts/run_all_tests.sh             # 20종 (all | js | py) — 마지막 줄 R
 
 | 버전 | 날짜 | 제목 |
 | :-- | :--- | :--- |
+| **[v4.21.0](docs/changelog/2026-11.md#v4-21-0)** | 2026-11-09 | **💹 매일 Wiki 검토 보완 — 투자 분야 · 상한 5건 · 꿀팁 우선 · 지난 자료 훑기(--backfill)** |
 | **[v4.20.0](docs/changelog/2026-11.md#v4-20-0)** | 2026-11-09 | **🧭 매일 Wiki 검토 → 제안함 → 승인 → 스킬 설치** |
 | **[v4.19.8](docs/changelog/2026-11.md#v4-19-8)** | 2026-11-08 | **🙈 .codex/ gitignore — 워커 게이트 오탐 제거** |
 | **[v4.19.7](docs/changelog/2026-11.md#v4-19-7)** | 2026-11-08 | **🧹 크기 가드 근거 주석 · 명령 줄 정렬 · 에이전트 문서 회귀 18종 표기** |

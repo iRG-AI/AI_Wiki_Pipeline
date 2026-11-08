@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **대표님과 직접 대화하는 메인 세션은 PM(pm-wiki) 이다 — 세션을 시작하면 `.claude/pm/PM_ROLE.md` 를 읽고 따른다** (2026-11-04 대표님 결정 · Claude Desktop(Code 탭)에서 이 저장소로 연 세션 · `./pm-wiki.sh` 로 띄워도 같다). 워커 서브에이전트(`implementer` · `verifier` · `investigator` · `scribe`)는 이 줄을 따르지 않는다.
 
-**현재 버전: v4.20.0** (2026-11-09) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.21.0** (2026-11-09) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > (경위: [배경 §버전별 한 줄 요약](docs/claude_md_background.md#bg-versions)) — v4.0~v4.17 중 규칙 문장이 없는 줄 · 버전 상세는 `docs/changelog/`
 > v4.10: 꿀팁 「기타」 + 태그 없음(노션 이관 때 기본값 그대로 남은 행)은 사람이 고른 값으로 보지 않고 `recategorize_tips.py` 가 다시 매긴다(`blank_default`). 꿀팁 제목 3차 25건(URL 추정 제목 → 원문 제목, `retitle_tips.py`) 뒤 재분류 — 「기타」 66 → 42.
@@ -90,7 +90,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 /opt/homebrew/bin/python3 scripts/test_readme_changelog.py   # 9/9    (v4.19.2) README 요약표 ↔ docs/changelog 월별 파일 구조 (읽기만)
 /opt/homebrew/bin/python3 scripts/test_claude_md_budget.py   # 6/6    (v4.19.6) CLAUDE.md 크기·필수 제목·배경 앵커 (읽기만)
 /opt/homebrew/bin/node scripts/test_proposals.js             # 31/31  (v4.20) 제안함 — 읽기·승인(스킬 설치)·409·보류·거절·되돌리기 (임시 폴더)
-/opt/homebrew/bin/python3 scripts/test_skill_review.py       # 33/33  (v4.20) 매일 Wiki 검토 — 대상·검증·기준점·알림 (가짜 claude·가짜 텔레그램)
+/opt/homebrew/bin/python3 scripts/test_skill_review.py       # 55/55  (v4.20) 매일 Wiki 검토 — 대상·검증·기준점·알림·(v4.21) 투자·backfill·꿀팁 우선 (가짜 claude·가짜 텔레그램)
 
 # (2026-10-31) 회귀 테스트 20종 한 번에 — 마지막 줄 RESULT: 20/20 통과, 실패하면 exit 1
 scripts/run_all_tests.sh             # all | js | py
@@ -119,6 +119,7 @@ launchctl stop com.irichgreen.ytsummarizer
 # 매일 Wiki 검토 (v4.20)
 /opt/homebrew/bin/python3 skill_review.py --dry-run     # 대상 건수만 (호출 0 · 쓰기 0 · 발송 0)
 /opt/homebrew/bin/python3 skill_review.py --days=7      # 시험 (data/proposals/trial/, 기준점 불변)
+/opt/homebrew/bin/python3 skill_review.py --backfill=30 # (v4.21) 지난 자료 1회 훑기 → trial/ 15건 (--dry-run 병용)
 launchctl start com.irichgreen.skill-review
 
 # YouTube OAuth 토큰 재발급 (1회성) — 반드시 「타이쿤안」 채널 선택
@@ -383,6 +384,7 @@ scheduler.js main: 마스터 인제스트(신규 영상) 뒤 · 장부 연결이
 - **Claude 호출에 도구·MCP 를 주지 말 것**(`--tools ''`·`--strict-mcp-config`). 같은 날 파일이 있으면 멈춘다(`exists`, 알림 없음).
 - 승인 = `~/.claude/skills/wiki-<slug>/SKILL.md` 설치, 내용은 저장된 제안에서만(요청 본문 값 불사용). **이미 있으면 덮어쓰지 않는다(409)**. 되돌리기는 `data/proposals/_trash/` 로 이동(삭제 아님).
 - POST `/api/proposals/decide` 는 Host·Origin 이 `localhost:3000`/`127.0.0.1:3000` 이고 JSON 일 때만. **`wiki_lan_server.js` 에 제안함 라우트를 넣지 말 것.**
+- (v4.21) 분야에 `invest`, 하루 상한 5건, 꿀팁 우선(`tip_review` 저장). `--backfill=DAYS` = 40편 묶음마다 호출 → 후보 15건 초과 시 순위 호출(번호만, 내용 무변경) → `trial/`(기준점·알림 무영향).
 - 프로필 `data/review_profile.md`(gitignore, 대표님이 고침). 구독 사용량을 쓴다 — 하루 1회. 판정: `~/Library/Logs/irichgreen/skill-review.log` 의 `RESULT_JSON`.
 
 ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
