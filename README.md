@@ -1,6 +1,6 @@
 # 🎬 YouTube + 📎 카카오톡·텔레그램 → 로컬 장부 → Obsidian LLM Wiki (+ 구글 시트 미러)
 
-**현재 버전: v4.19.6** (2026-11-06)
+**현재 버전: v4.19.7** (2026-11-08)
 
 YouTube 재생목록의 영상을 **Gemini AI**가 실제 영상을 보고 요약·분류하고, 카카오톡 '나와의 채팅'과 텔레그램 전용 봇 방에 공유해 둔 **AI 자료 링크**를 자동 수집하여
 맥 안의 **로컬 장부**(SQLite 파일 `data/library.db`)에 적재한 뒤, **Obsidian**으로 동기화해 하나의 **LLM Wiki** 지식베이스로 합성하는 자동화 파이프라인입니다.
@@ -486,6 +486,7 @@ scripts/run_all_tests.sh             # 18종 (all | js | py) — 마지막 줄 R
 
 | 버전 | 날짜 | 제목 |
 | :-- | :--- | :--- |
+| **[v4.19.7](docs/changelog/2026-11.md#v4-19-7)** | 2026-11-08 | **🧹 크기 가드 근거 주석 · 명령 줄 정렬 · 에이전트 문서 회귀 18종 표기** |
 | **[v4.19.6](docs/changelog/2026-11.md#v4-19-6)** | 2026-11-06 | **🧪 CLAUDE.md 크기 가드 test_claude_md_budget.py · 회귀 18종 · CC-1106-C** |
 | **[v4.19.5](docs/changelog/2026-11.md#v4-19-5)** | 2026-11-06 | **🪶 CLAUDE.md 다이어트 2단계 — 경위를 docs/claude_md_background.md 로 · CC-1106-B** |
 | **[v4.19.4](docs/changelog/2026-11.md#v4-19-4)** | 2026-11-06 | **🪶 CLAUDE.md 다이어트 1단계 — 변경 이력을 docs/claude_history.md 로 · CC-1106-A** |
@@ -531,7 +532,7 @@ scripts/run_all_tests.sh             # 18종 (all | js | py) — 마지막 줄 R
 | **[v1.0.0](docs/changelog/2026-04.md#v1-0-0)** | 2026-04-10 | **🎬 프로젝트 초기화** |
 
 ### 🔍 상세 변경 내역
-- [2026-11](docs/changelog/2026-11.md) — v4.17.0 ~ v4.19.6
+- [2026-11](docs/changelog/2026-11.md) — v4.17.0 ~ v4.19.7
 - [2026-10](docs/changelog/2026-10.md) — v3.2.0 ~ v4.16.0
 - [2026-09](docs/changelog/2026-09.md) — v3.0.0 ~ v3.1.0
 - [2026-08](docs/changelog/2026-08.md) — v2.5.0 ~ v2.7.1

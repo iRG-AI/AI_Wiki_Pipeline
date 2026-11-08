@@ -76,7 +76,7 @@
 
 verifier 가 지시서에 없어도 항상 보는 것은 `.claude/agents/verifier.md` 「항상 보는 것」. 요점:
 1. 범위 밖 파일 변경 없음 (`git status --porcelain` · `git diff --stat` · 작업 시작 시각 이후 수정 파일 전수)
-2. `scripts/run_all_tests.sh` 15종 통과 (코드를 건드렸으면 반드시)
+2. `scripts/run_all_tests.sh` 18종 통과 (코드를 건드렸으면 반드시)
 3. 공개 레포 규칙 — 개인 절대경로(plist 제외)·맥 이름·집 대역·`.env` 값이 추가되지 않았다
 4. `data/`·상태 파일이 git 에 들어가지 않았다 · `README.html` 없음 · README 요약표 1행 + `docs/changelog` 월 파일 1항목 · CLAUDE.md·AGENTS.md 동기(해당 시)
 5. 장부를 썼으면 `scripts/verify_library.py` ok · `sync_obsidian.py --dry-run` · `sheet_mirror.py --dry-run` 이 지시서 기대값

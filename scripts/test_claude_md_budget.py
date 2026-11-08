@@ -19,8 +19,9 @@ HIST = ROOT / 'docs' / 'claude_history.md'
 ROOT_LIMIT = 95733
 
 # 다른 파일이 이름으로 가리키는 절 (CLAUDE.md 「…」 인용: README·scripts·.claude 를 grep 해 찾음).
-#  - 산출물 규칙 / 중요한 제약사항 : .claude/agents·README·docs/changelog/README.md 가 인용
-#  - 보안·launchd·운영 체계·변경 이력·핵심 파일 역할 : 훅·PM_ROLE·scribe 등이 가리킨다
+#  - 산출물 규칙 : .claude/agents/scribe.md / 중요한 제약사항 : .claude/agents/implementer.md
+#  - launchd 데몬 : README 「launchd」 안내·배경 문서 / 핵심 파일 역할 : 배경 문서 / 변경 이력 : D4 대상
+#  - 보안·운영 체계 : 다른 파일이 가리키지는 않는다 — 지시서 CC-1106-C 지정
 #  - 「정시 실행 창」 「회귀 15종」 은 제목이 아니라 훅의 옛 표현이라 넣지 않는다 (훅 문구 정정은 별건)
 REQUIRED = [
     '## 🚨 보안 및 안전 최우선 개발 원칙 (Security & Safety Guidelines)',

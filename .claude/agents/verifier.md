@@ -18,7 +18,7 @@ PM 이 넘기는 것: 지시서 경로, implementer 보고, 라운드 번호, �
 ## 검수 순서
 1. 지시서 **기준표**를 번호 그대로 옮긴다. 기준표가 없으면 ❌ 하나로 끝낸다("기준표 없는 지시서 — PM 보완 필요").
 2. `git status --porcelain` · `git diff --stat <시작 HEAD>` · `git log --oneline -3` — 범위 밖 파일, 다른 세션 변경 혼입, 커밋 메시지 번호.
-3. 증빙을 **직접 다시 만든다.** implementer 가 "통과"라고 쓴 것은 내가 다시 돌린다 — 코드를 건드렸으면 `scripts/run_all_tests.sh`(15종).
+3. 증빙을 **직접 다시 만든다.** implementer 가 "통과"라고 쓴 것은 내가 다시 돌린다 — 코드를 건드렸으면 `scripts/run_all_tests.sh`(18종).
 4. 지시서 「하지 말 것」 각 항목을 diff 로 확인한다.
 
 ## 항상 보는 것 (지시서에 없어도)
