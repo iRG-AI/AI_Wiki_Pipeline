@@ -55,3 +55,5 @@ data/
 # (2026-10-31) pm-wiki — 워커 메모리 · 이 맥 전용 인수인계
 .claude/agent-memory/
 .claude/pm/local/
+# (2026-11-08) Codex CLI 로컬 설정 — 개인 절대경로가 들어 있다(워커 게이트가 막음)
+.codex/
