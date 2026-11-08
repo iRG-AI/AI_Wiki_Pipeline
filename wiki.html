@@ -256,6 +256,19 @@
     .ttl .t { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
     .mmeta { display: block; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--text-muted); }
   }
+  .st.info { background: var(--info-10); border: 1px solid var(--info-30); color: var(--alert-info); }
+  .st.bad { background: var(--bg-raised); border: 1px solid var(--line-default); color: var(--alert-critical); }
+  main.tabprop > :not(#proposals) { display: none !important; }
+  .prhead { display: flex; flex-wrap: wrap; gap: var(--space-12); align-items: center; margin-bottom: var(--space-12); }
+  .pnote { color: var(--text-muted); font-size: 13px; margin-bottom: var(--space-12); }
+  .pc { padding: var(--space-16); margin-bottom: var(--space-12); display: grid; gap: var(--space-8); }
+  .pc .pmeta { display: flex; flex-wrap: wrap; gap: var(--space-6); align-items: center; font-size: 12px; color: var(--text-muted); }
+  .pc .pt { font-weight: 800; font-size: 15px; line-height: 22px; }
+  .pc .pev { font-size: 13px; display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-12); }
+  .pc pre { white-space: pre-wrap; word-break: break-word; background: var(--bg-raised); border: 1px solid var(--line-default); border-radius: var(--radius-8); padding: var(--space-12); font: 12px/18px var(--font-web); max-height: 360px; overflow: auto; margin-top: var(--space-8); }
+  .pc .pbtns { display: flex; flex-wrap: wrap; gap: var(--space-8); align-items: center; }
+  .pc .perr { color: var(--alert-critical); font-size: 13px; }
+  .pc textarea { width: 100%; min-height: 56px; border: 1px solid var(--line-default); border-radius: var(--radius-8); padding: var(--space-8); font: 13px/20px var(--font-web); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
@@ -264,6 +277,7 @@
   <div class="top-in">
     <div class="brand"><span class="logo" aria-hidden="true">🧠</span><b>AI LLM Wiki</b><span id="brandSub">영상 요약 · 꿀팁</span></div>
     <div class="actions">
+      <button class="btn btn-secondary" id="btnProposals" type="button" hidden>제안함 <span id="propCount"></span></button>
       <button class="btn btn-secondary btn-filter" id="btnFilter" type="button">필터</button>
     </div>
   </div>
@@ -333,6 +347,7 @@
     <div class="active" id="chips"></div>
     <section class="card answer" id="answer" aria-live="polite"></section>
     <div id="results"></div>
+    <section id="proposals" hidden></section>
   </main>
 </div>
 
@@ -352,7 +367,7 @@ const EXT = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke=
 const S = {
   q: '', kind: 'all', topics: new Set(), topicMode: 'any', period: 'all', from: '', to: '',
   views: 0, summary: 'all', channels: new Set(), cats: new Set(), imp: new Set(), onlyNew: false,
-  sort: 'date', dir: 'desc', view: 'table',
+  sort: 'date', dir: 'desc', view: 'table', tab: '',
 };
 let ALL = [], BY_ID = new Map(), SCORES = null, MODE = 'list', REL = null, LIST = [], shown = 0, openId = null;
 let chanLimit = 8, REL_TOP = 1, REL_LOW = 0, searchSeq = 0, BUILT = '';
@@ -635,6 +650,7 @@ function writeHash() {
   if (!(S.sort === 'date' && S.dir === 'desc' && !S.q) && !(S.sort === 'rel' && S.q)) p.set('sort', S.sort + ':' + S.dir);
   if (S.view !== 'table') p.set('view', S.view);
   if (S.onlyNew) p.set('new', '1');
+  if (S.tab) p.set('tab', S.tab);
   if (PANEL_ID) p.set('note', PANEL_ID);
   const h = p.toString() ? '#' + p.toString() : location.pathname;
   if ((location.hash || location.pathname) !== h) history.replaceState(null, '', h);
@@ -655,6 +671,7 @@ function readHash() {
   const [sk, sd] = (p.get('sort') || '').split(':');
   if (sk && SORT_NAME[sk]) { S.sort = sk; S.dir = sd === 'asc' ? 'asc' : 'desc'; }
   else if (S.q) { S.sort = 'rel'; S.dir = 'desc'; } else { S.sort = 'date'; S.dir = 'desc'; }
+  S.tab = IS_LOCAL && p.get('tab') === 'proposals' ? 'proposals' : '';
   S.view = p.get('view') === 'card' ? 'card' : (loadPref('view') === 'card' && !p.has('view') ? 'card' : 'table');
 }
 function loadPref(k) { try { return localStorage.getItem('wiki.' + k); } catch { return null; } }
@@ -1019,13 +1036,130 @@ function toggleRow(row) {
   row.classList.add('open'); row.setAttribute('aria-expanded', 'true');
   row.insertAdjacentHTML('afterend', detailHtml(BY_ID.get(id)));
 }
-window.addEventListener('hashchange', () => { const before = S.q; readHash(); if (S.q !== before) runSearch(S.q); else apply(); });
+window.addEventListener('hashchange', () => { const before = S.q; readHash(); applyTab(); if (S.q !== before) runSearch(S.q); else apply(); });
+
+// ── 제안함 (매일 Wiki 검토) — 이 맥(localhost)에서만 그린다. 모든 글자는 esc() 를 거친다 ──
+const P_KIND = { skill: '스킬', action: '적용 아이디어' };
+const P_AREA = { dev: '개발 자동화', work: '회사 업무', knowledge: '지식관리', content: '콘텐츠·영상' };
+const P_STAT = { new: ['새 제안', 'info'], held: ['보류', 'neutral'], approved: ['승인', 'done'], rejected: ['거절', 'bad'] };
+const P_TABS = [['open', '새·보류'], ['approved', '승인'], ['rejected', '거절'], ['all', '전체']];
+const P_ERR = { bad_slug: '초안 형식이 맞지 않아 설치하지 않았습니다', bad_skill_md: '초안 형식이 맞지 않아 설치하지 않았습니다', not_found: '제안을 찾지 못했습니다(목록을 새로 고쳐 주세요)', internal: '처리 중 오류가 났습니다. 아무것도 바꾸지 않았습니다', bad_installed_path: '처리 중 오류가 났습니다. 아무것도 바꾸지 않았습니다', exists: '같은 이름 스킬이 이미 있어 설치하지 않았습니다', skills_dir_missing: '스킬 폴더가 없어 설치하지 않았습니다', already: '이미 같은 결정입니다', undo_first: '먼저 [되돌리기]로 설치를 취소해 주세요', nothing: '되돌릴 결정이 없습니다', reason_too_long: '사유는 300자까지입니다' };
+let PROP = null, propTab = 'open', propErr = {}, propRejecting = null;
+const propSlug = i => (i.skill && i.skill.slug) || '';
+const propDate = d => { try { return new Date(d).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }); } catch { return ''; } };
+const propIn = (i, t) => t === 'all' || (t === 'open' ? i.status === 'new' || i.status === 'held' : i.status === t);
+
+async function loadProposals() {
+  try {
+    const r = await fetch('/api/proposals', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    PROP = await r.json();
+  } catch { PROP = null; $('btnProposals').hidden = true; return; }
+  $('btnProposals').hidden = false;
+  const n = PROP.counts.new;
+  $('propCount').textContent = n ? n : ''; $('propCount').hidden = !n;
+  if (S.tab === 'proposals') renderProposals();
+}
+function applyTab() {
+  const on = S.tab === 'proposals';
+  document.querySelector('main').classList.toggle('tabprop', on);
+  $('proposals').hidden = !on;
+  if (on) { PROP ? renderProposals() : loadProposals(); }
+}
+function propCard(i) {
+  const [stLabel, stCls] = P_STAT[i.status] || P_STAT.new;
+  const ev = (i.evidence || []).map(id => BY_ID.has(id)
+    ? `<a href="#" data-note="${esc(id)}">${esc(BY_ID.get(id).title)}</a>` : '<span class="faint">(목록에 없는 노트)</span>').join('');
+  const isSkill = i.kind === 'skill';
+  const body = isSkill
+    ? `<div class="muted">설치 위치 <code>~/.claude/skills/wiki-${esc(propSlug(i))}/SKILL.md</code></div><pre>${esc(i.skill && i.skill.skill_md)}</pre>`
+    : `<pre>${esc(i.action_prompt)}</pre><div class="pbtns"><button class="btn btn-secondary" type="button" data-pact="copy" data-id="${esc(i.id)}">복사</button></div>`;
+  const b = (act, label, cls = 'btn-secondary') => `<button class="btn ${cls}" type="button" data-pact="${act}" data-id="${esc(i.id)}">${label}</button>`;
+  let btns = '';
+  if (propRejecting === i.id) {
+    btns = `<div style="flex:1 1 100%"><label class="sr" for="rr-${esc(i.id)}">거절 사유</label><textarea id="rr-${esc(i.id)}" maxlength="300" placeholder="거절 사유 (선택, 300자까지)"></textarea></div>${b('reject-ok', '거절 확정', 'btn-primary')}${b('reject-cancel', '취소')}`;
+  } else if (i.status === 'new' || i.status === 'held') {
+    btns = b('approve', isSkill ? '승인·설치' : '승인', 'btn-primary') + (i.status === 'held' ? '' : b('hold', '보류')) + b('reject', '거절');
+  } else if (i.status === 'approved') {
+    btns = (isSkill ? `<span class="muted">설치됨: ${esc(i.installed || '')}</span>` : b('copy', '복사')) + b('undo', '되돌리기');
+  } else {
+    btns = `<span class="muted">${esc(i.reason || '(사유 없음)')}</span>` + b('undo', '되돌리기');
+  }
+  return `<article class="card pc" data-pid="${esc(i.id)}">
+    <div class="pmeta"><span class="st neutral">${esc(P_KIND[i.kind] || i.kind)}</span><span>${esc(P_AREA[i.area] || i.area)}</span><span>품 ${esc(i.effort)}</span><span>${esc(propDate(i.date))}</span>${i.trial ? '<span class="st neutral">시험</span>' : ''}<span class="st ${stCls}">${esc(stLabel)}</span></div>
+    <div class="pt">${esc(i.title)}</div><div>${esc(i.why)}</div>
+    <div class="pev"><b class="muted">근거</b>${ev}</div>
+    <details data-did="${esc(i.id)}"><summary class="linkbtn">${isSkill ? '스킬 내용 보기' : '붙여 넣을 프롬프트 보기'}</summary>${body}</details>
+    <div class="pbtns">${btns}</div><div class="perr" data-perr="${esc(i.id)}"></div></article>`;
+}
+function renderProposals() {
+  const el = $('proposals');
+  if (!PROP) { el.innerHTML = ''; return; }
+  const c = { open: 0, approved: 0, rejected: 0, all: PROP.items.length };
+  PROP.items.forEach(i => { for (const t of ['open', 'approved', 'rejected']) if (propIn(i, t)) c[t]++; });
+  const shownItems = PROP.items.filter(i => propIn(i, propTab));
+  const openIds = [...el.querySelectorAll('details[open]')].map(d => d.dataset.did);  // 다시 그려도 펼친 상태·입력 중인 사유를 유지
+  const typed = propRejecting && $('rr-' + propRejecting) ? $('rr-' + propRejecting).value : '';
+  el.innerHTML = `<div class="prhead"><button class="btn btn-secondary" type="button" data-pact="back">목록으로</button>
+    <div class="seg" role="group" aria-label="제안 분류">${P_TABS.map(([k, l]) => `<button type="button" data-ptab="${k}" aria-pressed="${k === propTab}">${esc(l)}<span class="n">${c[k]}</span></button>`).join('')}</div></div>
+    <div class="pnote">매일 Wiki 검토가 고른 제안입니다. 승인하면 스킬은 바로 설치되고, 적용 아이디어는 프롬프트가 남습니다.</div>
+    ${PROP.items.length ? '' : '<div class="card empty"><b>아직 제안이 없습니다</b>매일 아침 검토가 끝나면 여기에 나옵니다.</div>'}
+    ${shownItems.map(propCard).join('')}`;
+  el.querySelectorAll('details').forEach(d => { d.open = openIds.includes(d.dataset.did); });
+  if (typed && $('rr-' + propRejecting)) $('rr-' + propRejecting).value = typed;
+  for (const id in propErr) showErr(id, propErr[id]);
+}
+function showErr(id, msg) {
+  propErr[id] = msg;
+  const e = [...$('proposals').querySelectorAll('[data-perr]')].find(x => x.dataset.perr === id);
+  if (e) e.textContent = msg;
+}
+async function propDecide(id, decision, reason) {
+  try {
+    const r = await fetch('/api/proposals/decide', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, decision, reason }) });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { delete propErr[id]; propRejecting = null; }
+    else propErr[id] = P_ERR[d.error] || `처리하지 못했습니다(${d.error || r.status})`;
+  } catch { propErr[id] = '서버에 연결하지 못했습니다'; }
+  if (propErr[id]) showErr(id, propErr[id]);  // 다시 못 그려도(서버 꺼짐) 문구는 보이게
+  await loadProposals();  // 성공이든 실패든 다시 불러온다 — 오류 문구는 propErr 로 남는다
+}
+on('btnProposals', 'click', () => { S.tab = S.tab === 'proposals' ? '' : 'proposals'; applyTab(); writeHash(); });
+on('proposals', 'click', async e => {
+  const t = e.target.closest('[data-ptab]');
+  if (t) { propTab = t.dataset.ptab; renderProposals(); return; }
+  const btn = e.target.closest('[data-pact]'); if (!btn) return;
+  const act = btn.dataset.pact, id = btn.dataset.id;
+  const it = PROP && PROP.items.find(x => x.id === id);
+  if (act === 'back') { S.tab = ''; applyTab(); writeHash(); }
+  else if (act === 'copy' && it) {
+    try {
+      await navigator.clipboard.writeText(it.action_prompt || '');
+      const old = btn.textContent; btn.textContent = '복사했습니다';
+      setTimeout(() => { btn.textContent = old; }, 2000);
+    } catch { showErr(id, '복사하지 못했습니다'); }
+  }
+  else if (act === 'approve' && it) {
+    if (it.kind === 'skill' && !confirm(`~/.claude/skills/wiki-${propSlug(it)}/ 에 설치합니다. 다음 Claude Code 세션부터 쓸 수 있습니다.`)) return;
+    propDecide(id, 'approve', '');
+  }
+  else if (act === 'hold') propDecide(id, 'hold', '');
+  else if (act === 'reject') { propRejecting = id; renderProposals(); }
+  else if (act === 'reject-cancel') { propRejecting = null; renderProposals(); }
+  else if (act === 'reject-ok') propDecide(id, 'reject', $('rr-' + id).value);
+  else if (act === 'undo' && it) {
+    if (it.installed && !confirm('설치된 스킬을 휴지통(data/proposals/_trash)으로 옮깁니다.')) return;
+    propDecide(id, 'undo', '');
+  }
+});
 
 // ── 시작 ──
 (async () => {
   readHash();
   try {
+    if (IS_LOCAL) loadProposals();
     await loadAll();
+    applyTab();
     if (S.q) await runSearch(S.q); else apply();
     const nid = new URLSearchParams(location.hash.slice(1)).get('note');
     if (nid && BY_ID.has(nid)) openPanel(nid, false);

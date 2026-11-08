@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = 3000;
+const proposals = require('./lib/proposals');
 
 // ── .env 파일 로드 ──
 function loadEnv() {
@@ -348,6 +349,51 @@ const server = http.createServer((req, res) => {
               res.end(JSON.stringify({ error: e.message }));
             });
         });
+    });
+    return;
+  }
+
+  // ── 제안함 (매일 Wiki 검토) — 이 서버(127.0.0.1)에만 있다. wiki_lan_server.js 에는 두지 않는다 ──
+  if (parsedUrl.pathname === '/api/proposals' && req.method === 'GET') {
+    if (!['localhost:' + PORT, '127.0.0.1:' + PORT].includes(String(req.headers.host || '').toLowerCase())) {
+      res.writeHead(403, CORS);
+      res.end(JSON.stringify({ error: '허용되지 않은 요청입니다.' }));
+      return;
+    }
+    let out;
+    try { out = JSON.stringify(proposals.list()); } catch (e) {
+      console.error('[proposals] 목록 오류:', e.message);
+      res.writeHead(500, CORS);
+      res.end(JSON.stringify({ error: '제안 목록을 읽지 못했습니다.' }));
+      return;
+    }
+    res.writeHead(200, { ...CORS, 'Cache-Control': 'no-store' });
+    res.end(out);
+    return;
+  }
+
+  if (parsedUrl.pathname === '/api/proposals/decide' && req.method === 'POST') {
+    if (!proposals.writeAllowed(req.headers, PORT)) {
+      res.writeHead(403, CORS);
+      res.end(JSON.stringify({ error: '허용되지 않은 요청입니다.' }));
+      return;
+    }
+    collectBody(req, (err, body) => {
+      if (err || Buffer.byteLength(body, 'utf8') > 4096) {
+        res.writeHead(413, CORS);
+        res.end(JSON.stringify({ error: '요청이 너무 큽니다.' }));
+        return;
+      }
+      let b = {};
+      try { b = JSON.parse(body || '{}') || {}; } catch (e) {}
+      let r;
+      try { r = proposals.decide(b.id, b.decision, b.reason); } catch (e) {
+        console.error('[proposals] 결정 오류:', e.message);
+        r = { ok: false, code: 500, error: 'internal' };
+      }
+      if (r.ok) console.log(`[proposals] ${b.id} ${b.decision} ${r.installed || '-'}`);
+      res.writeHead(r.code, CORS);
+      res.end(JSON.stringify(r));
     });
     return;
   }

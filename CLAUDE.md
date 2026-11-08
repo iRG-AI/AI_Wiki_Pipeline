@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **대표님과 직접 대화하는 메인 세션은 PM(pm-wiki) 이다 — 세션을 시작하면 `.claude/pm/PM_ROLE.md` 를 읽고 따른다** (2026-11-04 대표님 결정 · Claude Desktop(Code 탭)에서 이 저장소로 연 세션 · `./pm-wiki.sh` 로 띄워도 같다). 워커 서브에이전트(`implementer` · `verifier` · `investigator` · `scribe`)는 이 줄을 따르지 않는다.
 
-**현재 버전: v4.19.8** (2026-11-08) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.20.0** (2026-11-09) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > (경위: [배경 §버전별 한 줄 요약](docs/claude_md_background.md#bg-versions)) — v4.0~v4.17 중 규칙 문장이 없는 줄 · 버전 상세는 `docs/changelog/`
 > v4.10: 꿀팁 「기타」 + 태그 없음(노션 이관 때 기본값 그대로 남은 행)은 사람이 고른 값으로 보지 않고 `recategorize_tips.py` 가 다시 매긴다(`blank_default`). 꿀팁 제목 3차 25건(URL 추정 제목 → 원문 제목, `retitle_tips.py`) 뒤 재분류 — 「기타」 66 → 42.
@@ -70,7 +70,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
-# 회귀 테스트 18종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+# 회귀 테스트 20종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
 /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 37/37  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해 · (v4.18) 텔레그램 꿀팁 훅
 /opt/homebrew/bin/node scripts/test_video_summary.js         # 35/35  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 · (v4.11) 5xx 상한 · (v4.12) 판매 비중·본론 신호 · (v4.13) 모델·키별 분량 · (v4.17) not_ai 토픽 조건 (가짜 요청)
 /opt/homebrew/bin/node scripts/test_classifier.js            # 8/8    (v4.14) 토픽 분류 — 모델 기본값·CLASSIFY_MODEL·모델별 thinking·요청 주소·한글 청크 경계·allowedSet·오류 문구 (가짜 https)
@@ -89,8 +89,10 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 /opt/homebrew/bin/python3 scripts/test_tips_bot.py           # 25/25  (v4.18) 텔레그램 꿀팁 입구 — 저장·dup·허용 밖·offset·치명 응답·429·5xx·답장 실패·토큰 미노출 (가짜 urlopen·임시 장부)
 /opt/homebrew/bin/python3 scripts/test_readme_changelog.py   # 9/9    (v4.19.2) README 요약표 ↔ docs/changelog 월별 파일 구조 (읽기만)
 /opt/homebrew/bin/python3 scripts/test_claude_md_budget.py   # 6/6    (v4.19.6) CLAUDE.md 크기·필수 제목·배경 앵커 (읽기만)
+/opt/homebrew/bin/node scripts/test_proposals.js             # 31/31  (v4.20) 제안함 — 읽기·승인(스킬 설치)·409·보류·거절·되돌리기 (임시 폴더)
+/opt/homebrew/bin/python3 scripts/test_skill_review.py       # 33/33  (v4.20) 매일 Wiki 검토 — 대상·검증·기준점·알림 (가짜 claude·가짜 텔레그램)
 
-# (2026-10-31) 회귀 테스트 18종 한 번에 — 마지막 줄 RESULT: 18/18 통과, 실패하면 exit 1
+# (2026-10-31) 회귀 테스트 20종 한 번에 — 마지막 줄 RESULT: 20/20 통과, 실패하면 exit 1
 scripts/run_all_tests.sh             # all | js | py
 # (2026-10-31) 실행 PM 세션 띄우기 (Opus + 워커 서브에이전트, 「운영 체계」 절)
 ./pm-wiki.sh                         # --rc 면 Remote Control
@@ -114,6 +116,10 @@ node scripts/clean_pending_queue.js --apply
 # launchd 제어 (6시간 자동 실행)
 launchctl start com.irichgreen.ytsummarizer
 launchctl stop com.irichgreen.ytsummarizer
+# 매일 Wiki 검토 (v4.20)
+/opt/homebrew/bin/python3 skill_review.py --dry-run     # 대상 건수만 (호출 0 · 쓰기 0 · 발송 0)
+/opt/homebrew/bin/python3 skill_review.py --days=7      # 시험 (data/proposals/trial/, 기준점 불변)
+launchctl start com.irichgreen.skill-review
 
 # YouTube OAuth 토큰 재발급 (1회성) — 반드시 「타이쿤안」 채널 선택
 node oauth_setup.js
@@ -370,6 +376,15 @@ scheduler.js main: 마스터 인제스트(신규 영상) 뒤 · 장부 연결이
 - 끄기: `.env RESUMMARY=false`(재요약만) · `VIDEO_SUMMARY=false`(영상 입력 전부). 진행 판정: `sqlite3 "file:data/library.db?mode=ro" "select json_extract(quality,'$.model'), grade, count(*) from videos where summary_src='video' group by 1,2"` · 건너뜀 `… where json_extract(quality,'$.resummary_skip') is not null`.
 - 처리량: (11-01 실측, PT 10-16~10-30) 하루 평균 22.3편. 실제 천장은 3.5 Flash-Lite 모델 누계 8시간 ÷ 편당 약 858초 ≈ 하루 33.6편이라 `RESUMMARY_DAILY_MAX` 40 에는 닿지 않는다. 부족분은 503 중단 52% · 통째 실패(잠자기·ENOTFOUND) 26% · 실행 누락 11% · 분량 상한 10%. `.env` 는 실행당 20 · 하루 40(11-01~) — 실행당 몫을 하루 몫의 절반으로 둬 앞 실행이 빠지거나 503 으로 멈춘 날 같은 PT 하루의 다음 실행이 채운다. 천장을 넘기려면 모델 누계 상한(v4.13)을 건드려야 한다 — 대표님 결정 사항(시험 필요).
 
+### 매일 Wiki 검토 → 제안함 (v4.20)
+
+- 흐름: launchd 08:30 `skill_review.py` → 장부(읽기 전용) `created_at > 지난 through` 영상(exclude 제외)·꿀팁 → `claude -p`(도구 0 · MCP 0 · 재시도 0) → `data/proposals/YYYYMMDD.json`(KST) → 텔레그램(제안 ≥1·실패만, 실행 알림 봇) → `localhost:3000/wiki#tab=proposals` 에서 승인·보류·거절.
+- 쓰는 주체 분리: 날짜 파일은 `skill_review.py` 만, `decisions.json` 은 `lib/proposals.js`(server.js) 만. 기준점 = 마지막 날짜 파일의 `through`(상태 파일 없음). `--days` 시험은 `trial/` 이라 기준점을 안 움직인다.
+- **Claude 호출에 도구·MCP 를 주지 말 것**(`--tools ''`·`--strict-mcp-config`). 같은 날 파일이 있으면 멈춘다(`exists`, 알림 없음).
+- 승인 = `~/.claude/skills/wiki-<slug>/SKILL.md` 설치, 내용은 저장된 제안에서만(요청 본문 값 불사용). **이미 있으면 덮어쓰지 않는다(409)**. 되돌리기는 `data/proposals/_trash/` 로 이동(삭제 아님).
+- POST `/api/proposals/decide` 는 Host·Origin 이 `localhost:3000`/`127.0.0.1:3000` 이고 JSON 일 때만. **`wiki_lan_server.js` 에 제안함 라우트를 넣지 말 것.**
+- 프로필 `data/review_profile.md`(gitignore, 대표님이 고침). 구독 사용량을 쓴다 — 하루 1회. 판정: `~/Library/Logs/irichgreen/skill-review.log` 의 `RESULT_JSON`.
+
 ### Obsidian 고아 파일 격리 (`sync_obsidian.py:quarantine_orphans`)
 
 장부 `videos` 에 없는 notion_id 를 가진 영상 노트를 **삭제하지 않고** `VAULT/_trash/<타임스탬프>/`로 이동합니다 (v4.0 전에는 "Notion에서 삭제된 페이지").
@@ -542,13 +557,14 @@ KST 00/06/12 시는 PT 기준 전날 장부·17:30 은 PT 당일 리셋 직후�
 | `com.irichgreen.server` | `server.js` (포트 3000) | `KeepAlive`, `RunAtLoad` — 상주 | `/opt/homebrew/bin/node` |
 | `com.irichgreen.ytsummarizer` | `scheduler.js` (v4.15 `caffeinate -i` 로 감쌈) | 00 / 06 / 12 / 18시 | `/opt/homebrew/bin/node` |
 | `com.irichgreen.wiki-ingest` | `wiki_ingest.py` (증분 + backfill + 재렌더, v4.16 `caffeinate -i` 로 감쌈) | 매일 17:30 | `/opt/homebrew/bin/python3` |
+| `com.irichgreen.skill-review` | `skill_review.py` (v4.20 `caffeinate -i`) | 매일 08:30 | `/opt/homebrew/bin/python3` |
 | `com.irichgreen.wiki-lan` | `wiki_lan_server.js` (포트 3100) | `KeepAlive`, `RunAtLoad`, `ThrottleInterval 60` — 상주 | `/opt/homebrew/bin/node` |
 
-- **실제 동작하는 plist는 `~/Library/LaunchAgents/`에 있다.** 레포 루트의 plist 4개는 그 원본이며 모두 실경로(`<REPO_ROOT>` 의 절대경로)가 들어 있다. **원본은 설치본과 같게 유지한다** — 2026-10-12 대조에서 `wiki-ingest` 원본만 옛 값(03:00 · `/usr/bin/python3` · `--full`)이라 설치본(17:30 · Homebrew python3 · 증분)으로 맞췄다. 확인: `diff <(plutil -convert xml1 -o - ~/Library/LaunchAgents/<라벨>.plist) <(plutil -convert xml1 -o - <라벨>.plist)`. 예전에 `server`·`ytsummarizer` 두 개에 있던 `/Users/사용자명/youtube-notion-app` 플레이스홀더는 제거했다.
+- **실제 동작하는 plist는 `~/Library/LaunchAgents/`에 있다.** 레포 루트의 plist 5개는 그 원본이며 모두 실경로(`<REPO_ROOT>` 의 절대경로)가 들어 있다. **원본은 설치본과 같게 유지한다** — 2026-10-12 대조에서 `wiki-ingest` 원본만 옛 값(03:00 · `/usr/bin/python3` · `--full`)이라 설치본(17:30 · Homebrew python3 · 증분)으로 맞췄다. 확인: `diff <(plutil -convert xml1 -o - ~/Library/LaunchAgents/<라벨>.plist) <(plutil -convert xml1 -o - <라벨>.plist)`. 예전에 `server`·`ytsummarizer` 두 개에 있던 `/Users/사용자명/youtube-notion-app` 플레이스홀더는 제거했다.
 - **(v4.15) `com.irichgreen.ytsummarizer` 의 `ProgramArguments` 는 `/usr/bin/caffeinate -i /opt/homebrew/bin/node <REPO_ROOT>/scheduler.js` 다.** caffeinate 가 node 를 자식으로 띄우고 node 가 끝날 때까지 유휴 잠자기 방지 단언(`PreventUserIdleSystemSleep`)을 쥔다 — 배터리 설정이 `sleep 1`(1분)이라 덮개를 연 채 자리를 비우면 실행 도중 잠들 수 있었다. 종료 코드는 node 것을 그대로 돌려준다(10-16 실측). **덮개를 닫은 잠자기(Clamshell)·이미 잠든 맥은 막지 못한다**(10-15 12:00 실패 = 11:54 Clamshell Sleep, 배터리 36%) — 그 경우는 v4.2 알림과 다음 실행의 이어 처리로 버틴다. 강제로 막는 `pmset disablesleep` 은 가방 속 발열 위험이라 쓰지 않는다. `launchctl list` 의 PID 는 caffeinate 이고 `pgrep -f scheduler.js` 는 두 줄(caffeinate·node)이 나온다. 실행 중 확인: `pmset -g assertions | grep caffeinate`. `server.js` `/api/master-ingest` 로 띄운 수동 실행은 감싸지 않는다(범위 밖). caffeinate 를 빼지 말 것.
 - **(v4.16) `com.irichgreen.wiki-ingest` 도 같다** — `/usr/bin/caffeinate -i /opt/homebrew/bin/python3 <REPO_ROOT>/wiki_ingest.py`. 실행 중 확인 `pmset -g assertions | grep caffeinate`, 지난 실행은 `pmset -g log | grep "17:3.*caffeinate"`(macOS 로그에는 `Summary`·`ClientDied` 로 찍힌다 — 다른 앱도 caffeinate 를 수시로 띄우므로 시작 시각으로 가린다). caffeinate 를 빼지 말 것.
-- 각 plist는 `ProgramArguments`·`WorkingDirectory` **2곳에 절대경로**가 박혀 있다. 경로 변경 시 8군데(4개 × 2) 동기화 + `plutil -lint` + unload/load.
-- **레포 경로 자체를 바꿀 때 함께 고칠 맥 설정(레포 밖):** 설치된 plist 4개, `~/Library/Scripts/rotate_extra_logs.sh` 의 `YTDIR`, Claude Code MCP `wiki-search` 등록(`~/.claude.json` 사용자 범위 — `claude mcp remove`/`add -s user`), 스킬 `kakao-tips-update` 의 경로. 절차·검증은 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
+- 각 plist는 `ProgramArguments`·`WorkingDirectory` **2곳에 절대경로**가 박혀 있다. 경로 변경 시 10군데(5개 × 2) 동기화 + `plutil -lint` + unload/load.
+- **레포 경로 자체를 바꿀 때 함께 고칠 맥 설정(레포 밖):** 설치된 plist 5개, `~/Library/Scripts/rotate_extra_logs.sh` 의 `YTDIR`, Claude Code MCP `wiki-search` 등록(`~/.claude.json` 사용자 범위 — `claude mcp remove`/`add -s user`), 스킬 `kakao-tips-update` 의 경로. 절차·검증은 `docs/tasks/2026-10-13-rename-ai-wiki-pipeline.md`.
 - `install-server.sh`·`install-scheduler.sh`는 plist를 `~/Library/LaunchAgents/`로 복사하며 **sed로 이 실경로를 `$APP_DIR`로 치환**한다. 레포 경로를 바꾸면 두 스크립트의 sed 패턴도 같이 고쳐야 치환이 동작한다. `install-wiki-ingest.sh` 는 치환 없이 그대로 복사한다(원본 = 설치본). `deploy.sh` 는 옛 일괄 업로드 스크립트라 쓰지 않는다.
 - `com.irichgreen.server`는 상주 프로세스라 **코드를 고쳐도 재기동 전까지 반영되지 않는다.**
 - `com.irichgreen.wiki-lan`의 로그(`wiki-lan.log`)는 **`rotate_extra_logs.sh`에 넣지 않는다.** 상주형이라 rename 회전이 안전하지 않다. 대신 서버가 기동·차단·오류만 찍는다.
