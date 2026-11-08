@@ -23,7 +23,7 @@ launchctl load "$PLIST_DST"
 
 echo "  ✅ 설치 완료!"
 echo ""
-echo "  📅 실행 시간: 매일 08:30 (지난 검토 이후 들어온 영상·꿀팁 → 제안 0~3건)"
+echo "  📅 실행 시간: 매일 08:30 (지난 검토 이후 들어온 영상·꿀팁 → 제안 0~5건)"
 echo "  🐍 인터프리터: /opt/homebrew/bin/python3"
 echo "  📁 로그: ~/Library/Logs/irichgreen/skill-review.log (판정 지표: RESULT_JSON 줄)"
 echo "  🖥  제안함: http://localhost:3000/wiki#tab=proposals"

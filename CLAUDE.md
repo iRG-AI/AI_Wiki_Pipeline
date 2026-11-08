@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **대표님과 직접 대화하는 메인 세션은 PM(pm-wiki) 이다 — 세션을 시작하면 `.claude/pm/PM_ROLE.md` 를 읽고 따른다** (2026-11-04 대표님 결정 · Claude Desktop(Code 탭)에서 이 저장소로 연 세션 · `./pm-wiki.sh` 로 띄워도 같다). 워커 서브에이전트(`implementer` · `verifier` · `investigator` · `scribe`)는 이 줄을 따르지 않는다.
 
-**현재 버전: v4.21.0** (2026-11-09) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.21.1** (2026-11-09) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > (경위: [배경 §버전별 한 줄 요약](docs/claude_md_background.md#bg-versions)) — v4.0~v4.17 중 규칙 문장이 없는 줄 · 버전 상세는 `docs/changelog/`
 > v4.10: 꿀팁 「기타」 + 태그 없음(노션 이관 때 기본값 그대로 남은 행)은 사람이 고른 값으로 보지 않고 `recategorize_tips.py` 가 다시 매긴다(`blank_default`). 꿀팁 제목 3차 25건(URL 추정 제목 → 원문 제목, `retitle_tips.py`) 뒤 재분류 — 「기타」 66 → 42.
