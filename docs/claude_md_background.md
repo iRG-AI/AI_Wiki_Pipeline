@@ -39,10 +39,8 @@
 | `scripts/clean_pending_queue.js` | (v2.5) 큐 중복 제거 + dead-letter 격리. 기본 dry-run, `--apply` 필요. |
 | `scripts/test_scheduler_guards.js` | (v3.2.1) `scheduler.js` 의 캐시·재시도·배치 조회 회귀 테스트. `https.request` 를 가짜로 바꾸고 `require` 한다. (v4.2) 실행 실패 알림(판정·점검 문구·상태 파일·`sendTelegram` 반환값) 포함. |
 | `kakao_ingest.py` | (v3.0 → v4.0) 카톡 CSV → 장부 `tips` 테이블. 기본 dry-run, `--apply` 필요. 중복 판정은 상태 파일이 아니라 **장부 tips 전량 + URL 정규화 키(`url_key`)**. 신규 행은 한 트랜잭션. 노션 호출 없음. (v4.8) 제목이 URL 추정인 신규 행만 원문 제목 조회(`lib/title_fetch.py`) — 장부 쓰기 전, 실패하면 추정 제목 그대로, `--no-lookup`. |
-| `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. (v4.8) `guess_meta(…, fetched_title)` · `title_src`(`message`·`github`·`guess`·`fetched`). (v4.9) 분류 규칙은 `classify(url, *texts)` 한 곳 — 노션 페이지 주소는 호스트를 빼고 판정, 한글 표기 별칭. |
 | `lib/env_util.py` | (v4.0 3단계) `.env` 읽기(의존성 0). `kakao_ingest.py`·`sheet_mirror.py` 가 쓴다. |
 | `sheet_mirror.py` | (v4.0 3단계) 장부 → 구글 시트 미러(보기 전용, 단방향). `updated_at` 워터마크로 변경분만, 200행씩 POST. `--dry-run`·`--full`·`--check`. 아래 "구글 시트 미러" 절. |
-| `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
 | `backup_library.py` | (v4.1) 장부 하루 1회 백업 → `data/backups/` + `.env LIBRARY_BACKUP_DIR`(구글 드라이브). 온라인 백업 API·무결성 검사·gzip·sha256 대조, 최신 7 + 주별 4 보관. 장부는 읽기 전용. `--dry-run`·`--status`·`--force`. 아래 "장부 백업" 절. |
 | `scripts/test_backup_library.py` | (v4.1) 장부 백업 회귀 테스트. 임시 장부·임시 폴더(가짜 드라이브 경로 포함), 실제 장부·드라이브 무관. |
 | `wiki.html` | Wiki 검색 화면. `server.js`와 `wiki_lan_server.js`가 같은 파일을 서빙한다. (v4.7) 처음 열면 전체 목록 — 필터(종류·토픽 다중·날짜·조회수·채널·요약 방식·꿀팁 분류·새로 들어온 것)·정렬·표/카드는 브라우저에서. 의미 검색·AI 답변·비슷한 영상·노트 전체 보기 패널·엑셀 내려받기(브라우저가 .xlsx 생성). DS 1.1.23 토큰(머리 CSS 변수). 상태는 URL 해시, 보기·새로 들어온 것은 localStorage. |

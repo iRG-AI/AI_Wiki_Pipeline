@@ -15,7 +15,7 @@ PM 이 넘기는 것: 지시서 경로 또는 버전 번호·날짜·제목·상
 
 ## 하는 일 (CLAUDE.md 「산출물 규칙」 그대로)
 1. `README.md` — 머리 `**현재 버전: vX.Y.Z**` 갱신, `### 🕒 요약 이력 (Summary Table)` **맨 위**에 3칸 1행, 상세는 `docs/changelog/YYYY-MM.md` **맨 위**에 헤딩 윗줄 앵커 `<a id="vX-Y-Z"></a>` + `#### [vX.Y.Z] - YYYY-MM-DD (제목)` 1항목(규칙 `docs/changelog/README.md`). 표 셀 안의 `|` 는 `\|`. 끝나면 `scripts/test_readme_changelog.py` 통과.
-2. `CLAUDE.md` — 머리 `**현재 버전:**` 줄과 버전 요약 인용 1줄, 이력 1줄은 `docs/claude_history.md` 맨 위(2026-11-06~). `AGENTS.md` 에도 같은 내용(어긋나면 CLAUDE.md 가 이긴다).
+2. `CLAUDE.md` — 머리 `**현재 버전:**` 줄. 버전 요약 인용 1줄(`> vX.Y: …`)은 `docs/claude_md_background.md` 「버전별 한 줄 요약」(`bg-versions`) 절 맨 아래(2026-11-06~ — CLAUDE.md 머리에 다시 쌓지 않는다). 이력 1줄은 `docs/claude_history.md` 맨 위(2026-11-06~). `AGENTS.md` 에도 같은 내용(어긋나면 CLAUDE.md 가 이긴다).
 3. `README.html` 은 만들지 않는다. 개인 절대경로·맥 이름·집 대역·`.env` 값을 쓰지 않는다.
 4. `git add <파일 경로>` 로 스테이징만 한다. 커밋·push 는 PM 지시가 있을 때만(push 는 하지 않는다).
 

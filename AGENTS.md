@@ -6,7 +6,7 @@
 
 - **대표님과 직접 대화하는 메인 세션은 PM(pm-wiki) 이다 — 세션을 시작하면 `.claude/pm/PM_ROLE.md` 를 읽고 따른다** (2026-11-04 대표님 결정 · Claude Desktop(Code 탭)에서 이 저장소로 연 세션 · `./pm-wiki.sh` 로 띄워도 같다). 워커 서브에이전트(`implementer` · `verifier` · `investigator` · `scribe`)는 이 줄을 따르지 않는다.
 
-**현재 버전: v4.19.5** (2026-11-06) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
+**현재 버전: v4.19.6** (2026-11-06) · 레포 경로: `<REPO_ROOT>` = `~/Dev/AI_Wiki_Pipeline` · GitHub `iRG-AI/AI_Wiki_Pipeline`
 
 > (경위: [배경 §버전별 한 줄 요약](docs/claude_md_background.md#bg-versions)) — v4.0~v4.17 중 규칙 문장이 없는 줄 · 버전 상세는 `docs/changelog/`
 > v4.10: 꿀팁 「기타」 + 태그 없음(노션 이관 때 기본값 그대로 남은 행)은 사람이 고른 값으로 보지 않고 `recategorize_tips.py` 가 다시 매긴다(`blank_default`). 꿀팁 제목 3차 25건(URL 추정 제목 → 원문 제목, `retitle_tips.py`) 뒤 재분류 — 「기타」 66 → 42.
@@ -72,7 +72,7 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 
 # 기존 영상 일괄 마이그레이션 — v4.0 에서 은퇴 (legacy_scripts/migrate_classify.js, 노션 전제라 그대로 돌지 않는다)
 
-# 회귀 테스트 17종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
+# 회귀 테스트 18종 — 네트워크 0회, 실제 장부·Vault·.env 무관 (데몬과 같은 인터프리터로)
 /opt/homebrew/bin/node scripts/test_scheduler_guards.js      # 37/37  장부 캐시·재시도·배치 조회(길이·공개 상태)·시트 미러·장부 백업 훅·실행 실패 알림·요약 방식 저장·재요약 단계 무해 · (v4.18) 텔레그램 꿀팁 훅
 /opt/homebrew/bin/node scripts/test_video_summary.js         # 35/35  (v4.6) 실제 영상 요약 — 요청 모양·영상 토큰 0·대체 경로·403 연속·분량 상한·등급 · (v4.6-b) 모델별 thinking·대체 없음·예약·bad_summary 사유 · (v4.11) 5xx 상한 · (v4.12) 판매 비중·본론 신호 · (v4.13) 모델·키별 분량 · (v4.17) not_ai 토픽 조건 (가짜 요청)
 /opt/homebrew/bin/node scripts/test_classifier.js            # 8/8    (v4.14) 토픽 분류 — 모델 기본값·CLASSIFY_MODEL·모델별 thinking·요청 주소·한글 청크 경계·allowedSet·오류 문구 (가짜 https)
@@ -90,8 +90,9 @@ python3 wiki_ingest.py --seed-from-pages [--apply]   # (v4.5 1회) 옛 _wiki 페
 /opt/homebrew/bin/python3 scripts/test_backup_library.py     # 50/50  장부 백업 (임시 폴더 — 하루 1회 · 보관 규칙 · 드라이브 빠짐)
 /opt/homebrew/bin/python3 scripts/test_tips_bot.py           # 25/25  (v4.18) 텔레그램 꿀팁 입구 — 저장·dup·허용 밖·offset·치명 응답·429·5xx·답장 실패·토큰 미노출 (가짜 urlopen·임시 장부)
 /opt/homebrew/bin/python3 scripts/test_readme_changelog.py   # 9/9    (v4.19.2) README 요약표 ↔ docs/changelog 월별 파일 구조 (읽기만)
+/opt/homebrew/bin/python3 scripts/test_claude_md_budget.py    # 6/6    (v4.19.6) CLAUDE.md 크기·필수 제목·배경 앵커 (읽기만)
 
-# (2026-10-31) 회귀 테스트 17종 한 번에 — 마지막 줄 RESULT: 17/17 통과, 실패하면 exit 1
+# (2026-10-31) 회귀 테스트 18종 한 번에 — 마지막 줄 RESULT: 18/18 통과, 실패하면 exit 1
 scripts/run_all_tests.sh             # all | js | py
 # (2026-10-31) 실행 PM 세션 띄우기 (Opus + 워커 서브에이전트, 「운영 체계」 절)
 ./pm-wiki.sh                         # --rc 면 Remote Control
@@ -198,7 +199,9 @@ YouTube "AI 영상목록" (마스터 모드)
 | `scripts/migrate_library.py` | (v4.5·v4.6) 장부 스키마 이전(user_version 1·2 → 3). 기본 dry-run, `--apply` 는 온라인 백업 `<장부>.bak.v<현재>-<시각>` 뒤 한 트랜잭션으로 단계별 `ALTER TABLE ADD COLUMN`(`ADD_COLUMNS`) + 스키마 실행(전부 `IF NOT EXISTS`) → 버전·무결성·행 수·새 표·새 열 확인. 열 추가는 `updated_at` 을 안 건드린다(시트 재전송 없음). `--db=` 로 복원본에도. |
 | `build_obsidian_wiki.py` | 키워드별 허브 파일 27개 자동 생성(`_MOC/Claude.md` 등) + MOC 재구성. (v4.0) `write_if_changed()` — 내용이 같은 파일은 쓰지 않는다. |
 | `telegram_tips_ingest.py` · `scripts/test_tips_bot.py` | (v4.18) 꿀팁 두 번째 입구 — 전용 봇 `getUpdates`(timeout 0, offset = 장부 `meta.tips_bot_offset`+1) → 허용 chat(`.env TIPS_BOT_CHAT_ID`)만 → `kakao_parse.links_from_messages` → `kakao_ingest` 공용 함수 → 한 트랜잭션(tips + meta offset·last_ok) → 커밋 뒤 메시지별 답장(저장·이미 있음·링크 없음). 401·403·404·409·400 즉시 중단(exit 2), 429 `retry_after`, 5xx·네트워크 2·4초 백오프 3회(exit 1). 토큰은 URL 경로에 들어가므로 URL·토큰·chat id 를 출력하지 않는다. 기본 dry-run, `--apply`·`--whoami`. 테스트는 가짜 urlopen. |
+| `lib/kakao_parse.py` | (v3.0) URL 추출·트래킹 파라미터 제거·중복 키·규칙 기반 제목/카테고리 추정. 순수 함수, 네트워크 없음. (v4.8) `guess_meta(…, fetched_title)` · `title_src`(`message`·`github`·`guess`·`fetched`). (v4.9) 분류 규칙은 `classify(url, *texts)` 한 곳 — 노션 페이지 주소는 호스트를 빼고 판정, 한글 표기 별칭. |
 | `lib/title_fetch.py` · `scripts/test_title_fetch.py` | (v4.8) 링크 원문 제목 조회 — 노션 공개 API(`syncRecordValuesMain`) · 유튜브 oEmbed · og:title/`<title>`. 요청당 8초·재시도 없음, 예외를 던지지 않고 `(None, 사유)`. 제목 정리(앞뒤 이모지·`|` → ` — `·`[[`·`]]` 제거·120자·로그인/일반 문구 거부). 테스트는 가짜 응답(네트워크 0). |
+| `gas/sheet_mirror.gs` | (v4.0 3단계) 시트에 붙이는 Apps Script 웹앱(받는 쪽). 토큰 검사 · 탭 화이트리스트(영상·꿀팁) · 머리글 대조 · 수식 방지. 설치 순서는 파일 머리 주석. |
 | `lib/wiki_search.js` | 검색 코어(의존성 0). `wiki_index.json`+`wiki_index.vec`(768차원) 로드, 임베딩 코사인 + 메타 부스트, 임베딩 실패 시 키워드 폴백, Gemini 401/403 래치. (v4.7) `listPayload`(전체 목록, gzip·ETag 캐시) · `scoreAll`(모든 노트 점수) · `similar`(저장 벡터끼리, Gemini 호출 없음) · `noteById`(id 로만, `readNote` 경로 검사). `WIKI_SEARCH_DIR`·`WIKI_VAULT` 는 테스트 전용. |
 | `build_search_index.py` | Obsidian 노트 → `gemini-embedding-001` → 인덱스 증분 빌드. `sync_obsidian.py`가 신규·변경·고아 격리·`--rebuild` 시 호출. (v4.0) `notion_id`·제목·태그는 맨 앞 프론트매터에서만 읽는다. (v4.7) 화면 필터용 `kind`·`subscriber_count`·`summary_src`·`link_url`·`category`·`importance`·`keywords` — 매 빌드 프론트매터에서 다시 읽고 임베딩 hash 와 무관. |
 | `scripts/recategorize_tips.py` · `scripts/test_recategorize_tips.py` | (v4.9) 기존 꿀팁 분류 보정. 카테고리·태그가 「v4.8 규칙이 매긴 값」(URL+제목 또는 URL 만)과 같은 행만 `kakao_parse.classify` 로 다시 매기고(사람이 고른 값은 그대로), 출처가 `http(s)://` 로 시작하면 호스트만(URL 호스트와 다르면 보고만). 장부 `category`·`tags`·`source`·`updated_at` + 「AI 꿀팁」 노트의 해당 줄만 제자리 수정(손으로 고친 노트는 행째 건너뜀) → `build_obsidian_wiki`·`build_search_index`. 기본 dry-run, 쓰기 전 `data/recategorize_backup/<시각>/`. 장부 조건은 `record_id` + 옛 세 값, 다시 돌리면 0건. 종료 0 · 1 · 2(무변경). (v4.10) 카테고리 「기타」 + 태그 없음은 빈 기본값으로 보고 같이 다시 매긴다 — `RESULT_JSON.blank_default`·로그 「(빈 기본값)」. |
