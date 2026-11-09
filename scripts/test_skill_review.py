@@ -153,12 +153,15 @@ try:
     rc = os.path.join(tmp, 'rc'); os.makedirs(rc)
     for ymd, ti in (('20261109', 'today'), ('20261103', 'six'), ('20261102', 'seven')):
         open(os.path.join(rc, ymd + '.json'), 'w').write(json.dumps({'proposals': [{'title': ti}]}))
+    os.makedirs(os.path.join(rc, 'trial'))
+    for fn, ti in (('20261108-071502', 'trial6'), ('20261102-071502', 'trial7'), ('20261109-010101', 'today')):
+        open(os.path.join(rc, 'trial', fn + '.json'), 'w').write(json.dumps({'proposals': [{'title': ti}]}))
     dec = {f'd{i}': {'title': f'T{i}', 'decision': 'rejected', 'reason': f'r{i}', 'at': f'2026-11-{i + 1:02d}T00:00:00Z'} for i in range(32)}
     dec['x'] = {'title': 'noreason', 'decision': 'rejected', 'reason': '', 'at': '2026-12-01T00:00:00Z'}
     dec['y'] = {'title': 'appr', 'decision': 'approved', 'reason': 'ok', 'at': '2026-12-02T00:00:00Z'}
     open(os.path.join(rc, 'decisions.json'), 'w').write(json.dumps({'version': 1, 'decisions': dec}))
     titles, rej = sr.recent_context(rc, datetime(2026, 11, 8, 23, 30, tzinfo=timezone.utc))
-    check('7일 = KST 오늘 기준 0~6일 전만', sorted(titles) == ['six', 'today'], titles)
+    check('7일 = KST 오늘 기준 0~6일 전만 · ㉡ trial 포함 · 같은 제목 한 번', sorted(titles) == ['six', 'today', 'trial6'], titles)
     check('거절만 · 최신순 30개 · 사유 없음 표기', len(rej) == 30 and rej[0] == 'noreason: (사유 없음)' and not any('appr' in x for x in rej), rej[:2])
 
     print('--- 접두 wiki- 버림')

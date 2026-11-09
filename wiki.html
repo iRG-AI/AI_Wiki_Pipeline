@@ -269,6 +269,9 @@
   .pc .pbtns { display: flex; flex-wrap: wrap; gap: var(--space-8); align-items: center; }
   .pc .perr { color: var(--alert-critical); font-size: 13px; }
   .pc textarea { width: 100%; min-height: 56px; border: 1px solid var(--line-default); border-radius: var(--radius-8); padding: var(--space-8); font: 13px/20px var(--font-web); }
+  .prv { padding: var(--space-12) var(--space-16); margin-bottom: var(--space-12); font-size: 13px; }
+  .prv summary { cursor: pointer; font-weight: 700; }
+  .prv .prl { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-8); align-items: baseline; margin-top: var(--space-8); }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 </style>
 </head>
@@ -1092,6 +1095,12 @@ function propCard(i) {
     <details data-did="${esc(i.id)}"><summary class="linkbtn">${isSkill ? '스킬 내용 보기' : '붙여 넣을 프롬프트 보기'}</summary>${body}</details>
     <div class="pbtns">${btns}</div><div class="perr" data-perr="${esc(i.id)}"></div></article>`;
 }
+function reviewCard(r) {
+  const sk = r.items.filter(x => x.verdict === 'skipped'), pr = r.items.filter(x => x.verdict === 'proposed');
+  const row = x => `<div class="prl"><span class="st ${x.verdict === 'skipped' ? 'bad' : 'done'}">${x.verdict === 'skipped' ? '제외' : '제안'}</span>${BY_ID.has(x.id)
+    ? `<a href="#" data-note="${esc(x.id)}">${esc(BY_ID.get(x.id).title)}</a>` : '<span class="faint">(목록에 없는 꿀팁)</span>'}<span class="muted">${esc(x.reason)}</span></div>`;
+  return `<details class="card prv" data-did="${esc('rv-' + r.file)}"><summary>꿀팁 판정 · ${esc(propDate(r.date))}${r.trial ? ' [시험]' : ''} — ${r.items.length}건 중 제안 근거 ${pr.length}건 · 제외 ${sk.length}건</summary>${[...sk, ...pr].map(row).join('')}</details>`;
+}
 function renderProposals() {
   const el = $('proposals');
   if (!PROP) { el.innerHTML = ''; return; }
@@ -1103,6 +1112,7 @@ function renderProposals() {
   el.innerHTML = `<div class="prhead"><button class="btn btn-secondary" type="button" data-pact="back">목록으로</button>
     <div class="seg" role="group" aria-label="제안 분류">${P_TABS.map(([k, l]) => `<button type="button" data-ptab="${k}" aria-pressed="${k === propTab}">${esc(l)}<span class="n">${c[k]}</span></button>`).join('')}</div></div>
     <div class="pnote">매일 Wiki 검토가 고른 제안입니다. 승인하면 스킬은 바로 설치되고, 적용 아이디어는 프롬프트가 남습니다.</div>
+    ${(PROP.reviews || []).map(reviewCard).join('')}
     ${PROP.items.length ? '' : '<div class="card empty"><b>아직 제안이 없습니다</b>매일 아침 검토가 끝나면 여기에 나옵니다.</div>'}
     ${shownItems.map(propCard).join('')}`;
   el.querySelectorAll('details').forEach(d => { d.open = openIds.includes(d.dataset.did); });

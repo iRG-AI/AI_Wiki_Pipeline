@@ -122,6 +122,18 @@ try {
   const s0 = fs.readdirSync(skills).join();
   r = P.decide('20261109-3', 'approve', '', { ...O }); // rejected → approve, 스킬 설치 시도 후 쓰기 실패
   check('500 · 설치한 스킬 폴더 남지 않음', r.code === 500 && fs.readdirSync(skills).join() === s0, [r, fs.readdirSync(skills)]);
+  console.log('--- 13 reviews');
+  wr('20261109.json', { created_at: '2026-11-09T00:00:00Z', proposals: [sk('20261109-1', 'alpha-skill')], tip_review: [
+    { id: 't1', verdict: 'skipped', reason: 'r1' }, { id: 't2', verdict: 'proposed', reason: 'r2' },
+    { id: 't3', verdict: 'maybe', reason: 'x' }, { id: ['a'], verdict: 'skipped', reason: 'x' }, { id: 't4', verdict: 'skipped', reason: 5 }] });
+  wr('trial/20261108-152234.json', { created_at: '2026-11-08T15:22:34Z', proposals: [], tip_review: [{ id: 't9', verdict: 'proposed', reason: 'z' }] });
+  wr('20261110.json', { created_at: '2026-11-10T00:00:00Z', proposals: [], tip_review: [] });
+  wr('trial/20261110-000000.json', { created_at: '2026-11-10T00:00:00Z', proposals: [], tip_review: [{ id: 't8', verdict: 'skipped', reason: 'y' }] });  // 읽는 순서(날짜 파일 먼저)와 반대 — 정렬을 빼면 실패
+  const RV = P.list(O).reviews;
+  check('㉠ reviews: 최신 먼저 · 잘못된 항목 빠짐 · 빈/없음 파일 제외', RV.length === 3 && RV[0].file === '20261110-000000.json' && RV[1].file === '20261109.json' && !RV[1].trial && RV[1].items.length === 2 && RV[2].file === '20261108-152234.json' && RV[2].trial === true && RV[2].items[0].id === 't9', RV);
+  check('㉠ 기존 items·counts 모양 유지', Object.keys(P.list(O)).sort().join() === 'counts,errors,items,reviews');
+  fs.rmSync(path.join(dir, '20261110.json')); fs.rmSync(path.join(dir, 'trial', '20261110-000000.json'));
+
 } catch (e) {
   check('예외 없이 끝남', false, e.stack);
 } finally {

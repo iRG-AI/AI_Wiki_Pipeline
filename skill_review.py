@@ -94,10 +94,11 @@ def select_targets(conn, since, limit=MAX_ITEMS):
 def recent_context(out_dir, now):
     titles, rejects = [], []
     today = now.astimezone(KST).date()
-    for p in sorted(glob.glob(os.path.join(out_dir, '[0-9]' * 8 + '.json'))):
+    for p in sorted(glob.glob(os.path.join(out_dir, '[0-9]' * 8 + '.json'))) + sorted(glob.glob(os.path.join(out_dir, 'trial', '[0-9]' * 8 + '-' + '[0-9]' * 6 + '.json'))):
         age = (today - datetime.strptime(os.path.basename(p)[:8], '%Y%m%d').date()).days
         if 0 <= age <= 6:
             titles += [x.get('title', '') for x in (read_json(p) or {}).get('proposals', [])]
+    titles = list(dict.fromkeys(titles))
     dec = (read_json(os.path.join(out_dir, 'decisions.json')) or {}).get('decisions')
     items = [x for x in (dec.values() if isinstance(dec, dict) else []) if isinstance(x, dict) and x.get('decision') == 'rejected']
     for x in sorted(items, key=lambda x: x.get('at') or '', reverse=True)[:30]:
