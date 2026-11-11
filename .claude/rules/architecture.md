@@ -47,7 +47,7 @@ paths:
 - `.env`의 `WIKI_LAN_ALLOW_CIDR`(사설 대역 `/16`~`/32`, 쉼표로 여러 개)가 없거나 틀리면 **`127.0.0.1` 전용으로 떨어진다(fail-closed).** 가족이 "갑자기 안 된다"고 하면 `wiki-lan.log`의 `바인딩:` 줄부터 본다.
 - 클라이언트 IP는 **소켓 주소만** 본다. `X-Forwarded-For`를 읽는 코드를 넣지 말 것(위조 가능).
 - AI 답변은 scheduler·wiki-ingest와 **같은 Gemini 무료 키**를 쓴다. IP당 분당 5회 + 전체 24시간 `WIKI_LAN_ASK_DAILY_MAX`회(기본 20, 메모리 카운터 — 재기동하면 0). 한도를 올리면 영상 요약·Wiki 합성이 429를 맞는다. 일반 검색은 임베딩 모델을 쓰므로 별개이고, 한도에 걸리면 키워드 검색으로 대체된다.
-- (v4.7) 화면은 `/api/wiki-search?all=1`(전체 목록, gzip·ETag)을 한 번 받아 필터·정렬을 브라우저에서 한다. 검색어는 `?scores=1&q=`(모든 노트 점수 — 의미 검색이면 화면이 상위 200건을 관련 결과로 본다), 비슷한 영상은 `?similar=<id>`(저장 벡터끼리, Gemini 호출 없음), 노트 전체 보기는 `/api/wiki-note?id=`(경로를 받지 않고 id 로만 — `readNote` 가 Vault 밖을 막는다). 기존 `?q=&limit=` 응답은 그대로(AI 답변 503 대체 경로가 쓴다). **`/api/wiki-note` 에 경로(path) 인자를 받게 바꾸지 말 것.**
+- (v4.7) 화면은 `/api/wiki-search?all=1`(전체 목록, gzip·ETag)을 한 번 받아 필터·정렬을 브라우저에서 한다. 검색어는 `?scores=1&q=`(모든 노트 점수 — 의미 검색이면 화면이 글자 일치 전부 + 점수 ≥ 평균 + 3σ(최대 50)를 관련 결과로 본다, v4.22), 비슷한 영상은 `?similar=<id>`(저장 벡터끼리, Gemini 호출 없음), 노트 전체 보기는 `/api/wiki-note?id=`(경로를 받지 않고 id 로만 — `readNote` 가 Vault 밖을 막는다). 기존 `?q=&limit=` 응답은 그대로(AI 답변 503 대체 경로가 쓴다). **`/api/wiki-note` 에 경로(path) 인자를 받게 바꾸지 말 것.**
 - (v4.7) 화면은 iRichGreen Design System 웹 계층 DS 1.1.23 을 따른다 — 색·크기는 `wiki.html` 머리의 CSS 변수만(밝은 테마만, DS 에 다크 테마가 없다). 엑셀은 브라우저가 .xlsx 를 직접 만든다(외부 라이브러리 없음, 파일명 `ai-llm-wiki-YYYYMMDD.xlsx`, 시트 「목록」·「조건」). 「새로 들어온 것」은 그 브라우저 localStorage(`wiki.seen`·`wiki.new`)에만 기억한다.
 - (v4.7) 인덱스에 화면 필터용 메타가 붙은 뒤에야 종류·요약 방식·꿀팁 분류 필터가 맞게 센다 — 적용 직후 `build_search_index.py` 한 번(임베딩 호출 0).
 - 화면의 「Obsidian에서 열기」는 `location.hostname`이 `localhost`/`127.0.0.1`일 때만 나온다(`wiki.html:IS_LOCAL`). 가족 PC에는 Vault가 없다.
