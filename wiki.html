@@ -361,7 +361,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const nfc = s => String(s ?? '').normalize('NFC');
 // Obsidian 링크는 Vault 가 있는 이 맥에서만 의미가 있다. 가족 PC(집 안 전용 서버)에서는 숨긴다.
 const IS_LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
-const RELEVANT_TOP = 200;   // 의미 검색은 점수 상위 200건을 "관련 결과"로 본다
+const SEM_K = 3, SEM_MAX = 50;   // 관련 결과 = 글자 일치 전부 + 점수 ≥ 평균+3σ 인 글(최대 50). 이 임베딩은 무관 글도 점수가 높아 상위 N건 고정이 맞지 않는다
 const PAGE = 80;            // 한 번에 그리는 줄 수 (스크롤하면 이어서)
 const TOPIC_EXCLUDE = new Set(['AI 꿀팁']);
 const EXT = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
@@ -372,7 +372,7 @@ const S = {
   views: 0, summary: 'all', channels: new Set(), cats: new Set(), imp: new Set(), onlyNew: false,
   sort: 'date', dir: 'desc', view: 'table', tab: '',
 };
-let ALL = [], BY_ID = new Map(), SCORES = null, MODE = 'list', REL = null, LIST = [], shown = 0, openId = null;
+let LIT = new Set(), ALL = [], BY_ID = new Map(), SCORES = null, MODE = 'list', REL = null, LIST = [], shown = 0, openId = null;
 let chanLimit = 8, REL_TOP = 1, REL_LOW = 0, searchSeq = 0, BUILT = '';
 
 const KIND = [['all', '전체'], ['video', '영상'], ['tip', '꿀팁']];
@@ -536,7 +536,7 @@ function apply() {
   } else {
     $('count').innerHTML = `<b>${fmtNum(LIST.length)}</b>건 · ‘${esc(S.q)}’ 관련`;
     $('mode').className = MODE === 'keyword' ? 'mode warn' : 'mode';
-    $('mode').textContent = MODE === 'keyword' ? '의미 검색 한도에 걸려 글자가 맞는 것만 찾았습니다' : `관련도 상위 ${RELEVANT_TOP}건 안에서`;
+    $('mode').textContent = MODE === 'keyword' ? '의미 검색 한도에 걸려 글자가 맞는 것만 찾았습니다' : (() => { const N = LIST.filter(n => LIT.has(n.id)).length; return `글자 일치 ${fmtNum(N)}건 + 뜻이 가까운 ${fmtNum(LIST.length - N)}건`; })();
   }
   renderFacets(); renderChips(); renderSortSel(); writeHash();
   const box = $('results');
@@ -701,7 +701,20 @@ async function runSearch(q) {
     if (data.built && data.built !== BUILT) await loadAll(true);
     SCORES = data.scores; MODE = data.mode;
     const ranked = ALL.filter(n => SCORES[n.id] != null).sort((a, b) => SCORES[b.id] - SCORES[a.id]);
-    REL = MODE === 'vector' ? ranked.slice(0, RELEVANT_TOP) : ranked;
+    LIT = new Set();
+    if (MODE === 'vector') {
+      // (A) 검색어 글자가 모두 들어 있는 글 (B) 점수가 평균 + SEM_K·σ 이상인 글, 상한 SEM_MAX. σ=0 이면 (A)만
+      const toks = nfc(q).toLowerCase().split(/[\s,.?!'"()\[\]]+/).filter(t => t.length >= 2);
+      if (toks.length) for (const n of ranked) {
+        const hay = nfc([n.title, n.channel, (n.tags || []).join(' '), n.snippet, [].concat(n.keywords || []).join(' ')].join(' ')).toLowerCase();
+        if (toks.every(t => hay.includes(t))) LIT.add(n.id);
+      }
+      const v = ranked.map(n => SCORES[n.id]), mu = v.reduce((a, b) => a + b, 0) / (v.length || 1);
+      const sd = Math.sqrt(v.reduce((a, b) => a + (b - mu) ** 2, 0) / (v.length || 1));
+      const sem = sd > 0 ? ranked.filter(n => SCORES[n.id] >= mu + SEM_K * sd).slice(0, SEM_MAX) : [];
+      const keep = new Set([...LIT, ...sem.map(n => n.id)]);
+      REL = ranked.filter(n => keep.has(n.id));
+    } else REL = ranked;
     REL_TOP = REL.length ? SCORES[REL[0].id] : 1;
     REL_LOW = REL.length ? SCORES[REL[REL.length - 1].id] : 0;
     S.sort = 'rel'; S.dir = 'desc';
