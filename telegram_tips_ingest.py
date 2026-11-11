@@ -188,8 +188,8 @@ def main():
         return 1 if a.kind == 'transient' else 2
     if len(updates) >= 100:
         ki.log('ℹ️  업데이트 100건 — 남음, 다음 실행이 이어 받음')
-    msgs, res['dropped'], why = collect(updates, chat)
-    ki.log(f'📨 업데이트 {len(updates)}건 (허용 대화 메시지 {len(msgs)} · 허용 밖 {res["dropped"]}{why})')
+    msgs, res['dropped'], res['dropped_from'] = collect(updates, chat)
+    ki.log(f'📨 업데이트 {len(updates)}건 (허용 대화 메시지 {len(msgs)} · 허용 밖 {res["dropped"]}{res["dropped_from"]})')
 
     links = links_from_messages(msgs)
     new = [l for l in links if l['key'] not in existing]

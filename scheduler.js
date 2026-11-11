@@ -159,7 +159,7 @@ function runTipsBot(python3) {
         } else if (r && r.skipped) {
           log(`ℹ️  텔레그램 꿀팁 입구 건너뜀: ${r.skipped}`);
         } else if (r) {
-          log(`📮 텔레그램 꿀팁: 신규 ${r.created}건 · 이미 있음 ${r.dup} · 링크 없음 ${r.no_link}${r.dropped ? ` · 허용 밖 ${r.dropped}` : ''} · DB 총 ${r.db_total}건`);
+          log(`📮 텔레그램 꿀팁: 신규 ${r.created}건 · 이미 있음 ${r.dup} · 링크 없음 ${r.no_link}${r.dropped ? ` · 허용 밖 ${r.dropped}${r.dropped_from || ''}` : ''} · DB 총 ${r.db_total}건`);
         }
         resolve(r);
       });
