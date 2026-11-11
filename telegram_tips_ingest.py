@@ -108,21 +108,27 @@ def stale_hours(last_ok, now):
 
 
 def collect(updates, chat):
-    """업데이트 → (메시지 목록, 허용 밖 건수). 메시지 = {'date','message','urls','ref'}."""
-    msgs, dropped = [], 0
+    """업데이트 → (메시지 목록, 허용 밖 건수, 허용 밖 출처 요약). 메시지 = {'date','message','urls','ref'}.
+    출처 요약은 방 종류별 건수 · 그중 대표님 발신 · 링크 있음 (id 는 남기지 않는다)."""
+    msgs, dropped, kinds, own, linked = [], 0, {}, 0, 0
     for u in updates:
         m = u.get('message')
         if not m:
             continue
         if str((m.get('chat') or {}).get('id')) != chat:
             dropped += 1
+            k = (m.get('chat') or {}).get('type') or '?'
+            kinds[k] = kinds.get(k, 0) + 1
+            own += str((m.get('from') or {}).get('id')) == chat
+            linked += bool(extract_urls(m.get('text') or m.get('caption') or ''))
             continue
         text = m.get('text') or m.get('caption') or ''
         urls = extract_urls(text) + [e['url'] for e in (m.get('entities') or []) + (m.get('caption_entities') or [])
                                      if e.get('type') == 'text_link' and e.get('url')]
         date = datetime.fromtimestamp(m.get('date') or 0, KST).strftime('%Y-%m-%d %H:%M:%S')
         msgs.append({'date': date, 'message': text, 'urls': urls, 'ref': (u['update_id'], m['message_id'])})
-    return msgs, dropped
+    why = ' · '.join(f'{k} {n}' for k, n in sorted(kinds.items()))
+    return msgs, dropped, (f' ({why} · 본인 발신 {own} · 링크 {linked})' if dropped else '')
 
 
 def main():
@@ -182,8 +188,8 @@ def main():
         return 1 if a.kind == 'transient' else 2
     if len(updates) >= 100:
         ki.log('ℹ️  업데이트 100건 — 남음, 다음 실행이 이어 받음')
-    msgs, res['dropped'] = collect(updates, chat)
-    ki.log(f'📨 업데이트 {len(updates)}건 (허용 대화 메시지 {len(msgs)} · 허용 밖 {res["dropped"]})')
+    msgs, res['dropped'], why = collect(updates, chat)
+    ki.log(f'📨 업데이트 {len(updates)}건 (허용 대화 메시지 {len(msgs)} · 허용 밖 {res["dropped"]}{why})')
 
     links = links_from_messages(msgs)
     new = [l for l in links if l['key'] not in existing]
