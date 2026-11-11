@@ -12,6 +12,11 @@ cd "$REPO"
 mkdir -p "$XP/open" "$XP/done"
 
 ARGS=(--name pm-wiki --model opus --append-system-prompt-file .claude/pm/PM_ROLE.md --add-dir "$XP")
+# 토큰 절약 (2026-11-11 · asset_manage v1.60.3·v1.60.4·v1.60.7 과 같은 설정)
+#  claude.ai 커넥터만 끈다 — claude-mem 검색 MCP(최근 14일 115회)를 써서 --strict-mcp-config 는 넣지 않는다
+export ENABLE_CLAUDEAI_MCP_SERVERS=false
+export SLASH_COMMAND_TOOL_CHAR_BUDGET=4000
+export CLAUDE_CODE_SUBAGENT_MODEL=sonnet
 if [ "${1:-}" = "--rc" ]; then
   exec claude "${ARGS[@]}" --remote-control pm-wiki
 else

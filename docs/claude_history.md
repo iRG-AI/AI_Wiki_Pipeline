@@ -2,6 +2,7 @@
 
 `CLAUDE.md` 에서 옮긴 운영 이력이다. 규칙은 `CLAUDE.md` 가 정본이다. 새 이력 줄은 이 파일 맨 위(이 머리 아래)에 쓴다(2026-11-06~). 버전별 상세는 `docs/changelog/`.
 
+- **2026-11-11 (v4.21.4 — PM 시작 문맥 절약)** — CLAUDE.md 슬림(95KB → 16KB, 상세는 `.claude/rules/` · `docs/commands.md`) · pm-wiki.sh 커넥터 끔 · 스킬 예산 · 서브에이전트 Sonnet · PM_ROLE agy · Codex 규칙. 대표님 승인 11-11.
 - **2026-11-09 (v4.21.3 — PM 문맥 기준)** — PM_ROLE 에 문맥 15만 토큰 교체 기준 · PM 은 많이 읽지 않고 워커 요약만 받는다. 대표님 승인 11-09.
 - **2026-11-09 (v4.21.2 — 제안함 꿀팁 판정 표시)** — 제안함 「꿀팁 판정」 접기 · 매일 검토가 trial/ 제안 제목도 본다. [CC-1109-E].
 - **2026-11-09 (v4.21.1 — 매일 Wiki 검토 설치)** — `com.irichgreen.skill-review` 설치·launchd 1회 실행 확인(claude -p 인증·텔레그램) · 1개월 backfill 15건 · 설치 스크립트 문구 0~5건. PM 직접.

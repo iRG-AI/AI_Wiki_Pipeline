@@ -16,7 +16,7 @@ BG = ROOT / 'docs' / 'claude_md_background.md'
 HIST = ROOT / 'docs' / 'claude_history.md'
 
 # 2026-11-08: 이 커밋의 CLAUDE.md 92,733B + 3,000B. 올리지 말고 경위·이력은 배경·이력 파일로 보낸다.
-ROOT_LIMIT = 95733
+ROOT_LIMIT = 19158
 
 # 다른 파일이 이름으로 가리키는 절 (CLAUDE.md 「…」 인용: README·scripts·.claude 를 grep 해 찾음).
 #  - 산출물 규칙 : .claude/agents/scribe.md / 중요한 제약사항 : .claude/agents/implementer.md
