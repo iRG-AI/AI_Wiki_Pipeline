@@ -2,6 +2,7 @@
 
 `CLAUDE.md` 에서 옮긴 운영 이력이다. 규칙은 `CLAUDE.md` 가 정본이다. 새 이력 줄은 이 파일 맨 위(이 머리 아래)에 쓴다(2026-11-06~). 버전별 상세는 `docs/changelog/`.
 
+- **2026-11-12 (v4.22.2 — 세션 예약 다시 걸기)** — PM_ROLE: 새 세션 첫 턴에 HANDOFF 「걸어 둘 예약」 을 CronCreate 로 다시 건다. XP-AM-1112-03 · 대표님 지시 11-12.
 - **2026-11-12 (v4.22.1 — 현재 버전 맞춤)** — CLAUDE.md 머리 「현재 버전」 v4.21.4 → v4.22.1. [CC-1112-A] 검수 후속.
 - **2026-11-11 (v4.21.5 — PM 세션 자동 압축)** — autoCompactWindow 20만 · after_compact.sh(압축 직후 PM_ROLE · HANDOFF 다시 읽기) · 15만 경보 때 교체 요청 대신 HANDOFF 갱신 후 계속. 대표님 승인 11-11.
 - **2026-11-11 (v4.21.4 — PM 시작 문맥 절약)** — CLAUDE.md 슬림(95KB → 16KB, 상세는 `.claude/rules/` · `docs/commands.md`) · pm-wiki.sh 커넥터 끔 · 스킬 예산 · 서브에이전트 Sonnet · PM_ROLE agy · Codex 규칙. 대표님 승인 11-11.
