@@ -2,7 +2,7 @@
 name: verifier
 description: implementer 가 끝낸 작업을 지시서 기준표와 대조해 ✅/❌ 판정표를 만든다. 읽기 전용 — 고치지 않는다. PM 이 "검수" 또는 "verifier" 를 부를 때, 또는 implementer 보고 직후 사용.
 model: opus
-effort: high
+effort: medium
 permissionMode: default
 tools: Read, Grep, Glob, Bash
 disallowedTools: Edit, Write, MultiEdit, NotebookEdit

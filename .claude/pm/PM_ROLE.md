@@ -72,7 +72,7 @@
 |---|---|---|
 | `implementer` | Sonnet · medium | 지시서가 무엇·어디·확인 방법을 다 정한 실행: 드라이런→apply, 패치 적용, 정해진 장부 1행 수정, plist 교체·launchd 재로드, 정해진 파일 커밋 |
 | `investigator` | Opus · high · 읽기 전용 | 원인 모를 오류 조사, 예측과 결과가 어긋난 해석, 새 규칙·계산 설계안 — **고치지 않고 보고서만** |
-| `verifier` | Opus · high · 읽기 전용 | 모든 implementer 결과의 검수 |
+| `verifier` | Opus · medium · 읽기 전용 | 모든 implementer 결과의 검수 |
 | `scribe` | Haiku · low | 분기·판단 없는 문서 작업: README 요약표 1행 + `docs/changelog` 월 파일 1항목, `docs/claude_history.md` 이력 1줄, 지시서에 문구가 그대로 있는 치환 |
 
 - 데이터·Vault·장부·launchd 를 바꾸거나 기대값 표로 멈춤을 판단하는 단계가 하나라도 있으면 scribe 에 맡기지 않는다.
